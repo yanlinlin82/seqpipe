@@ -1,0 +1,16 @@
+# reference files path
+REF_PATH=/rd1/data/genome/human/hg19  #path of the reference genome
+REF_NAME=hg19                         #name of the reference genome
+DBSNP_PATH=/rd1/data/public/gatk_bundle/1.2/hg19/dbsnp_132.hg19.vcf
+#
+GATK_HOME=/rd1/build/GenomeAnalysisTK-1.1-31-gdc8398e  #directory of GATK
+PICARD_HOME=/rd1/build/picard/picard-tools-1.48        #directory of Picard
+#
+# BWA related parameters
+FQ_VERSION=1.5  #when fq version is 1.5, -I option should be set when bwa aln
+END_IND=10                            #bwa aln -i option value
+GAP_EXT=-1                            #bwa aln -e option value
+#
+# GATK related parameters
+STAND_CALL_CONF=30                    #gatk UnifiedGenotyper -stand_call_conf
+STAND_EMIT_CONF=30                    #gatk UnifiedGenotyper -stand_emit_conf
