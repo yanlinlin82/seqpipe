@@ -13,15 +13,6 @@
 # user interface to configuration.
 # Written by Wang Meng, 2012-03-18.
 
-clear
-echo "------------------------------------------------------------"
-echo "       Welcome to use Seq Analysis"
-echo "             ---- A tool for resequencing data analysis"
-echo ""
-echo "  Version: 1.0"
-echo "  Copyright (C) 2012 Center for Bioinformatics, PKU"
-echo "------------------------------------------------------------"
-echo ""
 
 # Default settings
 CONF_PATH=$(dirname $0)/config       #configuration file path
@@ -33,8 +24,50 @@ LIB_LENGTH=""   #the length between paired-end adapters in paired-end sequence
 
 if [ $# -ne 0 ]
 then
-    echo $@
+    while getopts "c:p:rt:n:l:vh" optionName
+    do
+        case "$optionName" in
+        c) CONF_PATH="$OPTARG";;
+        p) PLATFORM="$OPTARG";;
+        r) RM_INTER="n";;
+        t) THREAD_NUM=$OPTARG;;
+        n) LANES=$OPTARG;;
+        l) LIB_LENGTH=$OPTARG;;
+        v) echo "Version: 1.0"
+           exit 0
+           ;;
+        h|[?])
+           echo ""
+           echo -e "Usage: seq_analysis [option] -l <int> -n <int> <PE1_1.fq> \c"
+           echo "<PE1_2.fq> [PE2_1.fq] [PE2_2.fq]..."
+           echo ""
+           echo " -c STRING       config file path[default]"
+           echo " -p STRING       platform[illumina]"
+           echo " -r              keep intermediate files"
+           echo " -t INT          number of threads[3]"
+           echo " -n INT          number of lanes[1]"
+           echo " -l INT          library size(Mandatory)"
+           echo " -v              program version"
+           echo " -h              help"
+           echo ""
+           exit 0
+           ;;
+        esac
+    done
+    shift $(($OPTIND - 1))
+    NAMES=$@
 else
+
+clear
+echo "------------------------------------------------------------"
+echo "       Welcome to use Seq Analysis"
+echo "             ---- A tool for resequencing data analysis"
+echo ""
+echo "  Version: 1.0"
+echo "  Copyright (C) 2012 Center for Bioinformatics, PKU"
+echo "------------------------------------------------------------"
+echo ""
+
 # Get customer configuration
 while true
 do
