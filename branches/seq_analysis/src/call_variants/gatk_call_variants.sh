@@ -40,27 +40,22 @@ THREAD_NUM=$4
 
 
 # get the unique mapped reads
-echo "+-------------------------------------+"
-echo "|    Begin get unique mapped reads    |"
-echo "+-------------------------------------+"
-time samtools view map_result.sorted.bam | egrep 'XT:A:U|^@' \
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin get unique mapped reads\t0\t[OK]"
+time samtools view -h map_result.sorted.bam | egrep 'XT:A:U|^@' \
 | samtools view -Sb - > map_result.sorted.unique.bam
 if [ $? != 0 ]
 then
-    echo "+--------------------------------------------------------+"
-    echo "|    Oops, error occured when get unique mapped reads    |"
-    echo "+--------------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when get \
+    unique mapped reads\t0\t[FAIL]"
     exit 1
 fi
-echo "+--------------------------------------------------------------------+"
-echo "|    Congratulates, get unique mapped reads finished successfully    |"
-echo "+--------------------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, get unique mapped \
+reads finished successfully\t0\t[OK]"
 
 
 # mark duplicates by picard
-echo "+---------------------------------------+"
-echo "|    Begin mark duplicates by picard    |"
-echo "+---------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin mark duplicates by picard\
+\t0\t[OK]"
 
 time java -Xmx8G -XX:ParallelGCThreads=4 -jar $PICARD_HOME/MarkDuplicates.jar \
     INPUT=map_result.sorted.unique.bam \
@@ -71,14 +66,12 @@ time java -Xmx8G -XX:ParallelGCThreads=4 -jar $PICARD_HOME/MarkDuplicates.jar \
 
 if [ $? != 0 ]
 then
-    echo "+------------------------------------------------+"
-    echo "|    Oops, error occured when mark duplicates    |"
-    echo "+------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when mark \
+    duplicates\t0\t[FAIL]"
     exit 2
 fi
-echo "+------------------------------------------------------------+"
-echo "|    Congratulates, mark duplicates finished successfully    |"
-echo "+------------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, mark duplicates \
+finished successfully\t0\t[OK]"
 # remove intermediate files if possible
 if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
 then
@@ -86,9 +79,7 @@ then
 fi
 
 # Realignment by GATK
-echo "+---------------------------------+"
-echo "|    Begin realignment by GATK    |"
-echo "+---------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin realignment by GATK\t0\t[OK]"
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T RealignerTargetCreator \
@@ -100,9 +91,8 @@ time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
 
 if [ $? != 0 ]
 then
-    echo "+--------------------------------------------+"
-    echo "|    Oops, error occured when realignment    |"
-    echo "+--------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+    realignment\t0\t[FAIL]"
     exit 3
 fi
 
@@ -115,15 +105,13 @@ time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
 
 if [ $? != 0 ]
 then
-    echo "+--------------------------------------------+"
-    echo "|    Oops, error occured when realignment    |"
-    echo "+--------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+    realignment\t0\t[FAIL]"
     exit 4
 fi
 
-echo "+--------------------------------------------------------+"
-echo "|    Congratulates, realignment finished successfully    |"
-echo "+--------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, realignment \
+finished successfully\t0\t[OK]"
 # remove intermediate files if possible
 if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
 then
@@ -134,36 +122,32 @@ fi
 
 
 # Fix mate information by Picard
-echo "+-------------------------------------+"
-echo "|    Begin fix mate info by Picard    |"
-echo "+-------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin fix mate info by Picard\t0\t[OK]"
 
 time java -Xmx8G -XX:ParallelGCThreads=4 -jar \
     $PICARD_HOME/FixMateInformation.jar \
+	CREATE_INDEX=true \
     INPUT=map_result.sorted.unique.markdup.realign.bam \
     OUTPUT=map_result.sorted.unique.markdup.realign.fixmate.bam 1>&2
 
 if [ $? != 0 ]
 then
-    echo "+----------------------------------------------+"
-    echo "|    Oops, error occured when fix mate info    |"
-    echo "+----------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when fix mate \
+    info\t0\t[FAIL]"
     exit 5
 fi
-echo "+----------------------------------------------------------+"
-echo "|    Congratulates, fix mate info finished successfully    |"
-echo "+----------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, fix mate info \
+finished successfully\t0\t[OK]"
 # remove intermediate files if possible
 if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
 then
     rm -f map_result.sorted.unique.markdup.realign.bam
+	rm -f map_result.sorted.unique.markdup.realign.bai
 fi
 
 
 # Recalibration by GATK
-echo "+-----------------------------------+"
-echo "|    Begin recalibration by GATK    |"
-echo "+-----------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin recalibration by GATK\t0\t[OK]"
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T CountCovariates \
@@ -179,9 +163,8 @@ time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
 
 if [ $? != 0 ]
 then
-    echo "+----------------------------------------------+"
-    echo "|    Oops, error occured when recalibration    |"
-    echo "+----------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+    recalibration\t0\t[FAIL]"
     exit 6
 fi
 
@@ -194,28 +177,26 @@ time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
 
 if [ $? != 0 ]
 then
-    echo "+----------------------------------------------+"
-    echo "|    Oops, error occured when recalibration    |"
-    echo "+----------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+    recalibration\t0\t[FAIL]"
     exit 7
 fi
 
-echo "+----------------------------------------------------------+"
-echo "|    Congratulates, recalibration finished successfully    |"
-echo "+----------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, recalibration \
+finished successfully\t0\t[OK]"
 # remove intermediate files if possible
 if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
 then
     rm -f map_result.sorted.unique.markdup.realign.fixmate.bam
+	rm -f map_result.sorted.unique.markdup.realign.fixmate.bai
     rm -f map_result.sorted.unique.markdup.realign.fixmate.recal.csv
 fi
 
 
 
 # Call Raw variants by GATK
-echo "+---------------------------------------+"
-echo "|    Begin Call Raw variants by GATK    |"
-echo "+---------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin Call Raw variants by \
+GATK\t0\t[OK]"
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T UnifiedGenotyper \
@@ -231,20 +212,16 @@ time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
 
 if [ $? != 0 ]
 then
-    echo "+----------------------------------------------------------+"
-    echo "|    Oops, error occured when Call Raw variants by GATK    |"
-    echo "+----------------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when Call \
+    Raw variants by GATK\t0\t[FAIL]"
     exit 8
 fi
 
-echo "+----------------------------------------------------------------------+"
-echo "|    Congratulates, Call Raw variants by GATK finished successfully    |"
-echo "+----------------------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, Call Raw variants by \
+GATK finished successfully\t0\t[OK]"
 
 # Variant filtration
-echo "+--------------------------------+"
-echo "|    Begin variant filtration    |"
-echo "+--------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin variant filtration\t0\t[OK]"
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T SelectVariants \
@@ -256,9 +233,8 @@ time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
 
 if [ $? != 0 ]
 then
-    echo "+-------------------------------------------+"
-    echo "|    Oops, error occured when select SNP    |"
-    echo "+-------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+    select SNP\t0\t[FAIL]"
     exit 9
 fi
 
@@ -271,9 +247,8 @@ time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
 
 if [ $? != 0 ]
 then
-    echo "+---------------------------------------------+"
-    echo "|    Oops, error occured when select indel    |"
-    echo "+---------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured \
+    when select indel\t0\t[FAIL]"
     exit 10
 fi
 
@@ -294,9 +269,8 @@ time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
 
 if [ $? != 0 ]
 then
-    echo "+-------------------------------------------+"
-    echo "|    Oops, error occured when filter SNP    |"
-    echo "+-------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured \
+    when filter SNP\t0\t[FAIL]"
     exit 11
 fi
 
@@ -312,15 +286,13 @@ time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
 
 if [ $? != 0 ]
 then
-    echo "+---------------------------------------------+"
-    echo "|    Oops, error occured when filter indel    |"
-    echo "+---------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+    filter indel\t0\t[FAIL]"
     exit 12
 fi
 
-echo "+-----------------------------------------------------------------------+"
-echo "|    Congratulates, Variant filtration by GATK finished successfully    |"
-echo "+-----------------------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, Variant filtration \
+by GATK finished successfully\t0\t[OK]"
 
 
 exit 0

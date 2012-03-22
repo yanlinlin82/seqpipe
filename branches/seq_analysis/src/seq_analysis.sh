@@ -33,7 +33,7 @@ LIB_LENGTH=""   #the length between paired-end adapters in paired-end sequence
 
 if [ $# -ne 0 ]
 then
-    
+    echo $@
 else
 # Get customer configuration
 while true
@@ -179,7 +179,7 @@ $(dirname $0)/reads_mapping/bwa_reads_mapping.sh $CONF_PATH $PLATFORM \
 $RM_INTER $THREAD_NUM $LIB_LENGTH $LANES $NAMES 2>log/reads_mapping.log \
 | tee -a log/journal
 
-if [ $? -eq 0 ]
+if [ ${PIPESTATUS[0]} -eq 0 ]
 then
     echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tReads mapping finished\t0\t[OK]" \
     | tee -a log/journal
@@ -204,7 +204,7 @@ samtools flagstat map_result.sorted.bam | sed 's/ + /_+_/' | sed 's/ /#/g' \
 | sed 's/#/ | /' | sed 's/_/ /g' | sed 's/^/| /' | sed 's/$/ |/' | column -t \
 | sed 's/#/ /g'  | tee -a log/map_result.sta
 
-if [ $? -eq 0 ]
+if [ ${PIPESTATUS[0]} -eq 0 ]
 then
     echo "" | tee -a log/map_result.sta
     echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tMap result statistics finished\t0\t[OK]" \
@@ -230,7 +230,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCall SNP and Indel begin\t0\t[OK]" \
 $(dirname $0)/call_variants/gatk_call_variants.sh $CONF_PATH $PLATFORM \
 $RM_INTER $THREAD_NUM 2>log/call_variants.log | tee -a log/journal
 
-if [ $? -eq 0 ]
+if [ ${PIPESTATUS[0]} -eq 0 ]
 then
     echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCall SNP and Indel finished\t0\t[OK]" \
     | tee -a log/journal
@@ -257,7 +257,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCall structure variation begin\t0\t[OK]" 
 $(dirname $0)/call_sv/pindel_call_sv.sh $CONF_PATH $PLATFORM \
 $RM_INTER $THREAD_NUM $LIB_LENGTH 2>log/call_sv.log | tee -a log/journal
 
-if [ $? -eq 0 ]
+if [ ${PIPESTATUS[0]} -eq 0 ]
 then
     echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCall structure variation finished\t0\t[OK]" \
     | tee -a log/journal

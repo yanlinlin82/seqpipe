@@ -3,7 +3,7 @@
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; version 2 of the License.
-   
+
 # This program is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
@@ -45,21 +45,17 @@ echo "map_result.sorted.bam ${LIB_LENGTH} CBI" > pindel_config.conf
 mkdir sv
 
 # Run pindel
-echo "+----------------------------+"
-echo "|    Begin pindel call sv    |"
-echo "+----------------------------+"
-time pindel 每f "${REF_PATH}/${REF_NAME}.fa" 每i pindel_config.conf 每l 每k 每s \
-每c ALL 每o sv/sv 1>&2
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin pindel call sv\t0\t[OK]"
+time pindel -f "${REF_PATH}/${REF_NAME}.fa" -i pindel_config.conf -l -k -s \
+-c ALL -o sv/sv 1>&2
 if [ $? != 0 ]
 then
-    echo "+-----------------------------------------------+"
-    echo "|    Oops, error occured when pindel call sv    |"
-    echo "+-----------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when pindel \
+    call sv\t0\t[FAIL]"
     exit 1
 fi
-echo "+-----------------------------------------------------------+"
-echo "|    Congratulates, pindel call sv finished successfully    |"
-echo "+-----------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, pindel call sv \
+finished successfully\t0\t[OK]"
 # remove intermediate files if possible
 if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
 then
@@ -67,48 +63,42 @@ then
 fi
 
 # Change the result into vcf format
-echo "+------------------------------------------+"
-echo "|    Begin change pindel result into vcf   |"
-echo "+------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin change pindel result into \
+vcf\t0\t[OK]"
 time pindel2vcf -p sv/sv_D -r "${REF_PATH}/${REF_NAME}.fa" -R "${REF_NAME}" \
 -d 20110705 -v sv/sv_D.vcf 1>&2
 if [ $? != 0 ]
 then
-    echo "+--------------------------------------------------------------+"
-    echo "|    Oops, error occured when change pindel result into vcf    |"
-    echo "+--------------------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when change \
+    pindel result into vcf\t0\t[FAIL]"
     exit 1
 fi
 time pindel2vcf -p sv/sv_SI -r "${REF_PATH}/${REF_NAME}.fa" -R "${REF_NAME}" \
 -d 20110705 -v sv/sv_SI.vcf 1>&2
 if [ $? != 0 ]
 then
-    echo "+--------------------------------------------------------------+"
-    echo "|    Oops, error occured when change pindel result into vcf    |"
-    echo "+--------------------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when change \
+    pindel result into vcf\t0\t[FAIL]"
     exit 1
 fi
 time pindel2vcf -p sv/sv_INV -r "${REF_PATH}/${REF_NAME}.fa" -R "${REF_NAME}" \
 -d 20110705 -v sv/sv_INV.vcf 1>&2
 if [ $? != 0 ]
 then
-    echo "+--------------------------------------------------------------+"
-    echo "|    Oops, error occured when change pindel result into vcf    |"
-    echo "+--------------------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when change \
+    pindel result into vcf\t0\t[FAIL]"
     exit 1
 fi
 time pindel2vcf -p sv/sv_TD -r "${REF_PATH}/${REF_NAME}.fa" -R "${REF_NAME}" \
 -d 20110705 -v sv/sv_TD.vcf 1>&2
 if [ $? != 0 ]
 then
-    echo "+--------------------------------------------------------------+"
-    echo "|    Oops, error occured when change pindel result into vcf    |"
-    echo "+--------------------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when change \
+    pindel result into vcf\t0\t[FAIL]"
     exit 1
 fi
-echo "+-------------------------------------------------------------------+"
-echo "|    Congratulates, change result into vcf finished successfully    |"
-echo "+-------------------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, change result into \
+vcf finished successfully\t0\t[OK]"
 # remove intermediate files if possible
 if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
 then

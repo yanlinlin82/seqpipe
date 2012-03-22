@@ -50,46 +50,36 @@ shift 6
 # if index doesn't exist, first build the index
 if [ ! -e "${REF_PATH}/${REF_NAME}.fa.fai" ]
 then
-    echo "+-----------------------+"
-    echo "|    Begin bwa index    |"
-    echo "+-----------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin bwa index\t0\t[OK]"
     time bwa index -a bwtsw "${REF_PATH}/${REF_NAME}.fa" 1>&2
     if [ $? != 0 ]
     then
-        echo "+------------------------------------------+"
-        echo "|    Oops, error occured when bwa index    |"
-        echo "+------------------------------------------+"
+        echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+        bwa index\t0\t[FAIL]"
         exit 1
     fi
-    echo "+------------------------------------------------------+"
-    echo "|    Congratulates, bwa index finished successfully    |"
-    echo "+------------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, bwa index  \
+    finished successfully\t0\t[OK]"
 fi
 
 # align reads to reference genome
-echo "+---------------------+"
-echo "|    Begin bwa aln    |"
-echo "+---------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin bwa aln\t0\t[OK]"
 for reads in $@
 do
     time bwa aln -t $THREAD_NUM -i $END_IND -e $GAP_EXT $FQ_VERSION \
     "${REF_PATH}/${REF_NAME}.fa" "$reads" > "${reads}.sai"
     if [ $? != 0 ]
     then
-        echo "+----------------------------------------+"
-        echo "|    Oops, error occured when bwa aln    |"
-        echo "+----------------------------------------+"
+        echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+        bwa aln\t0\t[FAIL]"
         exit 2
     fi
 done
-echo "+----------------------------------------------------+"
-echo "|    Congratulates, bwa aln finished successfully    |"
-echo "+----------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, bwa aln finished \
+successfully\t0\t[OK]"
 
 # map reads to reference genome
-echo "+-----------------------+"
-echo "|    Begin bwa sampe    |"
-echo "+-----------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin bwa sampe\t0\t[OK]"
 i=1
 while [ $i -le $LANES ]
 do
@@ -102,9 +92,8 @@ do
     "$reads1" "$reads2" | samtools view -Sb - > "L${i}_bwa_result.bam"
     if [ $? != 0 ]
     then
-        echo "+------------------------------------------+"
-        echo "|    Oops, error occured when bwa sampe    |"
-        echo "+------------------------------------------+"
+        echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+        bwa sampe\t0\t[FAIL]"
         exit 3
     fi
     
@@ -116,9 +105,8 @@ do
     
     i=$(($i+1))
 done
-echo "+------------------------------------------------------+"
-echo "|    Congratulates, bwa sampe finished successfully    |"
-echo "+------------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, bwa sampe finished \
+successfully\t0\t[OK]"
 
 
 # merge all lane's result
@@ -126,39 +114,35 @@ if [ $LANES -eq 1 ]
 then
     mv L1_bwa_result.bam bwa_result.bam
 else
-    echo "+--------------------------+"
-    echo "|    Begin samtools cat    |"
-    echo "+--------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin samtools cat\t0\t[OK]"
     names=""
     i=1
     while [ $i -le $LANES ]
     do
         names="${names} L${i}_bwa_result.bam"
+        i=$(($i+1))
     done
     
-    time samtools cat -o bwa_result.bam "$names" 1>&2
+    time samtools cat -o bwa_result.bam $names 1>&2
+
     if [ $? != 0 ]
     then
-        echo "+---------------------------------------------+"
-        echo "|    Oops, error occured when samtools cat    |"
-        echo "+---------------------------------------------+"
+        echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when \
+        samtools cat\t0\t[FAIL]"
         exit 4
     fi
-    echo "+---------------------------------------------------------+"
-    echo "|    Congratulates, samtools cat finished successfully    |"
-    echo "+---------------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, samtools cat \
+    finished successfully\t0\t[OK]"
     
     # remove intermediate files if possible
     if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
     then
-        rm -f "$names"
+        rm -f $names
     fi
 fi
 
 # sort bam result using picard
-echo "+-----------------------------------+"
-echo "|    Begin sort bam using picard    |"
-echo "+-----------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin sort bam using picard\t0\t[OK]"
 
 time java -Xmx8G -XX:ParallelGCThreads=4 -jar $PICARD_HOME/SortSam.jar \
     MAX_RECORDS_IN_RAM=1875000 \
@@ -168,15 +152,13 @@ time java -Xmx8G -XX:ParallelGCThreads=4 -jar $PICARD_HOME/SortSam.jar \
     CREATE_INDEX=true 1>&2
 if [ $? != 0 ]
 then
-    echo "+---------------------------------------------------+"
-    echo "|    Oops, error occured when sort bam by picard    |"
-    echo "+---------------------------------------------------+"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when sort \
+    bam by picard\t0\t[FAIL]"
     exit 5
 fi
 
-echo "+-----------------------------------------------------+"
-echo "|    Congratulates, sort bam finished successfully    |"
-echo "+-----------------------------------------------------+"
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, sort bam finished \
+successfully\t0\t[OK]"
 
 # remove intermediate files if possible
 if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
