@@ -23,7 +23,9 @@
 
 if [ $# -lt 8 ]
 then
-    echo "$0 : Too few arguments!"
+    echo -e "Usage: $0 <config file> <platform> <whether remove intermediate\c"
+    echo -e " files> <number of threads> <library size> <number of lanes> \c"
+    echo "<pe1_1.fq> <pe1_2.fq> [pe2_1.fq] [pe2_2.fq]"
     exit 1
 fi
 

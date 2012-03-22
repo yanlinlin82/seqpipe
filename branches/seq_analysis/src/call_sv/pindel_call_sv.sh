@@ -16,12 +16,14 @@
 # <config file> <platform> <whether remove intermediate files> 
 # <number of threads> <length between paired-end adapters>
 
+# Input : map_result.sorted.bam
 # Finial output: flt.sv.vcf
 
 
 if [ $# -ne 5 ]
 then
-    echo "$0 : Too few arguments!"
+    echo -e "Usage: $0 <config file> <platform> <whether remove intermediate\c"
+    echo " files> <number of threads> <library size>"
     exit 1
 fi
 
