@@ -15,7 +15,7 @@
 
 
 # Default settings
-CONF_PATH=$(dirname $0)/config       #configuration file path
+CONF_PATH=$(dirname $(realpath $0))/config       #configuration file path
 PLATFORM="illumina"                  #sequencing platform
 RM_INTER="y"                         #whether to remove intermediate files
 THREAD_NUM=3                         #number of threads
