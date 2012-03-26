@@ -13,5 +13,5 @@ GAP_EXT=-1                                   #bwa aln -e option value
 #
 # GATK related parameters
 STAND_CALL_CONF=30                           #gatk UnifiedGenotyper -stand_call_conf
-STAND_EMIT_CONF=30                           #gatk UnifiedGenotyper -stand_emit_conf
+STAND_EMIT_CONF=10                           #gatk UnifiedGenotyper -stand_emit_conf
 

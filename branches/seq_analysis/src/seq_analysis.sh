@@ -172,7 +172,18 @@ source "$CONF_PATH"
 echo ""
 echo ""
 echo "------------------------------------------------------------"
-echo "That's OK! Pipeline begin at $(date)"
+# check fastq file version
+quality=$(less $VAR | head -n 4 | tail -n 1)
+if [ $FQ_VERSION = 1.5 ] && [ "$quality" =~ "[a-z]" ]
+then
+	echo "That's OK! Pipeline begin at $(date)"
+elif [ $FQ_VERSION != 1.5 ] && [ "$quality" =~ "*[a-z]*" ]
+	echo "That's OK! Pipeline begin at $(date)"
+else
+	echo "WARNING: fastq version seems not consistent with config"
+	echo "         file specification. Continue anyway."
+	echo "Pipeline begin at $(date)"
+fi
 echo ""
 echo "To see details of each program's running message, please"
 echo "refer to the log directory."
