@@ -174,10 +174,11 @@ echo ""
 echo "------------------------------------------------------------"
 # check fastq file version
 quality=$(less $VAR | head -n 4 | tail -n 1)
-if [ $FQ_VERSION = 1.5 ] && [ "$quality" =~ "[a-z]" ]
+if [ $FQ_VERSION = 1.5 ] && [ "$(echo $quality | grep [a-z])" != "" ]
 then
 	echo "That's OK! Pipeline begin at $(date)"
-elif [ $FQ_VERSION != 1.5 ] && [ "$quality" =~ "*[a-z]*" ]
+elif [ $FQ_VERSION != 1.5 ] && [ "$(echo $quality | grep [a-z])" = "" ]
+then
 	echo "That's OK! Pipeline begin at $(date)"
 else
 	echo "WARNING: fastq version seems not consistent with config"

@@ -44,7 +44,7 @@ THREAD_NUM=$4
 # get the unique mapped reads
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin get unique mapped reads\t0\t[OK]"
 time samtools view -h map_result.sorted.bam | egrep 'XT:A:U|^@' \
-| samtools view -Sb - > map_result.sorted.unique.bam
+| samtools view -Sb - > map_result.sorted.unique.bam.tmp
 if [ $? != 0 ]
 then
     echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when get \
@@ -53,6 +53,25 @@ then
 fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, get unique mapped \
 reads finished successfully\t0\t[OK]"
+
+# Reorderbam by picard
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin reorder bam by picard\
+\t0\t[OK]"
+
+time java -Xmx8G -XX:ParallelGCThreads=4 -jar $PICARD_HOME/ReorderSam.jar \
+    INPUT=map_result.sorted.unique.bam.tmp \
+    OUTPUT=map_result.sorted.unique.bam \
+    REFERENCE="${GATK_REF}" 1>&2
+
+if [ $? != 0 ]
+then
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tOops, error occured when reorder \
+    bam \t0\t[FAIL]"
+    exit 1
+fi
+echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, reorder bam \
+finished successfully\t0\t[OK]"
+rm -f map_result.sorted.unique.bam.tmp
 
 
 # mark duplicates by picard
@@ -85,7 +104,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin realignment by GATK\t0\t[OK]"
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T RealignerTargetCreator \
-    -R "${REF_PATH}/${REF_NAME}.fa" \
+    -R "${GATK_REF}" \
     -I map_result.sorted.unique.markdup.bam \
     -o map_result.sorted.unique.markdup.realign.intervals \
     -known "$DBSNP_PATH" \
@@ -100,7 +119,7 @@ fi
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T IndelRealigner \
-    -R "${REF_PATH}/${REF_NAME}.fa" \
+    -R "${GATK_REF}" \
     -I map_result.sorted.unique.markdup.bam \
     -targetIntervals map_result.sorted.unique.markdup.realign.intervals \
     -o map_result.sorted.unique.markdup.realign.bam 1>&2
@@ -153,7 +172,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin recalibration by GATK\t0\t[OK]"
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T CountCovariates \
-    -R "${REF_PATH}/${REF_NAME}.fa" \
+    -R "${GATK_REF}" \
     -I map_result.sorted.unique.markdup.realign.fixmate.bam \
     -knownSites "$DBSNP_PATH" \
     -cov ReadGroupCovariate \
@@ -172,7 +191,7 @@ fi
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T TableRecalibration \
-    -R "${REF_PATH}/${REF_NAME}.fa" \
+    -R "${GATK_REF}" \
     -I map_result.sorted.unique.markdup.realign.fixmate.bam \
     -recalFile map_result.sorted.unique.markdup.realign.fixmate.recal.csv \
     -o map_result.sorted.unique.markdup.realign.fixmate.recal.bam 1>&2
@@ -202,7 +221,7 @@ GATK\t0\t[OK]"
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T UnifiedGenotyper \
-    -R "${REF_PATH}/${REF_NAME}.fa" \
+    -R "${GATK_REF}" \
     -I map_result.sorted.unique.markdup.realign.fixmate.recal.bam \
     -glm BOTH \
     --min_base_quality_score 20 \
@@ -227,7 +246,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin variant filtration\t0\t[OK]"
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T SelectVariants \
-    -R "${REF_PATH}/${REF_NAME}.fa" \
+    -R "${GATK_REF}" \
     --variant raw_snp_indel.vcf \
     -selectType SNP \
     -selectType MNP \
@@ -242,7 +261,7 @@ fi
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T SelectVariants \
-    -R "${REF_PATH}/${REF_NAME}.fa" \
+    -R "${GATK_REF}" \
     --variant raw_snp_indel.vcf \
     -selectType INDEL \
     -o raw.indel.vcf 1>&2
@@ -262,7 +281,7 @@ fi
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T VariantFiltration \
-    -R "${REF_PATH}/${REF_NAME}.fa" \
+    -R "${GATK_REF}" \
     --variant raw.snp.vcf \
     -o flt.snp.vcf \
     --clusterWindowSize 10 \
@@ -278,7 +297,7 @@ fi
 
 time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T VariantFiltration \
-    -R "${REF_PATH}/${REF_NAME}.fa" \
+    -R "${GATK_REF}" \
     --variant raw.indel.vcf \
     -o flt.indel.vcf \
     --filterExpression "MQ0>=4&&((MQ0/(1.0*DP))>0.1)" \

@@ -1,10 +1,11 @@
 # reference files path
-REF_PATH=/rd2/user/wangm/reference           #path of the reference genome
+REF_PATH=/rd/data/genome/human/hg19/         #path of the reference genome
 REF_NAME=hg19                                #name of the reference genome
-DBSNP_PATH=/rd2/user/wangm/reference/dbsnp_132.hg19.vcf
+GATK_REF=/rd/data/public/gatk_bundle/1.2/hg19/ucsc.hg19.fasta
+DBSNP_PATH=/rd/data/public/gatk_bundle/1.2/hg19/dbsnp_132.hg19.vcf
 #
-GATK_HOME=/rd2/user/wangm/tools/GATK         #directory of GATK
-PICARD_HOME=/rd2/user/wangm/tools/picard     #directory of Picard
+GATK_HOME=/rd/build/gatk                     #directory of GATK
+PICARD_HOME=/rd/build/picard-tools           #directory of Picard
 #
 # BWA related parameters
 FQ_VERSION=1.5   #when fq version is 1.5, -I option should be set when bwa aln
