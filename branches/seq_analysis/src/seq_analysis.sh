@@ -199,6 +199,7 @@ echo "Config file path          : $CONF_PATH" >> log/journal
 echo "Platform                  : $PLATFORM" >> log/journal
 echo "Remove intermediate files : $RM_INTER" >> log/journal
 echo "Number of threads         : $THREAD_NUM" >> log/journal
+echo "Insert size               : $LIB_LENGTH" >> log/journal
 echo "Number of sample lanes    : $LANES" >> log/journal
 echo "" >> log/journal
 
