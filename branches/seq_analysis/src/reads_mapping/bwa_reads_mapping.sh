@@ -148,6 +148,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin sort bam using picard\t0\t[OK]"
 
 time java -Xmx8G -XX:ParallelGCThreads=4 -jar $PICARD_HOME/SortSam.jar \
     MAX_RECORDS_IN_RAM=1875000 \
+    VALIDATION_STRINGENCY=SILENT \
     SO=coordinate \
     I=bwa_result.bam \
     O=map_result.sorted.bam \

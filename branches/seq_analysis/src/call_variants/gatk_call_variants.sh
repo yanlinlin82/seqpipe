@@ -60,6 +60,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin mark duplicates by picard\
 \t0\t[OK]"
 
 time java -Xmx8G -XX:ParallelGCThreads=4 -jar $PICARD_HOME/MarkDuplicates.jar \
+    VALIDATION_STRINGENCY=SILENT \
     INPUT=map_result.sorted.unique.bam \
     OUTPUT=map_result.sorted.unique.markdup.bam \
     METRICS_FILE=bwa_result.sorted.unique.markdup.metrix \
@@ -128,6 +129,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin fix mate info by Picard\t0\t[OK]"
 
 time java -Xmx8G -XX:ParallelGCThreads=4 -jar \
     $PICARD_HOME/FixMateInformation.jar \
+    VALIDATION_STRINGENCY=SILENT \
 	CREATE_INDEX=true \
     INPUT=map_result.sorted.unique.markdup.realign.bam \
     OUTPUT=map_result.sorted.unique.markdup.realign.fixmate.bam 1>&2
