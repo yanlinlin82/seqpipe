@@ -49,6 +49,12 @@ fi
 
 shift 6
 
+# Create tmp directory if necessory
+if [ ! -d tmp ]
+then
+    mkdir tmp
+fi
+
 # if index doesn't exist, first build the index
 if [ ! -e "${REF_PATH}/${REF_NAME}.fa.fai" ]
 then
@@ -146,7 +152,9 @@ fi
 # sort bam result using picard
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin sort bam using picard\t0\t[OK]"
 
-time java -Xmx8G -XX:ParallelGCThreads=4 -jar $PICARD_HOME/SortSam.jar \
+time java -Xmx8G -Djava.io.tmpdir=tmp -XX:ParallelGCThreads=4 -jar \
+    $PICARD_HOME/SortSam.jar \
+    TMP_DIR=tmp \
     MAX_RECORDS_IN_RAM=1875000 \
     VALIDATION_STRINGENCY=SILENT \
     SO=coordinate \
@@ -168,5 +176,8 @@ if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
 then
     rm -f bwa_result.bam
 fi
+
+# remove tmp directory
+rm -rf tmp
 
 exit 0

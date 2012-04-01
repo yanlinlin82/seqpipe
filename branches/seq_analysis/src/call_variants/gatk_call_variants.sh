@@ -41,6 +41,13 @@ RM_INTER=$3
 THREAD_NUM=$4
 
 
+# Create tmp directory if necessory
+if [ ! -d tmp ]
+then
+    mkdir tmp
+fi
+
+
 # get the unique mapped reads
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin get unique mapped reads\t0\t[OK]"
 time samtools view -h map_result.sorted.bam | egrep 'XT:A:U|^@' \
@@ -59,7 +66,9 @@ reads finished successfully\t0\t[OK]"
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin mark duplicates by picard\
 \t0\t[OK]"
 
-time java -Xmx8G -XX:ParallelGCThreads=4 -jar $PICARD_HOME/MarkDuplicates.jar \
+time java -Xmx8G -Djava.io.tmpdir=tmp -XX:ParallelGCThreads=4 -jar \
+    $PICARD_HOME/MarkDuplicates.jar \
+    TMP_DIR=tmp \
     VALIDATION_STRINGENCY=SILENT \
     INPUT=map_result.sorted.unique.bam \
     OUTPUT=map_result.sorted.unique.markdup.bam \
@@ -84,7 +93,8 @@ fi
 # Realignment by GATK
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin realignment by GATK\t0\t[OK]"
 
-time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T RealignerTargetCreator \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.bam \
@@ -99,7 +109,8 @@ then
     exit 3
 fi
 
-time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T IndelRealigner \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.bam \
@@ -127,8 +138,9 @@ fi
 # Fix mate information by Picard
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin fix mate info by Picard\t0\t[OK]"
 
-time java -Xmx8G -XX:ParallelGCThreads=4 -jar \
+time java -Xmx8G -Djava.io.tmpdir=tmp -XX:ParallelGCThreads=4 -jar \
     $PICARD_HOME/FixMateInformation.jar \
+    TMP_DIR=tmp \
     VALIDATION_STRINGENCY=SILENT \
 	CREATE_INDEX=true \
     INPUT=map_result.sorted.unique.markdup.realign.bam \
@@ -153,7 +165,8 @@ fi
 # Recalibration by GATK
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin recalibration by GATK\t0\t[OK]"
 
-time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T CountCovariates \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.realign.fixmate.bam \
@@ -172,7 +185,8 @@ then
     exit 6
 fi
 
-time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T TableRecalibration \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.realign.fixmate.bam \
@@ -202,7 +216,8 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin Call Raw variants by \
 GATK\t0\t[OK]"
 
-time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T UnifiedGenotyper \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.realign.fixmate.recal.bam \
@@ -227,7 +242,8 @@ GATK finished successfully\t0\t[OK]"
 # Variant filtration
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin variant filtration\t0\t[OK]"
 
-time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T SelectVariants \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     --variant raw_snp_indel.vcf \
@@ -242,7 +258,8 @@ then
     exit 9
 fi
 
-time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T SelectVariants \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     --variant raw_snp_indel.vcf \
@@ -262,7 +279,8 @@ then
     rm -f raw_snp_indel.vcf
 fi
 
-time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T VariantFiltration \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     --variant raw.snp.vcf \
@@ -278,7 +296,8 @@ then
     exit 11
 fi
 
-time java -Xmx8G -jar $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
     -T VariantFiltration \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     --variant raw.indel.vcf \
@@ -298,5 +317,7 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, Variant filtration \
 by GATK finished successfully\t0\t[OK]"
 
+# remove tmp directory
+rm -rf tmp
 
 exit 0
