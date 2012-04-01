@@ -207,7 +207,8 @@ echo "Program Version:"                                | tee -a log/journal
 echo "BWA      : $(bwa 2>&1 | grep Version | cut -d' ' -f2)" \
                                                        | tee -a log/journal
 echo "GATK     : $(echo $GATK_HOME | cut -d'-' -f2)"   | tee -a log/journal
-echo "Picard   : $(echo $PICARD_HOME | cut -d'-' -f3)" | tee -a log/journal
+echo "Picard   : $(java -jar ${PICARD_HOME}/ViewSam.jar -h 2>&1 \
+| grep Version | cut -d' ' -f2)"                       | tee -a log/journal
 echo "Samtools : $(samtools 2>&1 | grep Version | cut -d' ' -f2)" \
                                                        | tee -a log/journal
 echo "Pindel   : $(pindel | grep 'Pindel version' | uniq | cut -d' ' -f3 \
