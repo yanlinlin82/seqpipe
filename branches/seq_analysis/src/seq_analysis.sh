@@ -206,7 +206,9 @@ echo "" >> log/journal
 echo "Program Version:"                                | tee -a log/journal
 echo "BWA      : $(bwa 2>&1 | grep Version | cut -d' ' -f2)" \
                                                        | tee -a log/journal
-echo "GATK     : $(echo $GATK_HOME | cut -d'-' -f2)"   | tee -a log/journal
+echo "GATK     : $(java -jar ${GATK_HOME}/GenomeAnalysisTK.jar --help | \
+grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2)" \
+                                                       | tee -a log/journal
 echo "Picard   : $(java -jar ${PICARD_HOME}/ViewSam.jar -h 2>&1 \
 | grep Version | cut -d' ' -f2)"                       | tee -a log/journal
 echo "Samtools : $(samtools 2>&1 | grep Version | cut -d' ' -f2)" \
