@@ -71,9 +71,6 @@ then
 fi
 
 
-if [ ! -f map_result.sorted.bam ]
-then
-
 # align reads to reference genome
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin bwa aln\t0\t[OK]"
 for reads in $@
@@ -181,7 +178,6 @@ then
     rm -f bwa_result.bam
 fi
 
-fi
 
 # remove tmp directory
 rm -rf tmp

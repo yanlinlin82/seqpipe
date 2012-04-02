@@ -221,6 +221,9 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tPipeline begin\t0\t[OK]" \
 | tee -a log/journal
 
 # Run reads mapping
+if [ ! -f map_result.sorted.bam ]
+then
+
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tReads mapping begin\t0\t[OK]" \
 | tee -a log/journal
 
@@ -244,7 +247,12 @@ else
     exit 1
 fi
 
+fi
+
 # Statistics on mapping result
+if [ ! -f log/map_result.sta ]
+then
+
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tMap result statistics begin\t0\t[OK]" \
 | tee -a log/journal
 echo "" | tee -a log/map_result.sta
@@ -270,6 +278,7 @@ else
     exit 1
 fi
 
+fi
 
 
 # Run call SNP and Indel
