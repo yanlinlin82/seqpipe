@@ -68,6 +68,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin mark duplicates by picard\
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -XX:ParallelGCThreads=4 -jar \
     $PICARD_HOME/MarkDuplicates.jar \
+    MAX_RECORDS_IN_RAM=1875000 \
     TMP_DIR=tmp \
     VALIDATION_STRINGENCY=SILENT \
     INPUT=map_result.sorted.unique.bam \
@@ -140,6 +141,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin fix mate info by Picard\t0\t[OK]"
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -XX:ParallelGCThreads=4 -jar \
     $PICARD_HOME/FixMateInformation.jar \
+    MAX_RECORDS_IN_RAM=1875000 \
     TMP_DIR=tmp \
     VALIDATION_STRINGENCY=SILENT \
 	CREATE_INDEX=true \
