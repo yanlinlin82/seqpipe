@@ -279,6 +279,7 @@ fi
 if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
 then
     rm -f raw_snp_indel.vcf
+	rm -f raw_snp_indel.vcf.idx
 fi
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
