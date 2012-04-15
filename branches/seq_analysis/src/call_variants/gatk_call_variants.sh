@@ -289,8 +289,8 @@ time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
     --variant raw.snp.vcf \
     -o flt.snp.vcf \
     --clusterWindowSize 10 \
-    --filterExpression "MQ0>=4&&((MQ0/(1.0*DP))>0.1)" \
-    --filterName "HARD_TO_VALIDATE" 1>&2
+    --filterExpression "$FILTER" \
+    --filterName "FILTER" 1>&2
 
 if [ $? != 0 ]
 then
@@ -305,10 +305,9 @@ time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     --variant raw.indel.vcf \
     -o flt.indel.vcf \
-    --filterExpression "MQ0>=4&&((MQ0/(1.0*DP))>0.1)" \
-    --filterName "HARD_TO_VALIDATE" \
-    --filterExpression "QUAL<10" \
-    --filterName "QualFilter" 1>&2
+    --clusterWindowSize 10 \
+    --filterExpression "$FILTER" \
+    --filterName "FILTER" 1>&2
 
 if [ $? != 0 ]
 then
