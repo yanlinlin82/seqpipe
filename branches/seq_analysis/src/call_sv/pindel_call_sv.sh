@@ -59,7 +59,7 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, pindel call sv \
 finished successfully\t0\t[OK]"
 # remove intermediate files if possible
-if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
 then
     rm -f pindel_config.conf
 fi
@@ -102,7 +102,7 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, change result into \
 vcf finished successfully\t0\t[OK]"
 # remove intermediate files if possible
-if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
 then
     rm -f sv/sv_D
     rm -f sv/sv_SI

@@ -107,7 +107,7 @@ do
     fi
     
     # remove intermediate files if possible
-    if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+    if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
     then
         rm -f "${reads1}.sai" "${reads2}.sai"
     fi
@@ -144,7 +144,7 @@ else
     finished successfully\t0\t[OK]"
     
     # remove intermediate files if possible
-    if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+    if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
     then
         rm -f $names
     fi
@@ -173,7 +173,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, sort bam finished \
 successfully\t0\t[OK]"
 
 # remove intermediate files if possible
-if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
 then
     rm -f bwa_result.bam
 fi

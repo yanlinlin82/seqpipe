@@ -86,7 +86,7 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, mark duplicates \
 finished successfully\t0\t[OK]"
 # remove intermediate files if possible
-if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
 then
     rm -f map_result.sorted.unique.bam
 fi
@@ -128,7 +128,7 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, realignment \
 finished successfully\t0\t[OK]"
 # remove intermediate files if possible
-if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
 then
     rm -f map_result.sorted.unique.markdup.realign.intervals
     rm -f map_result.sorted.unique.markdup.bam
@@ -157,7 +157,7 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, fix mate info \
 finished successfully\t0\t[OK]"
 # remove intermediate files if possible
-if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
 then
     rm -f map_result.sorted.unique.markdup.realign.bam
 	rm -f map_result.sorted.unique.markdup.realign.bai
@@ -205,7 +205,7 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tCongratulates, recalibration \
 finished successfully\t0\t[OK]"
 # remove intermediate files if possible
-if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
 then
     rm -f map_result.sorted.unique.markdup.realign.fixmate.bam
 	rm -f map_result.sorted.unique.markdup.realign.fixmate.bai
@@ -276,7 +276,7 @@ then
 fi
 
 # remove intermediate files if possible
-if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y']
+if [ $RM_INTER == 'y' ] || [ $RM_INTER == 'Y' ]
 then
     rm -f raw_snp_indel.vcf
 	rm -f raw_snp_indel.vcf.idx
