@@ -95,7 +95,7 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin realignment by GATK\t0\t[OK]"
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
-    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_HOME}/gatk_cbi.key \
     -T RealignerTargetCreator \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.bam \
@@ -111,7 +111,7 @@ then
 fi
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
-    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_HOME}/gatk_cbi.key \
     -T IndelRealigner \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.bam \
@@ -168,7 +168,7 @@ fi
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin recalibration by GATK\t0\t[OK]"
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
-    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_HOME}/gatk_cbi.key \
     -T CountCovariates \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.realign.fixmate.bam \
@@ -188,7 +188,7 @@ then
 fi
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
-    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_HOME}/gatk_cbi.key \
     -T TableRecalibration \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.realign.fixmate.bam \
@@ -219,7 +219,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin Call Raw variants by \
 GATK\t0\t[OK]"
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
-    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_HOME}/gatk_cbi.key \
     -T UnifiedGenotyper \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     -I map_result.sorted.unique.markdup.realign.fixmate.recal.bam \
@@ -245,7 +245,7 @@ GATK finished successfully\t0\t[OK]"
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\tBegin variant filtration\t0\t[OK]"
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
-    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_HOME}/gatk_cbi.key \
     -T SelectVariants \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     --variant raw_snp_indel.vcf \
@@ -261,7 +261,7 @@ then
 fi
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
-    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_HOME}/gatk_cbi.key \
     -T SelectVariants \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     --variant raw_snp_indel.vcf \
@@ -283,7 +283,7 @@ then
 fi
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
-    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_HOME}/gatk_cbi.key \
     -T VariantFiltration \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     --variant raw.snp.vcf \
@@ -300,7 +300,7 @@ then
 fi
 
 time java -Xmx8G -Djava.io.tmpdir=tmp -jar \
-    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET \
+    $GATK_HOME/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_HOME}/gatk_cbi.key \
     -T VariantFiltration \
     -R "${REF_PATH}/${REF_NAME}.fa" \
     --variant raw.indel.vcf \
