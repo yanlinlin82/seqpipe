@@ -1,0 +1,372 @@
+#!/bin/bash
+#
+#[seqpipe version="0.1.0"]
+#
+###########################################################################
+
+#[global]
+TMP_DIR=/rd/tmp                         # Temporary directory
+JAVA_MAX_MEM_SIZE=8G                    # For Java's -Xmx option
+JAVA_GC_THREAD_NUM=4                    # For Java's -XX:ParallelGCThreads option
+
+THREAD_NUM=1                            # For multiple-thread running
+
+# Sequencing related
+QUALITY_FORMAT_BASE=33                  # Quality format in FASTQ file
+PLATFORM="Illumina"                     # Sequencer platform
+
+# Reference genome (default is human hg19)
+REFERENCE=/rd/data/genomes/human/ucsc.hg19/hg19.fa
+REFERENCE_NAME=hg19
+REFERENCE_DATE=20110705
+
+# BWA options
+BWA_END_IND=10                           # For: bwa aln -i <value>
+BWA_GAP_EXT=-1                           # For: bwa aln -e <value>
+
+# Picard options
+PICARD_ROOT=/rd/build/picard_tools       # Path of picard tools
+MAX_RECORDS_IN_RAM=1875000               # For enhance performance of picard
+
+# GATK options
+GATK_ROOT=/rd/build/gatk                 # Path of GATK tools
+GATK_KEY=${GATK_ROOT}/gatk_cbi.key       # Key file for offline using GATK
+DBSNP_VCF=/rd/data/public/gatk_bundle/1.5/b37/dbsnp_135.b37.vcf
+                                         # Path of dbSNP VCF file
+
+FILTER_NAME="Filter"
+FILTER_EXPRESSION="(AB ?: 0) > 0.75 || QUAL < 50.0 || DP < 10 || DP > 360 || (SB ?: -1) > -0.1 || MQ0>=4"
+                                         # Filter expression for GATK
+STAND_CALL_CONF=30                       # GATK UnifiedGenotyper -stand_call_conf
+STAND_EMIT_CONF=10                       # GATK UnifiedGenotyper -stand_emit_conf
+
+###########################################################################
+
+#[primitive]
+function SP_run
+{
+	PIPELINE_NAME=$1
+	shift
+
+	if [ -z "$(type ${PIPELINE_NAME} 2>/dev/null | grep 'function')" ]; then
+		echo "Pipeline '${PIPELINE_NAME}' does not exist!"
+		set -e
+		exit 1
+	fi
+
+	while [ ! -z "$1" ]; do
+		export $1
+		shift
+	done
+	${PIPELINE_NAME}
+}
+
+#[primitive]
+function SP_set
+{
+	NAME=$1
+	VALUE=$2
+	CONDITION=$3
+
+	RESULT=$(echo YES | awk "${CONDITION}")
+	echo "${CONDITION}"
+	if [ ! -z "${RESULT}" ]; then
+		echo "Set option"
+		export ${NAME}=${VALUE}
+	fi
+}
+
+###########################################################################
+
+#[tools]
+function bwa_version
+{
+	bwa |& grep Version | cut -d' ' -f2
+}
+
+#[tools]
+function gatk_version
+{
+	java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | \
+		grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
+}
+
+#[tools]
+function picard_version
+{
+	java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
+}
+
+#[samtools]
+function samtools_version
+{
+	samtools |& grep Version | cut -d' ' -f2-
+}
+
+#[pindel]
+function pindel_version
+{
+	pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
+}
+
+###########################################################################
+
+#[pipeline version="1.0"]
+#[workflow input="INPUT" output="OUTPUT"]
+#[option name="INPUT" type="file" file_type="fastq"]
+#[option name="OUTPUT" type="file" file_type="zip"]
+#[depend program="fastqc" version="0.10.1"]
+function fastqc_check
+{
+	[ -d $(dirname ${OUTPUT}) ] || mkdir -p $(dirname ${OUTPUT})
+	fastqc --noextract --nogroup -o $(dirname ${OUTPUT}) ${INPUT}
+	mv $(dirname ${OUTPUT})/$(echo $(basename ${INPUT}) | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}
+}
+
+#[pipeline]
+function bwa_build_index
+{
+	bwa index -a ${ALGORITHM} ${REFERENCE}
+}
+
+#[pipeline]
+function bwa_reads_mapping
+{
+	SP_set QUAL_OPTION "-I" "${QUALITY_FORMAT_BASE}==64"
+	SP_run bwa_build_index REFERENCE=${REFERENCE}
+	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${REFERENCE} ${INPUT_2} -f ${INPUT_1}.sai ${QUAL_OPTION}
+	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${REFERENCE} ${INPUT_2} -f ${INPUT_2}.sai ${QUAL_OPTION}
+	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
+		${INPUT_2}.sai ${INPUT_2}.sai ${INPUT_1} ${INPUT_2} \
+		| samtools view -Sb - \
+		> ${OUTPUT}
+}
+
+#[pipeline]
+function bwa_reads_mapping_se
+{
+	SP_set QUAL_OPTION "-I" "${QUALITY_FORMAT_BASE}==64"
+	SP_run bwa_build_index REFERENCE=${REFERENCE}
+	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${REFERENCE} ${INPUT} -f ${INPUT}.sai ${QUAL_OPTION}
+	bwa samse ${REFERENCE} ${INPUT}.sai ${INPUT} \
+		| samtools view -Sb - \
+		> ${OUTPUT}
+}
+
+#[pipeline]
+function merge_bam
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-jar ${PICARD_ROOT}/MergeSamFiles.jar \
+		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
+		TMP_DIR=${TMP_DIR} \
+		COMPRESS_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=true \
+		$(printf " INPUT=%s" ${INPUT_N}) \
+		OUTPUT=${OUTPUT}
+}
+
+#[pipeline]
+function extract_mapped_reads
+{
+	samtools view ${INPUT} -f4 > ${OUTPUT_1}
+	samtools view ${INPUT} -F4 > ${OUTPUT_2}
+}
+
+#[pipeline]
+function sort_bam
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-jar ${PICARD_ROOT}/MergeSamFiles.jar \
+		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
+		TMP_DIR=${TMP_DIR} \
+		COMPRESS_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=true \
+		SORT_ORDER=coordinate \
+		INPUT=${INPUT} \
+		OUTPUT=${OUTPUT}
+}
+
+#[pipeline]
+function flagstat_bam
+{
+	samtools flagstat ${INPUT} > ${OUTPUT}
+}
+
+#[pipeline]
+function extract_unique_hit_reads
+{
+	samtools view -h ${INPUT} \
+		| egrep 'XT:A:U|^@' \
+		| samtools view -Sb - \
+		> ${OUTPUT}
+}
+
+#[pipeline]
+function remove_duplicate_reads
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-jar ${PICARD_ROOT}/MarkDuplicates.jar \
+		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
+		TMP_DIR=${TMP_DIR} \
+		COMPRESS_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=true \
+		INPUT=${INPUT} \
+		OUTPUT=${OUTPUT_1} \
+		METRICS_FILE=${OUTPUT_2} \
+		REMOVE_DUPLICATES=true
+}
+
+#[pipeline]
+function gatk_indel_realign
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T RealignerTargetCreator \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-o ${INPUT}.intervals \
+		-known ${DBSNP_VCF} \
+		--num_threads ${THREAD_NUM}
+
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T IndelRealigner \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-targetIntervals ${INPUT}.intervals \
+		-o ${INPUT}.realign
+	
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-jar ${PICARD_ROOT}/FixMateInformation.jar \
+		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
+		TMP_DIR=${TMP_DIR} \
+		COMPRESS_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=true \
+		INPUT=${INPUT}.realign \
+		OUTPUT=${OUTPUT}
+}
+
+#[pipeline]
+function gatk_recalibration
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T CountCovariates \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-knownSites ${DBSNP_VCF} \
+		-cov ReadGroupCovariate \
+		-cov QualityScoreCovariate \
+		-cov CycleCovariate \
+		-cov DinucCovariate \
+		-recalFile ${INPUT}.recal \
+		--num_threads ${THREAD_NUM}
+	
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T TableRecalibration \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-recalFile ${INPUT}.recal \
+		-o ${OUTPUT}
+}
+
+#[pipeline]
+function gatk_genotype
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T UnifiedGenotyper \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-glm BOTH \
+		--min_base_quality_score 20 \
+		--dbsnp ${DBSNP_VCF} \
+		-stand_call_conf ${STAND_CALL_CONF} \
+		-stand_emit_conf ${STAND_EMIT_CONF} \
+		-o ${OUTPUT} \
+		--num_threads ${THREAD_NUM}
+}
+
+#[pipeline]
+function gatk_filter_variants
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T SelectVariants \
+		-R ${REFERENCE} \
+		--variant ${INPUT} \
+		-selectType SNP -selectType MNP \
+		-o ${INPUT}.snp
+
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T SelectVariants \
+		-R ${REFERENCE} \
+		--variant ${INPUT} \
+		-selectType INDEL \
+		-o ${INPUT}.indel
+
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T VariantFiltration \
+		-R ${REFERENCE} \
+		--variant ${INPUT}.snp \
+		--filterExpression ${FILTER_EXPRESSION} \
+		--filterName ${FILTER_NAME} \
+		--clusterWindowSize 10 \
+		-o ${OUTPUT}
+}
+
+#[pipeline]
+function gatk_call_variants
+{
+	SP_run gatk_indel_realign \
+		INPUT=${INPUT} \
+		OUTPUT=${INPUT}.realign.bam
+
+	SP_run gatk_recalibration \
+		INPUT=${INPUT}.realign.bam \
+		OUTPUT=${INPUT}.realign.recal.bam
+
+	SP_run gatk_genotype \
+		INPUT=${INPUT}.realign.recal.bam \
+		OUTPUT=${INPUT}.raw.vcf
+
+	SP_run gatk_filter_variants \
+		INPUT=${INPUT}.raw.vcf \
+		OUTPUT=${INPUT}.final.vcf
+}
+
+#[pipeline]
+function call_structure_variants
+{
+	pindel -f ${REFERENCE} \
+		-i <(echo "${INPUT} ${INSERT_SIZE} ${SAMPLE_TAG}") \
+		-l -k -s -c ALL -o ${OUTPUT}
+
+	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		-p ${OUTPUT}_D -v ${OUTPUT}_D.vcf
+	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		-p ${OUTPUT}_SI -v ${OUTPUT}_SI.vcf
+	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		-p ${OUTPUT}_INV -v ${OUTPUT}_INV.vcf
+	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		-p ${OUTPUT}_TD -v ${OUTPUT}_TD.vcf
+}
