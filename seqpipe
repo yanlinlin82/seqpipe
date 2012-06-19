@@ -13,6 +13,7 @@ my $test_mode = 0;
 my %modules;
 my %global_variables;
 my $run_counter = 0;
+my %tool_version;
 
 my $seqpipe_log_dir = "./.seqpipe";
 my $default_dir_attr = 0755;
@@ -60,6 +61,7 @@ sub load_module
 					if ($line ne "{") {
 						die "Invalid function(module) declaration!";
 					}
+					$last_line = "";
 
 					while ($line = <MODULE_FILE>) {
 						chomp $line;
@@ -83,6 +85,49 @@ sub load_module
 					}
 					
 					$modules{$pipeline_name} = { commands => \@commands, variables => \%variables };
+					last;
+				} elsif ($line =~ /^\s*function\s+/) {
+					die "Invalid function(module) declaration!";
+				}
+			}
+		} elsif ($line eq "#[tool_version]") {
+			while ($line = <MODULE_FILE>) {
+				if ($line =~ /^function\s+(\w+)\s*$/) {
+					$before_functions = 0;
+
+					my $function_name = $1;
+					my $command = "";
+
+					$line = <MODULE_FILE>;
+					chomp $line;
+					if ($line ne "{") {
+						die "Invalid function(module) declaration!";
+					}
+					$last_line = "";
+
+					while ($line = <MODULE_FILE>) {
+						chomp $line;
+						if ($line eq "}") { last; }
+						$line =~ s/^\s*//g;
+						if ($line =~ s/\\$//) {
+							$last_line = $last_line . $line;
+						} else {
+							$command .= "; " if ($command ne "");
+							$command .= $last_line . $line;
+							$last_line = "";
+						}
+					}
+					if ($line ne "}") {
+						die "Invalid function(module) declaration!";
+					}
+					if ($last_line ne "") {
+						$command .= "; " if ($command ne "");
+						$command .= $last_line;
+					}
+
+					$function_name =~ s/_version$//g;
+					$tool_version{$function_name} = $command;
+					last;
 				} elsif ($line =~ /^\s*function\s+/) {
 					die "Invalid function(module) declaration!";
 				}
@@ -227,10 +272,6 @@ sub run_pipeline
 			my $option_name = $1;
 			my $option_value = $2;
 
-#			if (!check_option($pipeline, $option_name)) {
-#				print "Error: Unknown option '$option_name'!\n";
-#				exit 1;
-#			}
 			$variables{$option_name} = $option_value;
 		} else {
 			print "Error: Invalid pipeline option '$arg'! It should be the format of 'NAME=VALUE'!\n";
@@ -298,18 +339,16 @@ sub run_pipeline
 			next;
 		}
 		$run_counter += 1;
-		print LOG_FILE "[SeqPipe] Command($$.$run_counter) line: $command\n";
+		print LOG_FILE "[SeqPipe] Command($$.$run_counter): $command\n";
 
 		my $start_time = time;
 		my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($start_time);
 		printf LOG_FILE "[SeqPipe] Command($$.$run_counter) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
 			$year + 1900, $mon + 1, $mday, $hour, $min, $sec;
 
-		foreach my $ext ("log", "err") {
-			open FILE, ">>" . "$seqpipe_log_dir/$$.$run_counter.$ext";
-			printf FILE "[SeqPipe] $command\n";
-			close FILE;
-		}
+		open FILE, ">>" . "$seqpipe_log_dir/$$.$run_counter.cmd";
+		printf FILE "$command\n";
+		close FILE;
 
 		system("/bin/bash", "-c",
 			"($command) >>$seqpipe_log_dir/$$.$run_counter.log 2>>$seqpipe_log_dir/$$.$run_counter.err");
@@ -465,13 +504,63 @@ open LOG_FILE, ">>" . $seqpipe_log_dir . "/history.log";
 printf LOG_FILE "%d\t%s\n", $$, $command_line;
 close LOG_FILE;
 
+my $start_time = time;
 if (!$test_mode) {
 	open LOG_FILE, "| tee -ai " . $seqpipe_log_dir . "/$$.log";
+
+	printf LOG_FILE "[SeqPipe] Pipeline($$): $command_line\n";
+
+	my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($start_time);
+	printf LOG_FILE "[SeqPipe] Pipeline($$) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
+		$year + 1900, $mon + 1, $mday, $hour, $min, $sec;
+
+	my @system_info_commands = (
+		"$0 | grep Version | cut -d' ' -f2-",
+		"uname -a",
+		"lscpu | grep '^CPU(s):' | awk '{print \$2}'",
+		"free -g | egrep 'Mem|Swap' | awk '{print \$1\$2\"G\"}' | paste - - | sed 's/\\t/ + /g'"
+	);
+	system("(echo -n 'SeqPipe : '; $system_info_commands[0]) >>$seqpipe_log_dir/$$.sysinfo");
+	system("(echo -n 'System  : '; $system_info_commands[1]) >>$seqpipe_log_dir/$$.sysinfo");
+	system("(echo -n 'CPU     : '; $system_info_commands[2]) >>$seqpipe_log_dir/$$.sysinfo");
+	system("(echo -n 'Memory  : '; $system_info_commands[3]) >>$seqpipe_log_dir/$$.sysinfo");
+
+	foreach my $tool (keys %tool_version) {
+		my $command = $tool_version{$tool};
+		while ($command =~ /\${(\w+)}/) {
+			my $option_name = $1;
+			$command =~ s/\${$option_name}/$global_variables{$option_name}/g;
+		}
+		system("(printf '%10s version : ' $tool; $command) >>$seqpipe_log_dir/$$.sysinfo\n");
+	}
 }
 
 run_pipeline $pipeline, \@ARGV;
 
 if (!$test_mode) {
+	my $end_time = time;
+	my $elapsed_time = $end_time - $start_time;
+	my $time_text = "";
+	if ($elapsed_time >= 86400) {
+		$time_text .= ($elapsed_time / 86400) . "d ";
+		$elapsed_time %= 86400;
+	}
+	if ($time_text ne "" or $elapsed_time >= 3600) {
+		$time_text .= ($elapsed_time / 3600) . "h ";
+		$elapsed_time %= 3600;
+	}
+	if ($time_text ne "" or $elapsed_time >= 60) {
+		$time_text .= ($elapsed_time / 3600) . "m ";
+		$elapsed_time %= 60;
+	}
+	if ($time_text eq "" or $elapsed_time > 0) {
+		$time_text .= $elapsed_time . "s ";
+	}
+	$time_text =~ s/\s$//g;
+	my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($end_time);
+	printf LOG_FILE "[SeqPipe] Pipeline($$) ends at %04d-%02d-%02d %02d:%02d:%02d (elapsed: %s)\n",
+		$year + 1900, $mon + 1, $mday, $hour, $min, $sec, $time_text;
+
 	close LOG_FILE;
 }
 
