@@ -2,11 +2,7 @@
 use strict;
 use warnings;
 use File::Basename;
-use Cwd;
 use Cwd 'abs_path';
-use IPC::Open3;
-use IO::File;
-use Symbol qw(gensym);
 
 my $help_mode = 0;
 my $help_detail_mode = 0;
@@ -309,6 +305,12 @@ sub run_pipeline
 		printf LOG_FILE "[SeqPipe] Command($$.$run_counter) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
 			$year + 1900, $mon + 1, $mday, $hour, $min, $sec;
 
+		foreach my $ext ("log", "err") {
+			open FILE, ">>" . "$seqpipe_log_dir/$$.$run_counter.$ext";
+			printf FILE "[SeqPipe] $command\n";
+			close FILE;
+		}
+
 		system("/bin/bash", "-c",
 			"($command) >>$seqpipe_log_dir/$$.$run_counter.log 2>>$seqpipe_log_dir/$$.$run_counter.err");
 		if ($? == -1) {
@@ -326,8 +328,26 @@ sub run_pipeline
 
 		my $end_time = time;
 		my $elapsed_time = $end_time - $start_time;
+		my $time_text = "";
+		if ($elapsed_time >= 86400) {
+			$time_text .= ($elapsed_time / 86400) . "d ";
+			$elapsed_time %= 86400;
+		}
+		if ($time_text ne "" or $elapsed_time >= 3600) {
+			$time_text .= ($elapsed_time / 3600) . "h ";
+			$elapsed_time %= 3600;
+		}
+		if ($time_text ne "" or $elapsed_time >= 60) {
+			$time_text .= ($elapsed_time / 3600) . "m ";
+			$elapsed_time %= 60;
+		}
+		if ($time_text eq "" or $elapsed_time > 0) {
+			$time_text .= $elapsed_time . "s ";
+		}
+		$time_text =~ s/\s$//g;
 		($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($end_time);
-		printf LOG_FILE "[SeqPipe] Command($$:$run_counter) ends at %04d-%02d-%02d %02d:%02d:%02d\n", $year + 1900, $mon + 1, $mday, $hour, $min, $sec;
+		printf LOG_FILE "[SeqPipe] Command($$:$run_counter) ends at %04d-%02d-%02d %02d:%02d:%02d (elapsed: %s)\n",
+			$year + 1900, $mon + 1, $mday, $hour, $min, $sec, $time_text;
 		
 		if ($return_value != 0) {
 			print LOG_FILE "[SeqPipe] Command($$:$run_counter) returns $return_value\n";
