@@ -25,7 +25,7 @@ BWA_END_IND=10                           # For: bwa aln -i <value>
 BWA_GAP_EXT=-1                           # For: bwa aln -e <value>
 
 # Picard options
-PICARD_ROOT=/rd/build/picard_tools       # Path of picard tools
+PICARD_ROOT=/rd/build/picard-tools       # Path of picard tools
 MAX_RECORDS_IN_RAM=1875000               # For enhance performance of picard
 
 # GATK options
@@ -78,32 +78,32 @@ function SP_set
 
 ###########################################################################
 
-#[tools]
+#[tool_version]
 function bwa_version
 {
-	bwa |& grep Version | cut -d' ' -f2
+	bwa 2>&1 | grep Version | cut -d' ' -f2
 }
 
-#[tools]
+#[tool_version]
 function gatk_version
 {
 	java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | \
 		grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
 }
 
-#[tools]
+#[tool_version]
 function picard_version
 {
-	java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
+	java -jar ${PICARD_ROOT}/ViewSam.jar -h 2>&1 | grep Version | cut -d' ' -f2
 }
 
-#[samtools]
+#[tool_version]
 function samtools_version
 {
-	samtools |& grep Version | cut -d' ' -f2-
+	samtools 2>&1 | grep Version | cut -d' ' -f2-
 }
 
-#[pindel]
+#[tool_version]
 function pindel_version
 {
 	pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
