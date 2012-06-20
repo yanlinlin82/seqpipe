@@ -11,9 +11,10 @@ my $verbose = 0;
 my $list_mode = 0;
 my $test_mode = 0;
 my $enable_duplicate = 0;
+my $sysinfo_mod = 0;
 
 my %procedures;
-my %global_variables = ( SEQPIPE => 'seqpipe' );
+my %global_variables = ( SEQPIPE => 'seqpipe', SEQPIPE_ROOT => (dirname abs_path $0) );
 my $run_counter = 0;
 
 my $seqpipe_log_dir = "./.seqpipe";
@@ -204,6 +205,7 @@ Options:
    -d           Enable duplcated global variables and procedures (overwrited as the latters).
    -l           List current available procedures.
    -t           Test mode, only print the commands rather than execute them.
+   -s           Show system info (by calling all sysinfo procedures).
 ';
 }
 
@@ -594,6 +596,8 @@ if ($#ARGV < 0) {
 				exit 1;
 			}
 			push(@module_files, shift @ARGV);
+		} elsif ($arg eq '-s') {
+			$sysinfo_mod = 1;
 		} elsif ($arg =~ '^-') {
 			print "Error: Unknown option '$arg'!\n";
 			exit 1;
@@ -613,7 +617,7 @@ foreach my $arg (@ARGV) {
 		last;
 	}
 }
-if ($procedure eq "") {
+if ($procedure eq "" and !$sysinfo_mod) {
 	$help_mode = 1;
 }
 
@@ -687,7 +691,9 @@ if (!$test_mode) {
 	}
 }
 
-run_procedure $procedure, \@ARGV, $test_mode;
+if (!$sysinfo_mod) {
+	run_procedure $procedure, \@ARGV, $test_mode;
+}
 
 if (!$test_mode) {
 	my $end_time = time;
@@ -714,6 +720,12 @@ if (!$test_mode) {
 		$year + 1900, $mon + 1, $mday, $hour, $min, $sec, $time_text;
 
 	close LOG_FILE;
+}
+
+if ($sysinfo_mod) {
+	open FILE, "$seqpipe_log_dir/$$.sysinfo";
+	while (<FILE>) { print; }
+	close FILE;
 }
 
 exit $return_value;
