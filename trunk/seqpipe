@@ -63,7 +63,8 @@ sub load_module
 	while ($line = <MODULE_FILE>) {
 		chomp $line;
 
-		if ($line eq '#[procedure]') {
+		if ($line =~ /^#\[procedure\s+type="(.*?)"\s*\]$/) {
+			my $type = $1;
 			my @inputs = ();
 			my @outputs = ();
 			my @requires = ();
@@ -136,6 +137,7 @@ sub load_module
 					}
 
 					$procedures{$procedure_name} = {
+						type              => $type,
 						inputs            => \@inputs,
 						outputs           => \@outputs,
 						requires          => \@requires,
@@ -180,7 +182,7 @@ SeqPipe: a SEQuencing data analsysis PIPEline framework
 Version: 0.1.0 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
-Usage: ' . basename($0) . ' [options] <procedure> [procedure-options]
+Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
 
 Options:
    -h           Show this help.
@@ -194,11 +196,11 @@ Options:
 
 sub list_procedures
 {
-	print "
-Current available procedures:
-";
-	foreach my $procedure (sort keys %procedures) {
-		print "   $procedure\n";
+	print "\nCurrent available procedures:\n";
+	foreach my $name (sort keys %procedures) {
+		if ($procedures{$name}{type} eq "stage" or $procedures{$name}{type} eq "pipeline") {
+			print "   $name\n";
+		}
 	}
 	print "\n";
 }
@@ -258,13 +260,18 @@ sub run_procedure
 		exit 1;
 	}
 
-	my %variables = %{$procedures{$procedure}{used_variables}};
-	foreach my $arg (keys %variables) {
+	my %variables;
+	foreach my $arg (keys %{$procedures{$procedure}{used_variables}}) {
+		if (${$procedures{$procedure}{used_variables}}{$arg} ne "") {
+			$variables{$arg} = ${$procedures{$procedure}{used_variables}}{$arg};
+		}
+	}
+	foreach my $arg (keys %{$procedures{$procedure}{used_variables}}) {
 		if (exists $global_variables{$arg} and $global_variables{$arg} ne "") {
 			$variables{$arg} = $global_variables{$arg};
 		}
 	}
-	foreach my $arg (keys %variables) {
+	foreach my $arg (keys %{$procedures{$procedure}{used_variables}}) {
 		if (exists $ENV{$arg} and $ENV{$arg} ne "") {
 			$variables{$arg} = $ENV{$arg}
 		}
@@ -282,8 +289,13 @@ sub run_procedure
 			exit 1;
 		}
 	}
-	foreach my $arg (sort keys %variables) {
-		if ($variables{$arg} eq "" and !exists ${$procedures{$procedure}{defined_variables}}{$arg}) {
+	foreach my $arg (%{$procedures{$procedure}{defined_variables}}) {
+		if (!exists $variables{$arg}) {
+			$variables{$arg} = "";
+		}
+	}
+	foreach my $arg (sort keys %{$procedures{$procedure}{used_variables}}) {
+		if (!exists $variables{$arg}) {
 			print "Error: Option '$arg' is required!\n";
 			exit 1;
 		}
@@ -338,10 +350,13 @@ sub run_procedure
 	}
 
 	if ($is_test_mode) {
-		foreach my $command (@{$procedures{$procedure}{commands}}) {
+		foreach my $cmd (@{$procedures{$procedure}{commands}}) {
+			my $command = $cmd;
 			while ($command =~ /\${(\w+)}/) {
 				my $option_name = $1;
-				$command =~ s/\${$option_name}/$variables{$option_name}/g;
+				my $option_value = $variables{$option_name};
+				$option_value = "" if (!defined($option_value));
+				$command =~ s/\${$option_name}/$option_value/g;
 			}
 
 			if ($command =~ /^SP_set\s+(\w+)="(.*?)"(|(\s+(\w+)(\s+(\w+)="(.*?)")*))\s*$/) {
@@ -375,7 +390,7 @@ sub run_procedure
 					run_procedure($procedure_name, \@procedure_options, $is_test_mode);
 				}
 			} else {
-				if ($procedures{$procedure}{skip_record} ne "Y") {
+				if ($verbose or $procedures{$procedure}{skip_record} ne "Y") {
 					print "#" unless ($need_rerun);
 					print "$command\n";
 				}
@@ -386,7 +401,8 @@ sub run_procedure
 
 	return 0 unless $need_rerun;
 
-	foreach my $command (@{$procedures{$procedure}{commands}}) {
+	foreach my $cmd (@{$procedures{$procedure}{commands}}) {
+		my $command = $cmd;
 		while ($command =~ /\${(\w+)}/) {
 			my $option_name = $1;
 			$command =~ s/\${$option_name}/$variables{$option_name}/g;

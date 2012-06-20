@@ -27,6 +27,7 @@ BWA_GAP_EXT=-1                           # For: bwa aln -e <value>
 # Picard options
 PICARD_ROOT=/rd/build/picard-tools       # Path of picard tools
 MAX_RECORDS_IN_RAM=1875000               # For enhance performance of picard
+VALIDATION_STRINGENCY=STRICT             # Ignore invalid records or not
 
 # GATK options
 GATK_ROOT=/rd/build/gatk                 # Path of GATK tools
@@ -81,7 +82,7 @@ function SP_set
 
 ###########################################################################
 
-#[procedure]
+#[procedure type="sysinfo"]
 #[workflow skip_record="Y" ignore_retval="Y"]
 function sysinfo
 {
@@ -101,7 +102,39 @@ function sysinfo
 
 ###########################################################################
 
-#[procedure]
+#[procedure type="checker"]
+#[workflow skip_record="Y" ignore_retval="Y"]
+function if_has_arg
+{
+	test -n "${ARG}"
+}
+
+#[procedure type="checker"]
+#[workflow skip_record="Y" ignore_retval="Y"]
+function if_no_arg
+{
+	test -z "${ARG}"
+}
+
+#[procedure type="checker"]
+#[workflow input="${INPUT}"]
+#[workflow skip_record="Y" ignore_retval="Y"]
+function if_is_long_genome
+{
+	test -n "$(ls -l ${INPUT} | awk '$5>=1e8')"
+}
+
+#[procedure type="checker"]
+#[workflow input="${INPUT}"]
+#[workflow skip_record="Y" ignore_retval="Y"]
+function if_fastq_is_base_33
+{
+	test -n "$(less ${INPUT} | sed -n '4~4p' | head | grep '[0-9]')"
+}
+
+###########################################################################
+
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 function fastqc_check
 {
@@ -110,15 +143,7 @@ function fastqc_check
 	mv $(dirname ${OUTPUT})/$(echo $(basename ${INPUT}) | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}
 }
 
-#[procedure]
-#[workflow input="${INPUT}"]
-#[workflow skip_record="Y" ignore_retval="Y"]
-function if_is_long_genome
-{
-	test -n "$(ls -l ${INPUT} | awk '$5>=1e8')"
-}
-
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${REFERENCE}" output="${REFERENCE}.bwt"]
 function bwa_build_index
 {
@@ -128,22 +153,14 @@ function bwa_build_index
 	bwa index -a ${ALGORITHM} ${REFERENCE}
 }
 
-#[procedure]
-#[workflow input="${INPUT}"]
-#[workflow skip_record="Y" ignore_retval="Y"]
-function if_fastq_is_base_33
-{
-	test -n "$(less ${INPUT} | sed -n '4~4p' | head | grep '[0-9]')"
-}
-
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
 #[workflow require="${REFERENCE}"]
 function bwa_reads_mapping
 {
 	SP_set BWA_ALN_QUAL_OPT=""
 	SP_set BWA_ALN_QUAL_OPT="-I" if_fastq_is_base_33 INPUT="${REFERENCE}"
-	
+
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
 
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
@@ -157,7 +174,7 @@ function bwa_reads_mapping
 	rm -f ${INPUT_1}.sai ${INPUT_2}.sai
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 #[workflow require="${REFERENCE}"]
 function bwa_reads_mapping_se
@@ -175,23 +192,32 @@ function bwa_reads_mapping_se
 	rm -f ${INPUT}.sai
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
 function merge_bam
 {
+	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set INPUT_3="${INPUT_3}"
+	SP_set INPUT_4="${INPUT_4}"
+	SP_set MORE_INPUT_FILES=""
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_3}" if_has_arg ARG="${INPUT_3}"
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_4}" if_has_arg ARG="${INPUT_4}"
+
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
 		-jar ${PICARD_ROOT}/MergeSamFiles.jar \
 		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
 		TMP_DIR=${TMP_DIR} \
-		COMPRESS_LEVEL=9 \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=true \
 		CREATE_MD5_FILE=true \
 		INPUT=${INPUT_1} \
 		INPUT=${INPUT_2} \
+		${MORE_INPUT_FILES} \
 		OUTPUT=${OUTPUT}
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="@{INPUT}" output="${MAPPED_BAM}" output="${UNMAPPED_BAM}"]
 function extract_mapped_reads
 {
@@ -199,7 +225,7 @@ function extract_mapped_reads
 	samtools view ${INPUT} -F4 -b > ${UNMAPPED_BAM}
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 function sort_bam
 {
@@ -207,7 +233,7 @@ function sort_bam
 		-jar ${PICARD_ROOT}/MergeSamFiles.jar \
 		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
 		TMP_DIR=${TMP_DIR} \
-		COMPRESS_LEVEL=9 \
+		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=true \
 		CREATE_MD5_FILE=true \
 		SORT_ORDER=coordinate \
@@ -215,14 +241,14 @@ function sort_bam
 		OUTPUT=${OUTPUT}
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 function flagstat_bam
 {
 	samtools flagstat ${INPUT} | gzip -9c > ${OUTPUT}
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 function extract_unique_hit_reads
 {
@@ -232,7 +258,7 @@ function extract_unique_hit_reads
 		> ${OUTPUT}
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 function remove_duplicate_reads
 {
@@ -240,7 +266,7 @@ function remove_duplicate_reads
 		-jar ${PICARD_ROOT}/MarkDuplicates.jar \
 		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
 		TMP_DIR=${TMP_DIR} \
-		COMPRESS_LEVEL=9 \
+		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=true \
 		CREATE_MD5_FILE=true \
 		INPUT=${INPUT} \
@@ -249,7 +275,7 @@ function remove_duplicate_reads
 		REMOVE_DUPLICATES=true
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 #[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_indel_realign
@@ -277,7 +303,7 @@ function gatk_indel_realign
 		-jar ${PICARD_ROOT}/FixMateInformation.jar \
 		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
 		TMP_DIR=${TMP_DIR} \
-		COMPRESS_LEVEL=9 \
+		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=true \
 		CREATE_MD5_FILE=true \
 		INPUT=${INPUT}.realign \
@@ -286,7 +312,7 @@ function gatk_indel_realign
 	rm -f ${INPUT}.intervals
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 #[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_recalibration
@@ -317,7 +343,7 @@ function gatk_recalibration
 	rm -f ${INPUT}.recal
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 #[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_genotype
@@ -337,7 +363,7 @@ function gatk_genotype
 		--num_threads ${THREAD_NUM}
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 #[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_filter_variants
@@ -372,10 +398,13 @@ function gatk_filter_variants
 		-o ${OUTPUT}
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${INPUT}.final.vcf"]
 function gatk_call_variants
 {
+	SP_set REFERENCE="${REFERENCE}"
+	SP_set DBSNP_VCF="${DBSNP_VCF}"
+
 	SP_run gatk_indel_realign \
 		INPUT="${INPUT}" \
 		OUTPUT="${INPUT}.realign"
@@ -393,7 +422,7 @@ function gatk_call_variants
 		OUTPUT="${INPUT}.final.vcf"
 }
 
-#[procedure]
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 #[workflow output="${OUTPUT}_D.vcf"]
 #[workflow output="${OUTPUT}_SI.vcf"]
