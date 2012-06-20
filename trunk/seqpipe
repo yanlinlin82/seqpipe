@@ -10,6 +10,7 @@ my $help_detail_mode = 0;
 my $verbose = 0;
 my $list_mode = 0;
 my $test_mode = 0;
+my $enable_duplicate = 0;
 
 my %procedures;
 my %global_variables = ( SEQPIPE => 'seqpipe' );
@@ -57,7 +58,6 @@ sub append_command
 sub load_module
 {
 	my ($module_file) = @_;
-	my $before_functions = 1;
 	my $line;
 
 	open MODULE_FILE, $module_file or die "Can not open module file '$module_file'!";
@@ -94,8 +94,6 @@ sub load_module
 					}
 				} elsif ($line =~ /^\s*function\s+/) {
 					die "Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
-
-					$before_functions = 0;
 
 					my $procedure_name = $1;
 					my @commands = ();
@@ -138,6 +136,12 @@ sub load_module
 						}
 					}
 
+					if (exists $procedures{$procedure_name}) {
+						print "Warning: Reassignment of global variable '$procedure_name'\n"
+							if $verbose or !$enable_duplicate;
+						die "You may use '-d' option to enable the duplicated procedure declaration."
+							unless $enable_duplicate;
+					}
 					$procedures{$procedure_name} = {
 						type              => $type,
 						inputs            => \@inputs,
@@ -152,26 +156,29 @@ sub load_module
 					last;
 				}
 			}
-		} elsif ($line =~ /^\s*function\s*\w*/) {
-			$before_functions = 0;
+		} elsif ($line =~ /^\s*function\s+(\w+)\s*$/) {
+			while ($line = <MODULE_FILE>) {
+				chomp $line;
+				last if $line eq "}";
+			}
 		} elsif ($line =~ /\s*(\w+)=(.*)$/) {
-			if ($before_functions) {
-				my $option_name = $1;
-				my $option_value = $2;
-				$option_value =~ s/\s*#.*$//g;
+			my $option_name = $1;
+			my $option_value = $2;
+			$option_value =~ s/\s*#.*$//g;  # Remove tailing comments and whitespaces.
+			if (exists $global_variables{$option_name}) {
+				print "Warning: Reassignment of global variable '$option_name'\n"
+					if $verbose or !$enable_duplicate;
+				die "You may use '-d' option to enable the duplicated global variable declaration."
+					unless $enable_duplicate;
+			}
+			while ($option_value =~ /\${(\w+)}/g) {
 				if (exists $global_variables{$option_name}) {
-					print "Warning: duplicated declaration of global variable '$option_name'\n";
+					$option_value =~ s/\${$option_name}/$global_variables{$option_name}/g;
 				} else {
-					while ($option_value =~ /\${(\w+)}/g) {
-						if (exists $global_variables{$option_name}) {
-							$option_value =~ s/\${$option_name}/$global_variables{$option_name}/g;
-						} else {
-							$option_value =~ s/\${$option_name}//g;
-						}
-					}
-					$global_variables{$option_name} = $option_value;
+					$option_value =~ s/\${$option_name}//g;
 				}
 			}
+			$global_variables{$option_name} = $option_value;
 		}
 	}
 	close MODULE_FILE;
@@ -191,6 +198,7 @@ Options:
    -H           Show detail help (including optional parameters).
    -v           Show verbose message.
    -m <file>    Load procedure module file, this option can be used many times.
+   -d           Enable duplcated global variables and procedures (overwrited as the latters).
    -l           List current available procedures.
    -t           Test mode, only print the commands rather than execute them.
 ';
@@ -571,6 +579,8 @@ if ($#ARGV < 0) {
 			$help_detail_mode = 1;
 		} elsif ($arg eq '-v') {
 			$verbose = 1;
+		} elsif ($arg eq '-d') {
+			$enable_duplicate = 1;
 		} elsif ($arg eq '-l') {
 			$list_mode = 1;
 		} elsif ($arg eq '-t') {
