@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 #[seqpipe version="0.1.0"]
+#[seqpipe svninfo="$Id$"]
 #
 ###########################################################################
 
@@ -99,7 +100,7 @@ function SP_parallel_end
 #[procedure type="sysinfo"]
 function sysinfo
 {
-	echo -n 'SeqPipe : '; ${SEQPIPE} | grep Version | cut -d' ' -f2-
+	echo -n 'SeqPipe : '; ${SEQPIPE} | grep Version | cut -d' ' -f2-; egrep '^#\[seqpipe' ${SEQPIPE_ROOT}/default.pipe | cut -d' ' -f2 | sed 's/\]$//g' | paste - - | tr '\t' ' '
 	echo -n 'Date    : '; date '+%Y-%m-%d %H:%M:%S'
 	echo -n 'System  : '; uname -a
 	echo -n 'CPU     : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
