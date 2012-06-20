@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use File::Basename;
+use File::stat;
 use Cwd 'abs_path';
 
 my $help_mode = 0;
@@ -47,12 +48,25 @@ sub load_module
 	while ($line = <MODULE_FILE>) {
 		chomp $line;
 
-		if ($line eq '#[pipeline]') {
+		if ($line eq '#[procedure]') {
+			my @inputs = ();
+			my @outputs = ();
+			my @requires = ();
 			while ($line = <MODULE_FILE>) {
-				if ($line =~ /^function\s+(\w+)\s*$/) {
+				if ($line =~ /^#\[workflow\s+(input|output|require)=.*\]$/) {
+					while ($line =~ /\s+(input|output|require)="(.*?)"/g) {
+						if ($1 eq "input") {
+							push @inputs, $2;
+						} elsif ($1 eq "output") {
+							push @outputs, $2;
+						} elsif ($1 eq "require") {
+							push @requires, $2;
+						}
+					}
+				} elsif ($line =~ /^function\s+(\w+)\s*$/) {
 					$before_functions = 0;
 
-					my $pipeline_name = $1;
+					my $procedure_name = $1;
 					my @commands = ();
 					my %variables = ();
 
@@ -84,7 +98,13 @@ sub load_module
 						append_command \@commands, \%variables, $last_line;
 					}
 					
-					$modules{$pipeline_name} = { commands => \@commands, variables => \%variables };
+					$modules{$procedure_name} = {
+						inputs => \@inputs,
+						outputs => \@outputs,
+						requires => \@requires,
+						commands => \@commands,
+						variables => \%variables
+					};
 					last;
 				} elsif ($line =~ /^\s*function\s+/) {
 					die "Invalid function(module) declaration!";
@@ -164,37 +184,37 @@ SeqPipe: a SEQuencing data analsysis PIPEline framework
 Version: 0.1.0 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
-Usage: ' . basename($0) . ' [options] <pipeline> [pipeline-options]
+Usage: ' . basename($0) . ' [options] <procedure> [procedure-options]
 
 Options:
    -h           Show this help.
    -H           Show detail help (including optional parameters).
    -v           Show verbose message.
-   -m <file>    Load pipeline modules, this option can be used many times.
-   -l           List current available pipelines.
+   -m <file>    Load procedure modules, this option can be used many times.
+   -l           List current available procedures.
    -t           Test mode, only print the commands rather than execute them.
 ';
 }
 
-sub list_pipelines
+sub list_procedures
 {
 	print "
-Current available pipelines:
+Current available procedures:
 ";
-	foreach my $pipeline (sort keys %modules) {
-		print "   $pipeline\n";
+	foreach my $procedure (sort keys %modules) {
+		print "   $procedure\n";
 	}
 	print "\n";
 }
 
 sub check_option
 {
-	my ($pipeline_name, $variable_name) = @_;
+	my ($procedure_name, $variable_name) = @_;
 
-	if (exists ${$modules{$pipeline_name}{variables}}{$variable_name}) {
+	if (exists ${$modules{$procedure_name}{variables}}{$variable_name}) {
 		return 1;
 	}
-	foreach my $command (@{$modules{$pipeline_name}{commands}}) {
+	foreach my $command (@{$modules{$procedure_name}{commands}}) {
 		if ($command =~ /^SP_run\s+(\w+)\s+/) {
 			if (check_option($1, $variable_name)) {
 				return 1;
@@ -240,23 +260,24 @@ sub parse_line {
 	return @parts;
 }
 
-sub run_pipeline
+use Data::Dumper;
+sub run_procedure
 {
-	my ($pipeline, $argv_ref) = @_;
+	my ($procedure, $argv_ref) = @_;
 
-	if (!exists $modules{$pipeline}) {
-		print "Error: Unknown pipeline '$pipeline'! Use '-l' option to list available pipelines.\n";
+	if (!exists $modules{$procedure}) {
+		print "Error: Unknown procedure '$procedure'! Use '-l' option to list available procedures.\n";
 		exit 1;
 	}
 
 	my %changable_variables;
-	foreach my $command (@{$modules{$pipeline}{commands}}) {
+	foreach my $command (@{$modules{$procedure}{commands}}) {
 		if ($command =~ /^SP_set\s+(\w+)\s+\"(.*)\"\s+\"(.*)\"/) {
 			$changable_variables{$1} = $2;
 		}
 	}
 
-	my %variables = %{$modules{$pipeline}{variables}};
+	my %variables = %{$modules{$procedure}{variables}};
 	foreach my $arg (keys %variables) {
 		if (exists $global_variables{$arg} and $global_variables{$arg} ne "") {
 			$variables{$arg} = $global_variables{$arg};
@@ -274,7 +295,7 @@ sub run_pipeline
 
 			$variables{$option_name} = $option_value;
 		} else {
-			print "Error: Invalid pipeline option '$arg'! It should be the format of 'NAME=VALUE'!\n";
+			print "Error: Invalid procedure option '$arg'! It should be the format of 'NAME=VALUE'!\n";
 			exit 1;
 		}
 	}
@@ -285,8 +306,53 @@ sub run_pipeline
 		}
 	}
 
+	my $need_rerun = 0;
+	my @inputs = @{$modules{$procedure}{inputs}};
+	my @outputs = @{$modules{$procedure}{outputs}};
+	my @requires = @{$modules{$procedure}{requires}};
+	my $i;
+	for ($i = 0; $i < scalar @inputs; ++$i) {
+		while ($inputs[$i] =~ /\${(\w+)}/) {
+			my $option_name = $1;
+			$inputs[$i] =~ s/\${$option_name}/$variables{$option_name}/g;
+		}
+		if (!-e $inputs[$i]) {
+			print "Error: Input file '$inputs[$i]' of procedure '$procedure' does not exist!\n";
+			exit 1;
+		}
+	}
+	for ($i = 0; $i < scalar @requires; ++$i) {
+		while ($requires[$i] =~ /\${(\w+)}/) {
+			my $option_name = $1;
+			$requires[$i] =~ s/\${$option_name}/$variables{$option_name}/g;
+		}
+		if (!-e $requires[$i]) {
+			print "Error: Input file '$requires[$i]' of procedure '$procedure' does not exist!\n";
+			exit 1;
+		}
+	}
+	for ($i = 0; $i < scalar @outputs; ++$i) {
+		while ($outputs[$i] =~ /\${(\w+)}/) {
+			my $option_name = $1;
+			$outputs[$i] =~ s/\${$option_name}/$variables{$option_name}/g;
+		}
+		if (-e $outputs[$i]) {
+			foreach my $file (@inputs) {
+				if ((stat($file))->mtime > (stat($outputs[$i]))->mtime) {
+					$need_rerun = 1;
+					last;
+				}
+			}
+		} else {
+			$need_rerun = 1;
+			last;
+		}
+		last if ($need_rerun);
+	}
+
 	if ($test_mode) {
-		foreach my $command (@{$modules{$pipeline}{commands}}) {
+		print "#" unless ($need_rerun);
+		foreach my $command (@{$modules{$procedure}{commands}}) {
 			while ($command =~ /\${(\w+)}/) {
 				my $option_name = $1;
 				$command =~ s/\${$option_name}/$variables{$option_name}/g;
@@ -306,11 +372,11 @@ sub run_pipeline
 				if ($verbose) {
 					print "$command\n";
 				}
-				my @pipeline_options = parse_line($command);
-				shift @pipeline_options;
-				my $pipeline_name = shift @pipeline_options;
-				push @pipeline_options, @{$argv_ref};
-				run_pipeline($pipeline_name, \@pipeline_options);
+				my @procedure_options = parse_line($command);
+				shift @procedure_options;
+				my $procedure_name = shift @procedure_options;
+				push @procedure_options, @{$argv_ref};
+				run_procedure($procedure_name, \@procedure_options);
 			} else {
 				print "$command\n";
 			}
@@ -318,7 +384,9 @@ sub run_pipeline
 		return 0;
 	}
 
-	foreach my $command (@{$modules{$pipeline}{commands}}) {
+	return 0 unless $need_rerun;
+
+	foreach my $command (@{$modules{$procedure}{commands}}) {
 		while ($command =~ /\${(\w+)}/) {
 			my $option_name = $1;
 			$command =~ s/\${$option_name}/$variables{$option_name}/g;
@@ -331,11 +399,11 @@ sub run_pipeline
 			}
 			next;
 		} elsif ($command =~ /^SP_run\s+(\w+)/) {
-			my @pipeline_options = parse_line($command);
-			shift @pipeline_options;
-			my $pipeline_name = shift @pipeline_options;
-			push @pipeline_options, @{$argv_ref};
-			run_pipeline($pipeline_name, \@pipeline_options);
+			my @procedure_options = parse_line($command);
+			shift @procedure_options;
+			my $procedure_name = shift @procedure_options;
+			push @procedure_options, @{$argv_ref};
+			run_procedure($procedure_name, \@procedure_options);
 			next;
 		}
 		$run_counter += 1;
@@ -350,8 +418,11 @@ sub run_pipeline
 		printf FILE "$command\n";
 		close FILE;
 
-		system("/bin/bash", "-c",
-			"($command) >>$seqpipe_log_dir/$$.$run_counter.log 2>>$seqpipe_log_dir/$$.$run_counter.err");
+		open BASH, "| /bin/bash >>$seqpipe_log_dir/$$.$run_counter.log 2>>$seqpipe_log_dir/$$.$run_counter.err"
+			or die "Can not run bash for command: $command";
+		print BASH $command;
+		close BASH;
+
 		if ($? == -1) {
 			print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed!\n";
 			close LOG_FILE;
@@ -396,7 +467,7 @@ sub run_pipeline
 	return $return_value;
 }
 
-my $pipeline = "";
+my $procedure = "";
 
 if ($#ARGV < 0) {
 	$help_mode = 1;
@@ -423,7 +494,7 @@ if ($#ARGV < 0) {
 			print "Error: Unknown option '$arg'!\n";
 			exit 1;
 		} else {
-			$pipeline = $arg;
+			$procedure = $arg;
 			last;
 		}
 	}
@@ -438,7 +509,7 @@ foreach my $arg (@ARGV) {
 		last;
 	}
 }
-if ($pipeline eq "") {
+if ($procedure eq "") {
 	$help_mode = 1;
 }
 
@@ -451,23 +522,23 @@ if ($verbose) {
 }
 
 if ($list_mode) {
-	list_pipelines;
+	list_procedures;
 	exit 1;
 }
-if ($help_mode and $pipeline eq "") {
+if ($help_mode and $procedure eq "") {
 	print_usage;
 	print "\n";
 	exit 1;
 }
 
 if ($help_mode) {
-	if (!exists $modules{$pipeline}) {
-		print "Error: Unknown pipeline '$pipeline'! Use '-l' option to list available pipelines.\n";
+	if (!exists $modules{$procedure}) {
+		print "Error: Unknown procedure '$procedure'! Use '-l' option to list available procedures.\n";
 		exit 1;
 	}
 
 	my %changable_variables;
-	foreach my $command (@{$modules{$pipeline}{commands}}) {
+	foreach my $command (@{$modules{$procedure}{commands}}) {
 		if ($command =~ /^SP_set\s+(\w+)\s+\"(.*)\"\s+\"(.*)\"/) {
 			$changable_variables{$1} = $2;
 		}
@@ -475,13 +546,13 @@ if ($help_mode) {
 
 	print_usage;
 	print "
-Options for pipeline '$pipeline':
+Options for procedure '$procedure':
 ";
 	for my $required (1,0) {
-		foreach my $variable_name (sort keys %{$modules{$pipeline}{variables}}) {
+		foreach my $variable_name (sort keys %{$modules{$procedure}{variables}}) {
 			my $default_value = "";
-			if (${$modules{$pipeline}{variables}}{$variable_name} ne "") {
-				$default_value = ${$modules{$pipeline}{variables}}{$variable_name};
+			if (${$modules{$procedure}{variables}}{$variable_name} ne "") {
+				$default_value = ${$modules{$procedure}{variables}}{$variable_name};
 			} elsif (exists $global_variables{$variable_name} and $global_variables{$variable_name} ne "") {
 				$default_value = $global_variables{$variable_name};
 			}
@@ -535,7 +606,7 @@ if (!$test_mode) {
 	}
 }
 
-run_pipeline $pipeline, \@ARGV;
+run_procedure $procedure, \@ARGV;
 
 if (!$test_mode) {
 	my $end_time = time;
