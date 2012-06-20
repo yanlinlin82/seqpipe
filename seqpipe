@@ -29,6 +29,8 @@ sub check_command_syntax
 	if ($command =~ /^SP_/) {
 		return if $command =~ /^SP_run\s+(\w+)(\s+(\w+)="(.*?)")*\s*$/;
 		return if $command =~ /^SP_set\s+(\w+)="(.*?)"(|(\s+(\w+)(\s+(\w+)="(.*?)")*))\s*$/;
+		return if $command =~ /^SP_parallel_begin$/;
+		return if $command =~ /^SP_parallel_end$/;
 		die "Error: Invalid primitive line! $command";
 	}
 }
@@ -389,6 +391,10 @@ sub run_procedure
 					push @procedure_options, @{$argv_ref};
 					run_procedure($procedure_name, \@procedure_options, $is_test_mode);
 				}
+			} elsif ($command == 'SP_parallel_begin' or $command == 'SP_parallel_end') {
+				if ($verbose) {
+					print "#$command\n";
+				}
 			} else {
 				if ($verbose or $procedures{$procedure}{skip_record} ne "Y") {
 					print "#" unless ($need_rerun);
@@ -401,6 +407,10 @@ sub run_procedure
 
 	return 0 unless $need_rerun;
 
+	my $in_parallel = 0;
+	my $parallel_begin = 0;
+	my @command_set = ();
+	my @command_with_log_set = ();
 	foreach my $cmd (@{$procedures{$procedure}{commands}}) {
 		my $command = $cmd;
 		while ($command =~ /\${(\w+)}/) {
@@ -426,7 +436,8 @@ sub run_procedure
 				}
 			}
 			next;
-		} elsif ($command =~ /^SP_run\s+(\w+)/) {
+		}
+		if ($command =~ /^SP_run\s+(\w+)/) {
 			my @procedure_options = parse_line($command);
 			shift @procedure_options;
 			my $procedure_name = shift @procedure_options;
@@ -435,67 +446,97 @@ sub run_procedure
 			next;
 		}
 
-		if ($procedures{$procedure}{skip_record} eq "Y") {
-			open BASH, "| /bin/bash " . ($procedure eq "sysinfo" ? ">>$seqpipe_log_dir/$$.sysinfo" : ">/dev/null") . " 2>/dev/null";
-			print BASH "$command\n";
-			close BASH;
+		if ($command eq 'SP_parallel_begin') {
+			die "Already in parallel mode, duplicated '$command'!" if $in_parallel;
+			$parallel_begin = $run_counter + 1;
+			$in_parallel = 1;
+			next;
+		}
+		if ($command eq 'SP_parallel_end') {
+			die "Not in parallel mode, unexpected '$command'!" unless $in_parallel;
+		}
 
-			if ($? == -1) {
-				print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed!\n";
-				close LOG_FILE;
-				exit 1;
-			} elsif ($? & 127) {
-				print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed! Child died with signal %d, %s coredump\n",
-					($? & 127), ($? & 128) ? 'with' : 'without';
-				close LOG_FILE;
-				exit 1;
+		my $record_id = '';
+		my $command_with_log = '';
+		if ($command ne 'SP_parallel_end') {
+			if ($procedure eq "sysinfo") {
+				$command_with_log = "($command) >>$seqpipe_log_dir/$$.sysinfo 2>/dev/null";
+			} elsif ($procedures{$procedure}{skip_record} eq "Y") {
+				$command_with_log = "($command) >/dev/null 2>/dev/null";
 			} else {
-				$return_value = ($? >> 8);
+				$run_counter += 1;
+				$record_id = "$$.$run_counter";
+				$command_with_log = "($command) >>$seqpipe_log_dir/$record_id.$procedure.log 2>>$seqpipe_log_dir/$record_id.$procedure.err";
+				open FILE, ">>" . "$seqpipe_log_dir/$record_id.$procedure.cmd";
+				printf FILE "$command\n";
+				close FILE;
 			}
-		} else {
-			$run_counter += 1;
-			print LOG_FILE "[SeqPipe] Command($$.$run_counter): $command\n";
+		}
+		
+		my $record = ($procedures{$procedure}{skip_record} ne "Y");
+		my $launcher = "/bin/bash";
+		if ($in_parallel) {
+			if ($command ne 'SP_parallel_end') {
+				push @command_set, $command;
+				push @command_with_log_set, $command_with_log;
+				next;
+			} else {
+				$launcher = "parallel";
+				$in_parallel = 0;
+				$command_with_log = join("\n", @command_with_log_set);
+				if ($parallel_begin != $run_counter) {
+					$record_id = "$$.$parallel_begin-$run_counter";
+				}
+			}
+		}
+	
+		my ($start_time, $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst);
+		if ($record) {
+			if ($launcher eq 'parallel') {
+				foreach my $each_cmd (@command_set) {
+					print LOG_FILE "[SeqPipe] Command($record_id): $each_cmd\n";
+				}
+			} else {
+				print LOG_FILE "[SeqPipe] Command($record_id): $command\n";
+			}
 
-			my $start_time = time;
-			my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($start_time);
-			printf LOG_FILE "[SeqPipe] Command($$.$run_counter) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
+			$start_time = time;
+			($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($start_time);
+			printf LOG_FILE "[SeqPipe] Command($record_id) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
 				$year + 1900, $mon + 1, $mday, $hour, $min, $sec;
+		}
+		
+		open BASH, "| $launcher" or die "Can not launch command(s): $command";
+		print BASH $command_with_log;
+		close BASH;
+		
+		if ($? == -1) {
+			print LOG_FILE "[SeqPipe] Command($record_id) starts failed!\n";
+			close LOG_FILE;
+			exit 1;
+		} elsif ($? & 127) {
+			print LOG_FILE "[SeqPipe] Command($record_id) starts failed! Child died with signal %d, %s coredump\n",
+				($? & 127), ($? & 128) ? 'with' : 'without';
+			close LOG_FILE;
+			exit 1;
+		} else {
+			$return_value = ($? >> 8);
+		}
 
-			open FILE, ">>" . "$seqpipe_log_dir/$$.$run_counter.cmd";
-			printf FILE "$command\n";
-			close FILE;
-
-			open BASH, "| /bin/bash >>$seqpipe_log_dir/$$.$run_counter.log 2>>$seqpipe_log_dir/$$.$run_counter.err"
-				or die "Can not run bash for command: $command";
-			print BASH $command;
-			close BASH;
-
-			if ($? == -1) {
-				print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed!\n";
-				close LOG_FILE;
-				exit 1;
-			} elsif ($? & 127) {
-				print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed! Child died with signal %d, %s coredump\n",
-					($? & 127), ($? & 128) ? 'with' : 'without';
-				close LOG_FILE;
-				exit 1;
-			} else {
-				$return_value = ($? >> 8);
-			}
-
+		if ($record) {
 			my $end_time = time;
 			my $elapsed_time = $end_time - $start_time;
 			my $time_text = "";
 			if ($elapsed_time >= 86400) {
-				$time_text .= ($elapsed_time / 86400) . "d ";
+				$time_text .= int($elapsed_time / 86400) . "d ";
 				$elapsed_time %= 86400;
 			}
 			if ($time_text ne "" or $elapsed_time >= 3600) {
-				$time_text .= ($elapsed_time / 3600) . "h ";
+				$time_text .= int($elapsed_time / 3600) . "h ";
 				$elapsed_time %= 3600;
 			}
 			if ($time_text ne "" or $elapsed_time >= 60) {
-				$time_text .= ($elapsed_time / 3600) . "m ";
+				$time_text .= int($elapsed_time / 60) . "m ";
 				$elapsed_time %= 60;
 			}
 			if ($time_text eq "" or $elapsed_time > 0) {
@@ -503,7 +544,7 @@ sub run_procedure
 			}
 			$time_text =~ s/\s$//g;
 			($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($end_time);
-			printf LOG_FILE "[SeqPipe] Command($$:$run_counter) ends at %04d-%02d-%02d %02d:%02d:%02d (elapsed: %s)\n",
+			printf LOG_FILE "[SeqPipe] Command($record_id) ends at %04d-%02d-%02d %02d:%02d:%02d (elapsed: %s)\n",
 				$year + 1900, $mon + 1, $mday, $hour, $min, $sec, $time_text;
 		}
 		
@@ -642,15 +683,15 @@ if (!$test_mode) {
 	my $elapsed_time = $end_time - $start_time;
 	my $time_text = "";
 	if ($elapsed_time >= 86400) {
-		$time_text .= ($elapsed_time / 86400) . "d ";
+		$time_text .= int($elapsed_time / 86400) . "d ";
 		$elapsed_time %= 86400;
 	}
 	if ($time_text ne "" or $elapsed_time >= 3600) {
-		$time_text .= ($elapsed_time / 3600) . "h ";
+		$time_text .= int($elapsed_time / 3600) . "h ";
 		$elapsed_time %= 3600;
 	}
 	if ($time_text ne "" or $elapsed_time >= 60) {
-		$time_text .= ($elapsed_time / 3600) . "m ";
+		$time_text .= int($elapsed_time / 60) . "m ";
 		$elapsed_time %= 60;
 	}
 	if ($time_text eq "" or $elapsed_time > 0) {

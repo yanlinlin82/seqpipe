@@ -72,7 +72,7 @@ function SP_run
 
 #[primitive]
 # Usage:
-#   SP_set NAME=value <checker> [NAME1=value1 ...]
+#   SP_set NAME=value [<checker> [NAME1=value1 ...]]
 function SP_set
 {
 	SET=$1
@@ -82,6 +82,16 @@ function SP_set
 	else
 		SP_run $@ && ${SET}
 	fi
+}
+
+#[primitive]
+function SP_parallel_begin
+{
+}
+
+#[primitive]
+function SP_parallel_end
+{
 }
 
 ###########################################################################
@@ -167,10 +177,13 @@ function bwa_reads_mapping
 
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
 
+	SP_parallel_begin
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REFERENCE} ${INPUT_2} -f ${INPUT_1}.sai ${BWA_ALN_QUAL_OPT}
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REFERENCE} ${INPUT_2} -f ${INPUT_2}.sai ${BWA_ALN_QUAL_OPT}
+	SP_parallel_end
+
 	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
 		${INPUT_2}.sai ${INPUT_2}.sai ${INPUT_1} ${INPUT_2} \
 		| samtools view -Sb - \
@@ -225,8 +238,10 @@ function merge_bam
 #[workflow input="@{INPUT}" output="${MAPPED_BAM}" output="${UNMAPPED_BAM}"]
 function extract_mapped_reads
 {
+	SP_parallel_begin
 	samtools view ${INPUT} -f4 -b > ${MAPPED_BAM}
 	samtools view ${INPUT} -F4 -b > ${UNMAPPED_BAM}
+	SP_parallel_end
 }
 
 #[procedure type="stage"]
