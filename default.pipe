@@ -78,35 +78,22 @@ function SP_set
 
 ###########################################################################
 
-#[tool_version]
-function bwa_version
+#[procedure]
+#[workflow skip_record="Y" ignore_retval="Y"]
+function sysinfo
 {
-	bwa 2>&1 | grep Version | cut -d' ' -f2
-}
+	echo -n 'SeqPipe : '; ${SEQPIPE} | grep Version | cut -d' ' -f2-
+	echo -n 'Date    : '; date '+%Y-%m-%d %H:%M:%S'
+	echo -n 'System  : '; uname -a
+	echo -n 'CPU     : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
+	echo -n 'Memory  : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
 
-#[tool_version]
-function gatk_version
-{
-	java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | \
-		grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
-}
-
-#[tool_version]
-function picard_version
-{
-	java -jar ${PICARD_ROOT}/ViewSam.jar -h 2>&1 | grep Version | cut -d' ' -f2
-}
-
-#[tool_version]
-function samtools_version
-{
-	samtools 2>&1 | grep Version | cut -d' ' -f2-
-}
-
-#[tool_version]
-function pindel_version
-{
-	pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
+	echo    'Program versions:'
+	echo -n '   bwa      : '; bwa |& grep Version | cut -d' ' -f2
+	echo -n '   samtools : '; samtools |& grep Version | cut -d' ' -f2-
+	echo -n '   picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
+	echo -n '   gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
+	echo -n '   pindel   : '; pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
 }
 
 ###########################################################################
@@ -129,7 +116,7 @@ function bwa_build_index
 
 #[procedure]
 #[workflow input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
-#[workflow require="${REFERENCE}" require="${REFERENCE}.bwt"]
+#[workflow require="${REFERENCE}"]
 function bwa_reads_mapping
 {
 	SP_set QUAL_OPTION "-I" "${QUALITY_FORMAT_BASE}==64"
@@ -147,7 +134,7 @@ function bwa_reads_mapping
 
 #[procedure]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
-#[workflow require="${REFERENCE}" require="${REFERENCE}.bwt"]
+#[workflow require="${REFERENCE}"]
 function bwa_reads_mapping_se
 {
 	SP_set QUAL_OPTION "-I" "${QUALITY_FORMAT_BASE}==64"

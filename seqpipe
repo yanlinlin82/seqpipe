@@ -12,9 +12,8 @@ my $list_mode = 0;
 my $test_mode = 0;
 
 my %modules;
-my %global_variables;
+my %global_variables = ( SEQPIPE => 'seqpipe' );
 my $run_counter = 0;
-my %tool_version;
 
 my $seqpipe_log_dir = "./.seqpipe";
 my $default_dir_attr = 0755;
@@ -52,15 +51,26 @@ sub load_module
 			my @inputs = ();
 			my @outputs = ();
 			my @requires = ();
+			my $skip_record = "N";
+			my $ignore_retval = "N";
 			while ($line = <MODULE_FILE>) {
-				if ($line =~ /^#\[workflow\s+(input|output|require)=.*\]$/) {
-					while ($line =~ /\s+(input|output|require)="(.*?)"/g) {
+				if ($line =~ /^#\[workflow\s+(input|output|require|skip_record|ignore_retval)=.*\]$/) {
+					while ($line =~ /\s+(input|output|require|skip_record|ignore_retval)="(.*?)"/g) {
 						if ($1 eq "input") {
 							push @inputs, $2;
 						} elsif ($1 eq "output") {
 							push @outputs, $2;
 						} elsif ($1 eq "require") {
 							push @requires, $2;
+						} elsif ($1 eq "skip_record" or $1 eq "ignore_retval") {
+							if ($2 ne "Y" and $2 ne "N") {
+								die "Invalid value of '$1' attribute! Available values are: 'Y', 'N'";
+							}
+							if ($1 eq "skip_record") {
+								$skip_record = $2;
+							} else {
+								$ignore_retval = $2;
+							}
 						}
 					}
 				} elsif ($line =~ /^function\s+(\w+)\s*$/) {
@@ -98,55 +108,20 @@ sub load_module
 						append_command \@commands, \%variables, $last_line;
 					}
 					
+					if ($procedure_name eq "sysinfo") {
+						$skip_record = "Y";
+						$ignore_retval = "Y";
+					}
+
 					$modules{$procedure_name} = {
-						inputs => \@inputs,
-						outputs => \@outputs,
-						requires => \@requires,
-						commands => \@commands,
-						variables => \%variables
+						inputs        => \@inputs,
+						outputs       => \@outputs,
+						requires      => \@requires,
+						commands      => \@commands,
+						variables     => \%variables,
+						skip_record   => $skip_record,
+						ignore_retval => $ignore_retval
 					};
-					last;
-				} elsif ($line =~ /^\s*function\s+/) {
-					die "Invalid function(module) declaration!";
-				}
-			}
-		} elsif ($line eq "#[tool_version]") {
-			while ($line = <MODULE_FILE>) {
-				if ($line =~ /^function\s+(\w+)\s*$/) {
-					$before_functions = 0;
-
-					my $function_name = $1;
-					my $command = "";
-
-					$line = <MODULE_FILE>;
-					chomp $line;
-					if ($line ne "{") {
-						die "Invalid function(module) declaration!";
-					}
-					$last_line = "";
-
-					while ($line = <MODULE_FILE>) {
-						chomp $line;
-						if ($line eq "}") { last; }
-						$line =~ s/^\s*//g;
-						if ($line =~ s/\\$//) {
-							$last_line = $last_line . $line;
-						} else {
-							$command .= "; " if ($command ne "");
-							$command .= $last_line . $line;
-							$last_line = "";
-						}
-					}
-					if ($line ne "}") {
-						die "Invalid function(module) declaration!";
-					}
-					if ($last_line ne "") {
-						$command .= "; " if ($command ne "");
-						$command .= $last_line;
-					}
-
-					$function_name =~ s/_version$//g;
-					$tool_version{$function_name} = $command;
 					last;
 				} elsif ($line =~ /^\s*function\s+/) {
 					die "Invalid function(module) declaration!";
@@ -260,7 +235,6 @@ sub parse_line {
 	return @parts;
 }
 
-use Data::Dumper;
 sub run_procedure
 {
 	my ($procedure, $argv_ref) = @_;
@@ -331,27 +305,30 @@ sub run_procedure
 			exit 1;
 		}
 	}
-	for ($i = 0; $i < scalar @outputs; ++$i) {
-		while ($outputs[$i] =~ /\${(\w+)}/) {
-			my $option_name = $1;
-			$outputs[$i] =~ s/\${$option_name}/$variables{$option_name}/g;
-		}
-		if (-e $outputs[$i]) {
-			foreach my $file (@inputs) {
-				if ((stat($file))->mtime > (stat($outputs[$i]))->mtime) {
-					$need_rerun = 1;
-					last;
-				}
+	if (scalar @outputs == 0) {
+		$need_rerun = 1;
+	} else {
+		for ($i = 0; $i < scalar @outputs; ++$i) {
+			while ($outputs[$i] =~ /\${(\w+)}/) {
+				my $option_name = $1;
+				$outputs[$i] =~ s/\${$option_name}/$variables{$option_name}/g;
 			}
-		} else {
-			$need_rerun = 1;
-			last;
+			if (-e $outputs[$i]) {
+				foreach my $file (@inputs) {
+					if ((stat($file))->mtime > (stat($outputs[$i]))->mtime) {
+						$need_rerun = 1;
+						last;
+					}
+				}
+			} else {
+				$need_rerun = 1;
+				last;
+			}
+			last if ($need_rerun);
 		}
-		last if ($need_rerun);
 	}
 
 	if ($test_mode) {
-		print "#" unless ($need_rerun);
 		foreach my $command (@{$modules{$procedure}{commands}}) {
 			while ($command =~ /\${(\w+)}/) {
 				my $option_name = $1;
@@ -360,24 +337,24 @@ sub run_procedure
 
 			if ($command =~ /^SP_set\s+(\w+)\s+\"(.*)\"\s+\"(.*)\"/) {
 				if ($verbose) {
-					print "$command\n";
+					print "#$command\n";
 				}
 				if (eval "$3") {
 					$variables{$1} = $2;
-					if ($verbose) {
-						print "# Option '$1' changes to '$2'.\n";
-					}
 				}
 			} elsif ($command =~ /^SP_run\s+(\w+)/) {
 				if ($verbose) {
-					print "$command\n";
+					print "#$command\n";
 				}
-				my @procedure_options = parse_line($command);
-				shift @procedure_options;
-				my $procedure_name = shift @procedure_options;
-				push @procedure_options, @{$argv_ref};
-				run_procedure($procedure_name, \@procedure_options);
+				if ($need_rerun) {
+					my @procedure_options = parse_line($command);
+					shift @procedure_options;
+					my $procedure_name = shift @procedure_options;
+					push @procedure_options, @{$argv_ref};
+					run_procedure($procedure_name, \@procedure_options);
+				}
 			} else {
+				print "#" unless ($need_rerun);
 				print "$command\n";
 			}
 		}
@@ -406,62 +383,84 @@ sub run_procedure
 			run_procedure($procedure_name, \@procedure_options);
 			next;
 		}
-		$run_counter += 1;
-		print LOG_FILE "[SeqPipe] Command($$.$run_counter): $command\n";
 
-		my $start_time = time;
-		my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($start_time);
-		printf LOG_FILE "[SeqPipe] Command($$.$run_counter) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
-			$year + 1900, $mon + 1, $mday, $hour, $min, $sec;
+		if ($modules{$procedure}{skip_record} eq "Y") {
+			open BASH, "| /bin/bash " . ($procedure eq "sysinfo" ? ">>$seqpipe_log_dir/$$.sysinfo" : ">/dev/null") . " 2>/dev/null";
+			print BASH "$command\n";
+			close BASH;
 
-		open FILE, ">>" . "$seqpipe_log_dir/$$.$run_counter.cmd";
-		printf FILE "$command\n";
-		close FILE;
-
-		open BASH, "| /bin/bash >>$seqpipe_log_dir/$$.$run_counter.log 2>>$seqpipe_log_dir/$$.$run_counter.err"
-			or die "Can not run bash for command: $command";
-		print BASH $command;
-		close BASH;
-
-		if ($? == -1) {
-			print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed!\n";
-			close LOG_FILE;
-			exit 1;
-		} elsif ($? & 127) {
-			print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed! Child died with signal %d, %s coredump\n",
-				($? & 127), ($? & 128) ? 'with' : 'without';
-			close LOG_FILE;
-			exit 1;
+			if ($? == -1) {
+				print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed!\n";
+				close LOG_FILE;
+				exit 1;
+			} elsif ($? & 127) {
+				print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed! Child died with signal %d, %s coredump\n",
+					($? & 127), ($? & 128) ? 'with' : 'without';
+				close LOG_FILE;
+				exit 1;
+			} else {
+				$return_value = ($? >> 8);
+			}
 		} else {
-			$return_value = ($? >> 8);
-		}
+			$run_counter += 1;
+			print LOG_FILE "[SeqPipe] Command($$.$run_counter): $command\n";
 
-		my $end_time = time;
-		my $elapsed_time = $end_time - $start_time;
-		my $time_text = "";
-		if ($elapsed_time >= 86400) {
-			$time_text .= ($elapsed_time / 86400) . "d ";
-			$elapsed_time %= 86400;
+			my $start_time = time;
+			my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($start_time);
+			printf LOG_FILE "[SeqPipe] Command($$.$run_counter) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
+				$year + 1900, $mon + 1, $mday, $hour, $min, $sec;
+
+			open FILE, ">>" . "$seqpipe_log_dir/$$.$run_counter.cmd";
+			printf FILE "$command\n";
+			close FILE;
+
+			open BASH, "| /bin/bash >>$seqpipe_log_dir/$$.$run_counter.log 2>>$seqpipe_log_dir/$$.$run_counter.err"
+				or die "Can not run bash for command: $command";
+			print BASH $command;
+			close BASH;
+
+			if ($? == -1) {
+				print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed!\n";
+				close LOG_FILE;
+				exit 1;
+			} elsif ($? & 127) {
+				print LOG_FILE "[SeqPipe] Command($$.$run_counter) starts failed! Child died with signal %d, %s coredump\n",
+					($? & 127), ($? & 128) ? 'with' : 'without';
+				close LOG_FILE;
+				exit 1;
+			} else {
+				$return_value = ($? >> 8);
+			}
+
+			my $end_time = time;
+			my $elapsed_time = $end_time - $start_time;
+			my $time_text = "";
+			if ($elapsed_time >= 86400) {
+				$time_text .= ($elapsed_time / 86400) . "d ";
+				$elapsed_time %= 86400;
+			}
+			if ($time_text ne "" or $elapsed_time >= 3600) {
+				$time_text .= ($elapsed_time / 3600) . "h ";
+				$elapsed_time %= 3600;
+			}
+			if ($time_text ne "" or $elapsed_time >= 60) {
+				$time_text .= ($elapsed_time / 3600) . "m ";
+				$elapsed_time %= 60;
+			}
+			if ($time_text eq "" or $elapsed_time > 0) {
+				$time_text .= $elapsed_time . "s ";
+			}
+			$time_text =~ s/\s$//g;
+			($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($end_time);
+			printf LOG_FILE "[SeqPipe] Command($$:$run_counter) ends at %04d-%02d-%02d %02d:%02d:%02d (elapsed: %s)\n",
+				$year + 1900, $mon + 1, $mday, $hour, $min, $sec, $time_text;
 		}
-		if ($time_text ne "" or $elapsed_time >= 3600) {
-			$time_text .= ($elapsed_time / 3600) . "h ";
-			$elapsed_time %= 3600;
-		}
-		if ($time_text ne "" or $elapsed_time >= 60) {
-			$time_text .= ($elapsed_time / 3600) . "m ";
-			$elapsed_time %= 60;
-		}
-		if ($time_text eq "" or $elapsed_time > 0) {
-			$time_text .= $elapsed_time . "s ";
-		}
-		$time_text =~ s/\s$//g;
-		($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($end_time);
-		printf LOG_FILE "[SeqPipe] Command($$:$run_counter) ends at %04d-%02d-%02d %02d:%02d:%02d (elapsed: %s)\n",
-			$year + 1900, $mon + 1, $mday, $hour, $min, $sec, $time_text;
 		
-		if ($return_value != 0) {
-			print LOG_FILE "[SeqPipe] Command($$:$run_counter) returns $return_value\n";
-			last;
+		if ($modules{$procedure}{ignore_retval} ne "Y") {
+			if ($return_value != 0) {
+				print LOG_FILE "[SeqPipe] Command($$:$run_counter) returns $return_value\n";
+				last;
+			}
 		}
 	}
 	return $return_value;
@@ -585,24 +584,10 @@ if (!$test_mode) {
 	printf LOG_FILE "[SeqPipe] Pipeline($$) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
 		$year + 1900, $mon + 1, $mday, $hour, $min, $sec;
 
-	my @system_info_commands = (
-		"$0 | grep Version | cut -d' ' -f2-",
-		"uname -a",
-		"lscpu | grep '^CPU(s):' | awk '{print \$2}'",
-		"free -g | egrep 'Mem|Swap' | awk '{print \$1\$2\"G\"}' | paste - - | sed 's/\\t/ + /g'"
-	);
-	system("(echo -n 'SeqPipe : '; $system_info_commands[0]) >>$seqpipe_log_dir/$$.sysinfo");
-	system("(echo -n 'System  : '; $system_info_commands[1]) >>$seqpipe_log_dir/$$.sysinfo");
-	system("(echo -n 'CPU     : '; $system_info_commands[2]) >>$seqpipe_log_dir/$$.sysinfo");
-	system("(echo -n 'Memory  : '; $system_info_commands[3]) >>$seqpipe_log_dir/$$.sysinfo");
-
-	foreach my $tool (keys %tool_version) {
-		my $command = $tool_version{$tool};
-		while ($command =~ /\${(\w+)}/) {
-			my $option_name = $1;
-			$command =~ s/\${$option_name}/$global_variables{$option_name}/g;
-		}
-		system("(printf '%10s version : ' $tool; $command) >>$seqpipe_log_dir/$$.sysinfo\n");
+	if (!exists $modules{sysinfo}) {
+		print "TIP: You may add a procedure named 'sysinfo' to record your current computational environment!";
+	} else {
+		run_procedure "sysinfo";
 	}
 }
 
