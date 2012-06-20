@@ -111,11 +111,8 @@ function pindel_version
 
 ###########################################################################
 
-#[pipeline version="1.0"]
-#[workflow input="INPUT" output="OUTPUT"]
-#[option name="INPUT" type="file" file_type="fastq"]
-#[option name="OUTPUT" type="file" file_type="zip"]
-#[depend program="fastqc" version="0.10.1"]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
 function fastqc_check
 {
 	[ -d $(dirname ${OUTPUT}) ] || mkdir -p $(dirname ${OUTPUT})
@@ -123,13 +120,16 @@ function fastqc_check
 	mv $(dirname ${OUTPUT})/$(echo $(basename ${INPUT}) | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${REFERENCE}" output="${REFERENCE}.bwt"]
 function bwa_build_index
 {
 	bwa index -a ${ALGORITHM} ${REFERENCE}
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${REFERENCE}.bwt"]
 function bwa_reads_mapping
 {
 	SP_set QUAL_OPTION "-I" "${QUALITY_FORMAT_BASE}==64"
@@ -142,9 +142,12 @@ function bwa_reads_mapping
 		${INPUT_2}.sai ${INPUT_2}.sai ${INPUT_1} ${INPUT_2} \
 		| samtools view -Sb - \
 		> ${OUTPUT}
+	rm -f ${INPUT_1}.sai ${INPUT_2}.sai
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${REFERENCE}.bwt"]
 function bwa_reads_mapping_se
 {
 	SP_set QUAL_OPTION "-I" "${QUALITY_FORMAT_BASE}==64"
@@ -154,9 +157,11 @@ function bwa_reads_mapping_se
 	bwa samse ${REFERENCE} ${INPUT}.sai ${INPUT} \
 		| samtools view -Sb - \
 		> ${OUTPUT}
+	rm -f ${INPUT}.sai
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="@{INPUT}" output="${OUTPUT}"]
 function merge_bam
 {
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
@@ -166,18 +171,20 @@ function merge_bam
 		COMPRESS_LEVEL=9 \
 		CREATE_INDEX=true \
 		CREATE_MD5_FILE=true \
-		$(printf " INPUT=%s" ${INPUT_N}) \
+		$(printf " INPUT=%s" @{INPUT}) \
 		OUTPUT=${OUTPUT}
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="@{INPUT}" output="${MAPPED_BAM}" output="${UNMAPPED_BAM}"]
 function extract_mapped_reads
 {
-	samtools view ${INPUT} -f4 > ${OUTPUT_1}
-	samtools view ${INPUT} -F4 > ${OUTPUT_2}
+	samtools view ${INPUT} -f4 -b > ${MAPPED_BAM}
+	samtools view ${INPUT} -F4 -b > ${UNMAPPED_BAM}
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
 function sort_bam
 {
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
@@ -192,13 +199,15 @@ function sort_bam
 		OUTPUT=${OUTPUT}
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
 function flagstat_bam
 {
-	samtools flagstat ${INPUT} > ${OUTPUT}
+	samtools flagstat ${INPUT} | gzip -9c > ${OUTPUT}
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
 function extract_unique_hit_reads
 {
 	samtools view -h ${INPUT} \
@@ -207,7 +216,8 @@ function extract_unique_hit_reads
 		> ${OUTPUT}
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
 function remove_duplicate_reads
 {
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
@@ -223,7 +233,9 @@ function remove_duplicate_reads
 		REMOVE_DUPLICATES=true
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_indel_realign
 {
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
@@ -254,9 +266,13 @@ function gatk_indel_realign
 		CREATE_MD5_FILE=true \
 		INPUT=${INPUT}.realign \
 		OUTPUT=${OUTPUT}
+
+	rm -f ${INPUT}.intervals
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_recalibration
 {
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
@@ -281,9 +297,13 @@ function gatk_recalibration
 		-I ${INPUT} \
 		-recalFile ${INPUT}.recal \
 		-o ${OUTPUT}
+	
+	rm -f ${INPUT}.recal
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_genotype
 {
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
@@ -301,7 +321,9 @@ function gatk_genotype
 		--num_threads ${THREAD_NUM}
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_filter_variants
 {
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
@@ -334,19 +356,20 @@ function gatk_filter_variants
 		-o ${OUTPUT}
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${INPUT}.final.vcf"]
 function gatk_call_variants
 {
 	SP_run gatk_indel_realign \
 		INPUT=${INPUT} \
-		OUTPUT=${INPUT}.realign.bam
+		OUTPUT=${INPUT}.realign
 
 	SP_run gatk_recalibration \
-		INPUT=${INPUT}.realign.bam \
-		OUTPUT=${INPUT}.realign.recal.bam
+		INPUT=${INPUT}.realign \
+		OUTPUT=${INPUT}.realign.recal
 
 	SP_run gatk_genotype \
-		INPUT=${INPUT}.realign.recal.bam \
+		INPUT=${INPUT}.realign.recal \
 		OUTPUT=${INPUT}.raw.vcf
 
 	SP_run gatk_filter_variants \
@@ -354,7 +377,12 @@ function gatk_call_variants
 		OUTPUT=${INPUT}.final.vcf
 }
 
-#[pipeline]
+#[procedure]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow output="${OUTPUT}_D.vcf"]
+#[workflow output="${OUTPUT}_SI.vcf"]
+#[workflow output="${OUTPUT}_INV.vcf"]
+#[workflow output="${OUTPUT}_TD.vcf"]
 function call_structure_variants
 {
 	pindel -f ${REFERENCE} \
