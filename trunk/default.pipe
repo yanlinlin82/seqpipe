@@ -97,7 +97,6 @@ function SP_parallel_end
 ###########################################################################
 
 #[procedure type="sysinfo"]
-#[workflow skip_record="Y" ignore_retval="Y"]
 function sysinfo
 {
 	echo -n 'SeqPipe : '; ${SEQPIPE} | grep Version | cut -d' ' -f2-
@@ -105,6 +104,7 @@ function sysinfo
 	echo -n 'System  : '; uname -a
 	echo -n 'CPU     : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
 	echo -n 'Memory  : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
+	echo -n 'Pwd     : '; pwd
 
 	echo    'Program versions:'
 	echo -n '   bwa      : '; bwa |& grep Version | cut -d' ' -f2
@@ -117,14 +117,12 @@ function sysinfo
 ###########################################################################
 
 #[procedure type="checker"]
-#[workflow skip_record="Y" ignore_retval="Y"]
 function if_has_arg
 {
 	test -n "${ARG}"
 }
 
 #[procedure type="checker"]
-#[workflow skip_record="Y" ignore_retval="Y"]
 function if_no_arg
 {
 	test -z "${ARG}"
@@ -132,7 +130,6 @@ function if_no_arg
 
 #[procedure type="checker"]
 #[workflow input="${INPUT}"]
-#[workflow skip_record="Y" ignore_retval="Y"]
 function if_is_long_genome
 {
 	test -n "$(ls -l ${INPUT} | awk '$5>=1e8')"
@@ -140,7 +137,6 @@ function if_is_long_genome
 
 #[procedure type="checker"]
 #[workflow input="${INPUT}"]
-#[workflow skip_record="Y" ignore_retval="Y"]
 function if_fastq_is_base_33
 {
 	test -n "$(less ${INPUT} | sed -n '4~4p' | head | grep '[0-9]')"

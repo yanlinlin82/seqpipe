@@ -70,8 +70,19 @@ sub load_module
 			my @inputs = ();
 			my @outputs = ();
 			my @requires = ();
-			my $skip_record = "N";
-			my $ignore_retval = "N";
+			my $skip_record;
+			my $ignore_retval;
+
+			if ($type eq 'sysinfo' or $type eq 'checker') {
+				$skip_record = 'Y';
+				$ignore_retval = 'Y';
+			} elsif ($type eq 'stage' or $type eq 'pipeline') {
+				$skip_record = 'N';
+				$ignore_retval = 'N';
+			} else {
+				die "Warning: Unknown type of procedure: '$type'!";
+			}
+
 			while ($line = <MODULE_FILE>) {
 				if ($line =~ /^#\[workflow\s+(input|output|require|skip_record|ignore_retval)=.*\]$/) {
 					while ($line =~ /\s+(input|output|require|skip_record|ignore_retval)="(.*?)"/g) {
@@ -126,14 +137,6 @@ sub load_module
 					}
 					if ($line ne "}") {
 						die "Invalid procedure declaration! Line '}' expected!";
-					}
-					
-					if ($procedure_name eq "sysinfo") {
-						if ($skip_record ne "Y" or $ignore_retval ne "Y") {
-							print "Overwite 'skip_record' and 'ignore_retval' attribute to 'Y' for procedure 'sysinfo'!\n";
-							$skip_record = "Y";
-							$ignore_retval = "Y";
-						}
 					}
 
 					if (exists $procedures{$procedure_name}) {
@@ -467,8 +470,8 @@ sub run_procedure
 		my $record_id = '';
 		my $command_with_log = '';
 		if ($command ne 'SP_parallel_end') {
-			if ($procedure eq "sysinfo") {
-				$command_with_log = "($command) >>$seqpipe_log_dir/$$.sysinfo 2>/dev/null";
+			if ($procedures{$procedure}{type} eq 'sysinfo') {
+				$command_with_log = "($command) 2>&1 >>$seqpipe_log_dir/$$.sysinfo";
 			} elsif ($procedures{$procedure}{skip_record} eq "Y") {
 				$command_with_log = "($command) >/dev/null 2>/dev/null";
 			} else {
@@ -677,11 +680,9 @@ if (!$test_mode) {
 	printf LOG_FILE "[SeqPipe] Pipeline($$) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
 		$year + 1900, $mon + 1, $mday, $hour, $min, $sec;
 
-	if (!exists $procedures{sysinfo}) {
-		print "TIP: You may add a procedure named 'sysinfo' to record your current computational environment!";
-	} else {
-		if ($procedure ne "sysinfo") {
-			run_procedure "sysinfo";
+	foreach $procedure (keys %procedures) {
+		if ($procedures{$procedure}{type} eq 'sysinfo') {
+			run_procedure $procedure;
 		}
 	}
 }
