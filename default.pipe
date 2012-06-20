@@ -1,7 +1,6 @@
 #!/bin/bash
 #
-#[seqpipe version="0.1.0"]
-#[seqpipe svninfo="$Id$"]
+#[seqpipe version="0.1.0 ($Id$)"]
 #
 ###########################################################################
 
@@ -100,12 +99,16 @@ function SP_parallel_end
 #[procedure type="sysinfo"]
 function sysinfo
 {
-	echo -n 'SeqPipe : '; ${SEQPIPE} | grep Version | cut -d' ' -f2-; egrep '^#\[seqpipe' ${SEQPIPE_ROOT}/default.pipe | cut -d' ' -f2 | sed 's/\]$//g' | paste - - | tr '\t' ' '
-	echo -n 'Date    : '; date '+%Y-%m-%d %H:%M:%S'
-	echo -n 'System  : '; uname -a
-	echo -n 'CPU     : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
-	echo -n 'Memory  : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
-	echo -n 'Pwd     : '; pwd
+	echo    'System information:'
+	echo -n '   System   : '; uname -a
+	echo -n '   CPU      : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
+	echo -n '   Memory   : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
+	echo -n '   Date     : '; date '+%Y-%m-%d %H:%M:%S'
+	echo -n '   Pwd      : '; pwd
+
+	echo    'SeqPipe version:'
+	echo -n '   Tools    : '; ${SEQPIPE} | grep Version | cut -d' ' -f2-
+	echo -n '   Pipeline : '; egrep '^#\[seqpipe version' ${SEQPIPE_ROOT}/default.pipe | cut -d'"' -f2
 
 	echo    'Program versions:'
 	echo -n '   bwa      : '; bwa |& grep Version | cut -d' ' -f2
