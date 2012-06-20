@@ -176,7 +176,7 @@ function bwa_build_index
 function bwa_reads_mapping
 {
 	SP_set BWA_ALN_QUAL_OPT=""
-	SP_set BWA_ALN_QUAL_OPT="-I" if_fastq_is_base_33 INPUT="${REFERENCE}"
+	SP_set BWA_ALN_QUAL_OPT="-I" if_fastq_is_base_33 INPUT="${INPUT_1}"
 
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
 
@@ -200,7 +200,7 @@ function bwa_reads_mapping
 function bwa_reads_mapping_se
 {
 	SP_set BWA_ALN_QUAL_OPT=""
-	SP_set BWA_ALN_QUAL_OPT="-I" if_fastq_is_base_33 INPUT="${REFERENCE}"
+	SP_set BWA_ALN_QUAL_OPT="-I" if_fastq_is_base_33 INPUT="${INPUT_1}"
 
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
 
@@ -271,6 +271,13 @@ function flagstat_bam
 }
 
 #[procedure type="stage"]
+#[workflow input="${INPUT_BAM}" output="${OUTPUT_MPILEUP_BZ2}"]
+function samtools_mpileup
+{
+	samtools mpileup ${INPUT_BAM} | bzip2 -9c > ${OUTPUT_MPILEUP_BZ2}
+}
+
+#[procedure type="stage"]
 #[workflow input="${INPUT}" output="${OUTPUT}"]
 function extract_unique_hit_reads
 {
@@ -305,6 +312,7 @@ function samtools_call_variants
 	samtools mpileup -f ${REFERENCE} ${SORTED_BAM} -u \
 		| bcftools view -bvcg - \
 		> ${OUTPUT_BCF}
+	(echo -n 'Total variants: '; bcftools view ${OUTPUT_BCF} | grep -v ^# | wc -l) > ${OUTPUT_BCF}.txt
 }
 
 #[procedure type="pipeline"]
