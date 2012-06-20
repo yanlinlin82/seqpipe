@@ -44,20 +44,22 @@ STAND_EMIT_CONF=10                       # GATK UnifiedGenotyper -stand_emit_con
 ###########################################################################
 
 #[primitive]
+# Usage:
+#   SP_run <procedure> [NAME1=value1 ...]
 function SP_run
 {
-	PIPELINE_NAME=$1
+	PROC_NAME=$1
 	shift
 
-	if [ -z "$(type ${PIPELINE_NAME} 2>/dev/null | grep 'function')" ]; then
-		echo "Pipeline '${PIPELINE_NAME}' does not exist!"
+	if [ -z "$(type ${PROC_NAME} 2>/dev/null | grep 'function')" ]; then
+		echo "Procedure '${PROC_NAME}' does not exist!"
 		set -e
 		exit 1
 	fi
 
 	while [ ! -z "$1" ]; do
 		if [ -z "$(echo $1 | egrep '^\w\w*=.*$')"]; then
-			echo "Bad option '$1' for pipeline '${PIPELINE_NAME}'!"
+			echo "Bad option '$1' for procedure '${PROC_NAME}'!"
 			set -e
 			exit 1
 		fi
@@ -65,10 +67,12 @@ function SP_run
 		shift
 	done
 
-	${PIPELINE_NAME}
+	${PROC_NAME}
 }
 
 #[primitive]
+# Usage:
+#   SP_set NAME=value <checker> [NAME1=value1 ...]
 function SP_set
 {
 	SET=$1
