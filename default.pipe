@@ -16,7 +16,7 @@ QUALITY_FORMAT_BASE=33                  # Quality format in FASTQ file
 PLATFORM="Illumina"                     # Sequencer platform
 
 # Reference genome (default is human hg19)
-REFERENCE=/rd/data/genomes/human/ucsc.hg19/hg19.fa
+REFERENCE=/rd/data/genomes/human/hg19/hg19.fa
 REFERENCE_NAME=hg19
 REFERENCE_DATE=20110705
 
@@ -55,24 +55,27 @@ function SP_run
 	fi
 
 	while [ ! -z "$1" ]; do
-		export $1
+		if [ -z "$(echo $1 | egrep '^\w\w*=.*$')"]; then
+			echo "Bad option '$1' for pipeline '${PIPELINE_NAME}'!"
+			set -e
+			exit 1
+		fi
+		$1
 		shift
 	done
+
 	${PIPELINE_NAME}
 }
 
 #[primitive]
 function SP_set
 {
-	NAME=$1
-	VALUE=$2
-	CONDITION=$3
-
-	RESULT=$(echo YES | awk "${CONDITION}")
-	echo "${CONDITION}"
-	if [ ! -z "${RESULT}" ]; then
-		echo "Set option"
-		export ${NAME}=${VALUE}
+	SET=$1
+	shift
+	if [ -z "$@" ]; then
+		${SET}
+	else
+		SP_run $@ && ${SET}
 	fi
 }
 
@@ -108,10 +111,29 @@ function fastqc_check
 }
 
 #[procedure]
+#[workflow input="${INPUT}"]
+#[workflow skip_record="Y" ignore_retval="Y"]
+function if_is_long_genome
+{
+	test -n "$(ls -l ${INPUT} | awk '$5>=1e8')"
+}
+
+#[procedure]
 #[workflow input="${REFERENCE}" output="${REFERENCE}.bwt"]
 function bwa_build_index
 {
+	SP_set ALGORITHM="is"
+	SP_set ALGORITHM="bwtsw" if_is_long_genome INPUT="${REFERENCE}"
+
 	bwa index -a ${ALGORITHM} ${REFERENCE}
+}
+
+#[procedure]
+#[workflow input="${INPUT}"]
+#[workflow skip_record="Y" ignore_retval="Y"]
+function if_fastq_is_base_33
+{
+	test -n "$(less ${INPUT} | sed -n '4~4p' | head | grep '[0-9]')"
 }
 
 #[procedure]
@@ -119,12 +141,15 @@ function bwa_build_index
 #[workflow require="${REFERENCE}"]
 function bwa_reads_mapping
 {
-	SP_set QUAL_OPTION "-I" "${QUALITY_FORMAT_BASE}==64"
-	SP_run bwa_build_index REFERENCE=${REFERENCE}
+	SP_set BWA_ALN_QUAL_OPT=""
+	SP_set BWA_ALN_QUAL_OPT="-I" if_fastq_is_base_33 INPUT="${REFERENCE}"
+	
+	SP_run bwa_build_index REFERENCE="${REFERENCE}"
+
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REFERENCE} ${INPUT_2} -f ${INPUT_1}.sai ${QUAL_OPTION}
+		${REFERENCE} ${INPUT_2} -f ${INPUT_1}.sai ${BWA_ALN_QUAL_OPT}
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REFERENCE} ${INPUT_2} -f ${INPUT_2}.sai ${QUAL_OPTION}
+		${REFERENCE} ${INPUT_2} -f ${INPUT_2}.sai ${BWA_ALN_QUAL_OPT}
 	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
 		${INPUT_2}.sai ${INPUT_2}.sai ${INPUT_1} ${INPUT_2} \
 		| samtools view -Sb - \
@@ -137,10 +162,13 @@ function bwa_reads_mapping
 #[workflow require="${REFERENCE}"]
 function bwa_reads_mapping_se
 {
-	SP_set QUAL_OPTION "-I" "${QUALITY_FORMAT_BASE}==64"
-	SP_run bwa_build_index REFERENCE=${REFERENCE}
+	SP_set BWA_ALN_QUAL_OPT=""
+	SP_set BWA_ALN_QUAL_OPT="-I" if_fastq_is_base_33 INPUT="${REFERENCE}"
+
+	SP_run bwa_build_index REFERENCE="${REFERENCE}"
+
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REFERENCE} ${INPUT} -f ${INPUT}.sai ${QUAL_OPTION}
+		${REFERENCE} ${INPUT} -f ${INPUT}.sai ${BWA_ALN_QUAL_OPT}
 	bwa samse ${REFERENCE} ${INPUT}.sai ${INPUT} \
 		| samtools view -Sb - \
 		> ${OUTPUT}
@@ -148,7 +176,7 @@ function bwa_reads_mapping_se
 }
 
 #[procedure]
-#[workflow input="@{INPUT}" output="${OUTPUT}"]
+#[workflow input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
 function merge_bam
 {
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
@@ -158,7 +186,8 @@ function merge_bam
 		COMPRESS_LEVEL=9 \
 		CREATE_INDEX=true \
 		CREATE_MD5_FILE=true \
-		$(printf " INPUT=%s" @{INPUT}) \
+		INPUT=${INPUT_1} \
+		INPUT=${INPUT_2} \
 		OUTPUT=${OUTPUT}
 }
 
@@ -348,20 +377,20 @@ function gatk_filter_variants
 function gatk_call_variants
 {
 	SP_run gatk_indel_realign \
-		INPUT=${INPUT} \
-		OUTPUT=${INPUT}.realign
+		INPUT="${INPUT}" \
+		OUTPUT="${INPUT}.realign"
 
 	SP_run gatk_recalibration \
-		INPUT=${INPUT}.realign \
-		OUTPUT=${INPUT}.realign.recal
+		INPUT="${INPUT}.realign" \
+		OUTPUT="${INPUT}.realign.recal"
 
 	SP_run gatk_genotype \
-		INPUT=${INPUT}.realign.recal \
-		OUTPUT=${INPUT}.raw.vcf
+		INPUT="${INPUT}.realign.recal" \
+		OUTPUT="${INPUT}.raw.vcf"
 
 	SP_run gatk_filter_variants \
-		INPUT=${INPUT}.raw.vcf \
-		OUTPUT=${INPUT}.final.vcf
+		INPUT="${INPUT}.raw.vcf" \
+		OUTPUT="${INPUT}.final.vcf"
 }
 
 #[procedure]

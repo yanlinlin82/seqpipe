@@ -11,7 +11,7 @@ my $verbose = 0;
 my $list_mode = 0;
 my $test_mode = 0;
 
-my %modules;
+my %procedures;
 my %global_variables = ( SEQPIPE => 'seqpipe' );
 my $run_counter = 0;
 
@@ -22,15 +22,32 @@ my $return_value = 0;
 my @module_files = ( (dirname abs_path $0) . "/default.pipe" );
 my $command_line = "$0" . ($#ARGV >= 0 ? " " : "") . join(" ", @ARGV);
 
+sub check_command_syntax
+{
+	my ($command) = @_;
+
+	if ($command =~ /^SP_/) {
+		return if $command =~ /^SP_run\s+(\w+)(\s+(\w+)="(.*?)")*\s*$/;
+		return if $command =~ /^SP_set\s+(\w+)="(.*?)"(|(\s+(\w+)(\s+(\w+)="(.*?)")*))\s*$/;
+		die "Error: Invalid primitive line! $command";
+	}
+}
+
 sub append_command
 {
-	my ($commands_ref, $variables_ref, $command) = @_;
+	my ($commands_ref, $defined_variables_ref, $used_variables_ref, $command) = @_;
 
+	check_command_syntax $command;
 	push(@{$commands_ref}, $command);
+
+	if ($command =~ /^SP_set\s+(\w+)="(.*?)"/) {
+		${$defined_variables_ref}{$1} = $2;
+	}
+
 	while ($command =~ /\${(\w+)}/g) {
 		my $command_name = $1;
-		if (!exists ${$variables_ref}{$command_name}) {
-			${$variables_ref}{$command_name} = '';
+		if (!exists ${$used_variables_ref}{$command_name}) {
+			${$used_variables_ref}{$command_name} = '';
 		}
 	}
 }
@@ -40,7 +57,6 @@ sub load_module
 	my ($module_file) = @_;
 	my $before_functions = 1;
 	my $line;
-	my $last_line;
 
 	open MODULE_FILE, $module_file or die "Can not open module file '$module_file'!";
 	print "Load module file '$module_file'\n" if ($verbose);
@@ -73,58 +89,63 @@ sub load_module
 							}
 						}
 					}
-				} elsif ($line =~ /^function\s+(\w+)\s*$/) {
+				} elsif ($line =~ /^\s*function\s+/) {
+					die "Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
+
 					$before_functions = 0;
 
 					my $procedure_name = $1;
 					my @commands = ();
-					my %variables = ();
+					my %defined_variables = ();
+					my %used_variables = ();
 
 					$line = <MODULE_FILE>;
 					chomp $line;
 					if ($line ne "{") {
-						die "Invalid function(module) declaration!";
+						die "Invalid procedure declaration! Line '{' expected!";
 					}
-					$last_line = "";
+					my $last_line = "";
 
 					while ($line = <MODULE_FILE>) {
 						chomp $line;
-						if ($line eq "}") { last; }
-						$line =~ s/^\s*//g;
-						if ($line =~ s/\\$//) {
-							$last_line = $last_line . $line;
-						} else {
-							$last_line = $last_line . $line;
-							if (!($last_line =~ /^\s*$/)) {
-								append_command \@commands, \%variables, $last_line;
+						if ($line eq "}") {
+							if ($last_line ne "") {
+								die "Invalid procedure declaration! Last command line not finished!";
 							}
+							last;
+						}
+						$line =~ s/^\s*//g;
+						my $need_append = ($line =~ s/\\$//);
+						$last_line = $last_line . ($last_line ne "" ? " " : "") . $line;
+						$last_line =~ s/\s*$//g;
+						if (!$need_append && $last_line ne "") {
+							append_command \@commands, \%defined_variables, \%used_variables, $last_line;
 							$last_line = "";
 						}
 					}
 					if ($line ne "}") {
-						die "Invalid function(module) declaration!";
-					}
-					if ($last_line ne "") {
-						append_command \@commands, \%variables, $last_line;
+						die "Invalid procedure declaration! Line '}' expected!";
 					}
 					
 					if ($procedure_name eq "sysinfo") {
-						$skip_record = "Y";
-						$ignore_retval = "Y";
+						if ($skip_record ne "Y" or $ignore_retval ne "Y") {
+							print "Overwite 'skip_record' and 'ignore_retval' attribute to 'Y' for procedure 'sysinfo'!\n";
+							$skip_record = "Y";
+							$ignore_retval = "Y";
+						}
 					}
 
-					$modules{$procedure_name} = {
-						inputs        => \@inputs,
-						outputs       => \@outputs,
-						requires      => \@requires,
-						commands      => \@commands,
-						variables     => \%variables,
-						skip_record   => $skip_record,
-						ignore_retval => $ignore_retval
+					$procedures{$procedure_name} = {
+						inputs            => \@inputs,
+						outputs           => \@outputs,
+						requires          => \@requires,
+						commands          => \@commands,
+						defined_variables => \%defined_variables,
+						used_variables    => \%used_variables,
+						skip_record       => $skip_record,
+						ignore_retval     => $ignore_retval
 					};
 					last;
-				} elsif ($line =~ /^\s*function\s+/) {
-					die "Invalid function(module) declaration!";
 				}
 			}
 		} elsif ($line =~ /^\s*function\s*\w*/) {
@@ -165,7 +186,7 @@ Options:
    -h           Show this help.
    -H           Show detail help (including optional parameters).
    -v           Show verbose message.
-   -m <file>    Load procedure modules, this option can be used many times.
+   -m <file>    Load procedure module file, this option can be used many times.
    -l           List current available procedures.
    -t           Test mode, only print the commands rather than execute them.
 ';
@@ -176,7 +197,7 @@ sub list_procedures
 	print "
 Current available procedures:
 ";
-	foreach my $procedure (sort keys %modules) {
+	foreach my $procedure (sort keys %procedures) {
 		print "   $procedure\n";
 	}
 	print "\n";
@@ -186,15 +207,8 @@ sub check_option
 {
 	my ($procedure_name, $variable_name) = @_;
 
-	if (exists ${$modules{$procedure_name}{variables}}{$variable_name}) {
+	if (exists ${$procedures{$procedure_name}{variables}}{$variable_name}) {
 		return 1;
-	}
-	foreach my $command (@{$modules{$procedure_name}{commands}}) {
-		if ($command =~ /^SP_run\s+(\w+)\s+/) {
-			if (check_option($1, $variable_name)) {
-				return 1;
-			}
-		}
 	}
 	return 0;
 }
@@ -237,21 +251,14 @@ sub parse_line {
 
 sub run_procedure
 {
-	my ($procedure, $argv_ref) = @_;
+	my ($procedure, $argv_ref, $is_test_mode) = @_;
 
-	if (!exists $modules{$procedure}) {
+	if (!exists $procedures{$procedure}) {
 		print "Error: Unknown procedure '$procedure'! Use '-l' option to list available procedures.\n";
 		exit 1;
 	}
 
-	my %changable_variables;
-	foreach my $command (@{$modules{$procedure}{commands}}) {
-		if ($command =~ /^SP_set\s+(\w+)\s+\"(.*)\"\s+\"(.*)\"/) {
-			$changable_variables{$1} = $2;
-		}
-	}
-
-	my %variables = %{$modules{$procedure}{variables}};
+	my %variables = %{$procedures{$procedure}{used_variables}};
 	foreach my $arg (keys %variables) {
 		if (exists $global_variables{$arg} and $global_variables{$arg} ne "") {
 			$variables{$arg} = $global_variables{$arg};
@@ -266,7 +273,9 @@ sub run_procedure
 		if ($arg =~ /^(\w+)=(.*)$/) {
 			my $option_name = $1;
 			my $option_value = $2;
-
+			if ($option_value =~ /^"(.*?)"$/) {
+				$option_value = $1;
+			}
 			$variables{$option_name} = $option_value;
 		} else {
 			print "Error: Invalid procedure option '$arg'! It should be the format of 'NAME=VALUE'!\n";
@@ -274,16 +283,16 @@ sub run_procedure
 		}
 	}
 	foreach my $arg (sort keys %variables) {
-		if ($variables{$arg} eq "" and !exists $changable_variables{$arg}) {
+		if ($variables{$arg} eq "" and !exists ${$procedures{$procedure}{defined_variables}}{$arg}) {
 			print "Error: Option '$arg' is required!\n";
 			exit 1;
 		}
 	}
 
 	my $need_rerun = 0;
-	my @inputs = @{$modules{$procedure}{inputs}};
-	my @outputs = @{$modules{$procedure}{outputs}};
-	my @requires = @{$modules{$procedure}{requires}};
+	my @inputs = @{$procedures{$procedure}{inputs}};
+	my @outputs = @{$procedures{$procedure}{outputs}};
+	my @requires = @{$procedures{$procedure}{requires}};
 	my $i;
 	for ($i = 0; $i < scalar @inputs; ++$i) {
 		while ($inputs[$i] =~ /\${(\w+)}/) {
@@ -328,19 +337,31 @@ sub run_procedure
 		}
 	}
 
-	if ($test_mode) {
-		foreach my $command (@{$modules{$procedure}{commands}}) {
+	if ($is_test_mode) {
+		foreach my $command (@{$procedures{$procedure}{commands}}) {
 			while ($command =~ /\${(\w+)}/) {
 				my $option_name = $1;
 				$command =~ s/\${$option_name}/$variables{$option_name}/g;
 			}
 
-			if ($command =~ /^SP_set\s+(\w+)\s+\"(.*)\"\s+\"(.*)\"/) {
+			if ($command =~ /^SP_set\s+(\w+)="(.*?)"(|(\s+(\w+)(\s+(\w+)="(.*?)")*))\s*$/) {
 				if ($verbose) {
 					print "#$command\n";
 				}
-				if (eval "$3") {
+				my @procedure_options = parse_line($command);
+				shift @procedure_options;
+				my $setting = shift @procedure_options;
+				if (scalar @procedure_options == 0) {
+					$setting =~ /(\w+)="(.*?)"/;
 					$variables{$1} = $2;
+				} else {
+					my $procedure_name = shift @procedure_options;
+					push @procedure_options, @{$argv_ref};
+					run_procedure($procedure_name, \@procedure_options, 0);
+					if ($return_value == 0) {
+						$setting =~ /(\w+)="(.*?)"/;
+						$variables{$1} = $2;
+					}
 				}
 			} elsif ($command =~ /^SP_run\s+(\w+)/) {
 				if ($verbose) {
@@ -351,11 +372,13 @@ sub run_procedure
 					shift @procedure_options;
 					my $procedure_name = shift @procedure_options;
 					push @procedure_options, @{$argv_ref};
-					run_procedure($procedure_name, \@procedure_options);
+					run_procedure($procedure_name, \@procedure_options, $is_test_mode);
 				}
 			} else {
-				print "#" unless ($need_rerun);
-				print "$command\n";
+				if ($procedures{$procedure}{skip_record} ne "Y") {
+					print "#" unless ($need_rerun);
+					print "$command\n";
+				}
 			}
 		}
 		return 0;
@@ -363,16 +386,28 @@ sub run_procedure
 
 	return 0 unless $need_rerun;
 
-	foreach my $command (@{$modules{$procedure}{commands}}) {
+	foreach my $command (@{$procedures{$procedure}{commands}}) {
 		while ($command =~ /\${(\w+)}/) {
 			my $option_name = $1;
 			$command =~ s/\${$option_name}/$variables{$option_name}/g;
 		}
 
-		if ($command =~ /^SP_set\s+(\w+)\s+\"(.*)\"\s+\"(.*)\"/) {
-			if (eval "$3") {
+		if ($command =~ /^SP_set\s+(\w+)="(.*?)"(|(\s+(\w+)(\s+(\w+)="(.*?)")*))\s*$/) {
+			my @procedure_options = parse_line($command);
+			shift @procedure_options;
+			my $setting = shift @procedure_options;
+			if (scalar @procedure_options == 0) {
+				$setting =~ /(\w+)="(.*?)"/;
 				$variables{$1} = $2;
-				print LOG_FILE "[SeqPipe] Option '$1' changes to '$2'.\n";
+			} else {
+				my $procedure_name = shift @procedure_options;
+				push @procedure_options, @{$argv_ref};
+				run_procedure($procedure_name, \@procedure_options, 0);
+				if ($return_value == 0) {
+					$setting =~ /(\w+)="(.*?)"/;
+					$variables{$1} = $2;
+					print LOG_FILE "[SeqPipe] Option '$1' changes to '$2'.\n";
+				}
 			}
 			next;
 		} elsif ($command =~ /^SP_run\s+(\w+)/) {
@@ -380,11 +415,11 @@ sub run_procedure
 			shift @procedure_options;
 			my $procedure_name = shift @procedure_options;
 			push @procedure_options, @{$argv_ref};
-			run_procedure($procedure_name, \@procedure_options);
+			run_procedure($procedure_name, \@procedure_options, $is_test_mode);
 			next;
 		}
 
-		if ($modules{$procedure}{skip_record} eq "Y") {
+		if ($procedures{$procedure}{skip_record} eq "Y") {
 			open BASH, "| /bin/bash " . ($procedure eq "sysinfo" ? ">>$seqpipe_log_dir/$$.sysinfo" : ">/dev/null") . " 2>/dev/null";
 			print BASH "$command\n";
 			close BASH;
@@ -456,7 +491,7 @@ sub run_procedure
 				$year + 1900, $mon + 1, $mday, $hour, $min, $sec, $time_text;
 		}
 		
-		if ($modules{$procedure}{ignore_retval} ne "Y") {
+		if ($procedures{$procedure}{ignore_retval} ne "Y") {
 			if ($return_value != 0) {
 				print LOG_FILE "[SeqPipe] Command($$:$run_counter) returns $return_value\n";
 				last;
@@ -516,8 +551,8 @@ foreach my $module_file (@module_files) {
 	load_module $module_file;
 }
 if ($verbose) {
-	printf "All %d files (%d modules) loaded.\n",
-		scalar @module_files, scalar keys %modules;
+	printf "All %d module file(s) loaded, including %d procedure(s).\n",
+		scalar @module_files, scalar keys %procedures;
 }
 
 if ($list_mode) {
@@ -531,36 +566,27 @@ if ($help_mode and $procedure eq "") {
 }
 
 if ($help_mode) {
-	if (!exists $modules{$procedure}) {
+	if (!exists $procedures{$procedure}) {
 		print "Error: Unknown procedure '$procedure'! Use '-l' option to list available procedures.\n";
 		exit 1;
 	}
 
-	my %changable_variables;
-	foreach my $command (@{$modules{$procedure}{commands}}) {
-		if ($command =~ /^SP_set\s+(\w+)\s+\"(.*)\"\s+\"(.*)\"/) {
-			$changable_variables{$1} = $2;
-		}
-	}
-
 	print_usage;
+
 	print "
 Options for procedure '$procedure':
 ";
+	my $used_var_ref = \%{$procedures{$procedure}{used_variables}};
+	my $defined_var_ref = \%{$procedures{$procedure}{defined_variables}};
 	for my $required (1,0) {
-		foreach my $variable_name (sort keys %{$modules{$procedure}{variables}}) {
-			my $default_value = "";
-			if (${$modules{$procedure}{variables}}{$variable_name} ne "") {
-				$default_value = ${$modules{$procedure}{variables}}{$variable_name};
-			} elsif (exists $global_variables{$variable_name} and $global_variables{$variable_name} ne "") {
+		foreach my $variable_name (sort keys %{$used_var_ref}) {
+			my $default_value = ${$used_var_ref}{$variable_name};
+			if (exists $global_variables{$variable_name} and $global_variables{$variable_name} ne "") {
 				$default_value = $global_variables{$variable_name};
 			}
-
-			if (($required and $default_value eq "" and !exists $changable_variables{$variable_name})
-					or (!$required and ($default_value ne "" or exists $changable_variables{$variable_name}))) {
-				printf "   %-30s %s\n", $variable_name,
-					(($default_value eq "" and !exists $changable_variables{$variable_name})
-					? "Required" : "Def: " . $default_value);
+			my $is_required = ($default_value eq "" and !exists ${$defined_var_ref}{$variable_name});
+			if ($required == $is_required) {
+				printf "   %-30s %s\n", $variable_name, ($is_required ? "Required" : "Def: " . $default_value);
 			}
 		}
 		if (!$help_detail_mode) { last; }
@@ -584,14 +610,16 @@ if (!$test_mode) {
 	printf LOG_FILE "[SeqPipe] Pipeline($$) starts at %04d-%02d-%02d %02d:%02d:%02d\n",
 		$year + 1900, $mon + 1, $mday, $hour, $min, $sec;
 
-	if (!exists $modules{sysinfo}) {
+	if (!exists $procedures{sysinfo}) {
 		print "TIP: You may add a procedure named 'sysinfo' to record your current computational environment!";
 	} else {
-		run_procedure "sysinfo";
+		if ($procedure ne "sysinfo") {
+			run_procedure "sysinfo";
+		}
 	}
 }
 
-run_procedure $procedure, \@ARGV;
+run_procedure $procedure, \@ARGV, $test_mode;
 
 if (!$test_mode) {
 	my $end_time = time;
