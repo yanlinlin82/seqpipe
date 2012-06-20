@@ -87,11 +87,13 @@ function SP_set
 #[primitive]
 function SP_parallel_begin
 {
+	:
 }
 
 #[primitive]
 function SP_parallel_end
 {
+	:
 }
 
 ###########################################################################
@@ -113,6 +115,7 @@ function sysinfo
 	echo    'Program versions:'
 	echo -n '   bwa      : '; bwa |& grep Version | cut -d' ' -f2
 	echo -n '   samtools : '; samtools |& grep Version | cut -d' ' -f2-
+	echo -n '   bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
 	echo -n '   picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
 	echo -n '   gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
 	echo -n '   pindel   : '; pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
@@ -235,12 +238,12 @@ function merge_bam
 }
 
 #[procedure type="stage"]
-#[workflow input="@{INPUT}" output="${MAPPED_BAM}" output="${UNMAPPED_BAM}"]
+#[workflow input="${INPUT_BAM}" output="${MAPPED_BAM}" output="${UNMAPPED_BAM}"]
 function extract_mapped_reads
 {
 	SP_parallel_begin
-	samtools view ${INPUT} -f4 -b > ${MAPPED_BAM}
-	samtools view ${INPUT} -F4 -b > ${UNMAPPED_BAM}
+	samtools view ${INPUT_BAM} -F4 -b > ${MAPPED_BAM}
+	samtools view ${INPUT_BAM} -f4 -b > ${UNMAPPED_BAM}
 	SP_parallel_end
 }
 
@@ -278,7 +281,7 @@ function extract_unique_hit_reads
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
 function remove_duplicate_reads
 {
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
@@ -288,10 +291,57 @@ function remove_duplicate_reads
 		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=true \
 		CREATE_MD5_FILE=true \
-		INPUT=${INPUT} \
-		OUTPUT=${OUTPUT_1} \
-		METRICS_FILE=${OUTPUT_2} \
+		INPUT=${INPUT_BAM} \
+		OUTPUT=${OUTPUT_BAM} \
+		METRICS_FILE=${OUTPUT_METRICS} \
 		REMOVE_DUPLICATES=true
+}
+
+#[procedure type="stage"]
+#[workflow input="${SORTED_BAM}" output="${OUTPUT_BCF}"]
+#[workflow require="${REFERENCE}"]
+function samtools_call_variants
+{
+	samtools mpileup -f ${REFERENCE} ${SORTED_BAM} -u \
+		| bcftools view -bvcg - \
+		> ${OUTPUT_BCF}
+}
+
+#[procedure type="pipeline"]
+#[workflow input="${FASTQ_1}" input="${FASTQ_2}"]
+#[workflow output="${SAMPLE_NAME}.bcf"]
+#[workflow require="${REFERENCE}"]
+function DNAseq_pe_analysis_bwa_samtools
+{
+	SP_run bwa_reads_mapping \
+		REFERENCE="${REFERENCE}" \
+		INPUT_1="${FASTQ_1}" INPUT_2="${FASTQ_2}" \
+		MAX_INSERT_SIZE="${MAX_INSERT_SIZE}" \
+		OUTPUT="${SAMPLE_NAME}.bam"
+
+	SP_run extract_mapped_reads \
+		INPUT_BAM="${SAMPLE_NAME}.bam" \
+		MAPPED_BAM="${SAMPLE_NAME}.mapped.bam" \
+		UNMAPPED_BAM="${SAMPLE_NAME}.unmapped.bam"
+	rm -f ${SAMPLE_NAME}.bam
+
+	SP_run sort_bam \
+		INPUT="${SAMPLE_NAME}.mapped.bam" \
+		OUTPUT="${SAMPLE_NAME}.mapped.sorted.bam"
+	rm -f ${SAMPLE_NAME}.mapped.bam
+
+	SP_run remove_duplicate_reads \
+		INPUT_BAM="${SAMPLE_NAME}.mapped.sorted.bam" \
+		OUTPUT_BAM="${SAMPLE_NAME}.mapped.sorted.rmdup.bam" \
+		OUTPUT_METRICS="${SAMPLE_NAME}.mapped.sorted.rmdup.metrics"
+	rm -f ${SAMPLE_NAME}.mapped.sorted.bam \
+		${SAMPLE_NAME}.mapped.sorted.bam.md5 \
+		${SAMPLE_NAME}.mapped.sorted.bai
+
+	SP_run samtools_call_variants \
+		REFERENCE="${REFERENCE}" \
+		SORTED_BAM="${SAMPLE_NAME}.mapped.sorted.rmdup.bam" \
+		OUTPUT_BCF="${SAMPLE_NAME}.bcf"
 }
 
 #[procedure type="stage"]
