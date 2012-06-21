@@ -124,8 +124,7 @@ sub load_module
 					if ($line ne "{") {
 						die "Invalid procedure declaration! Line '{' expected!";
 					}
-					my $last_line = "";
-
+					my $last_line = '';
 					while ($line = <MODULE_FILE>) {
 						chomp $line;
 						if ($line eq "}") {
@@ -134,13 +133,20 @@ sub load_module
 							}
 							last;
 						}
-						$line =~ s/^\s*//g;
-						my $need_append = ($line =~ s/\\$//);
-						$last_line = $last_line . ($last_line ne "" ? " " : "") . $line;
-						$last_line =~ s/\s*$//g;
-						if (!$need_append && $last_line ne "") {
-							append_command \@commands, \%defined_variables, \%used_variables, $last_line;
-							$last_line = "";
+
+						if ($last_line eq '') {
+							$line =~ s/^\s+//g;
+						} else {
+							my $b1 = $last_line =~ s/\s+$//g;
+							my $b2 = $line =~ s/^\s+//g;
+							$line = $last_line . (($b1 or $b2) ? ' ' : '') . $line;
+							$last_line = '';
+						}
+
+						if ($line =~ s/\\$//) {
+							$last_line = $line;
+						} elsif ($line !~ /^\s*$/) {
+							append_command \@commands, \%defined_variables, \%used_variables, $line;
 						}
 					}
 					if ($line ne "}") {
@@ -281,12 +287,12 @@ sub parse_line {
 sub run_procedure
 {
 	my ($procedure, $argv_ref, $is_test_mode) = @_;
-	my $record = ($procedures{$procedure}{skip_record} ne "Y");
 
 	if (!exists $procedures{$procedure}) {
 		print "Error: Unknown procedure '$procedure'! Use '-l' option to list available procedures.\n";
 		exit 1;
 	}
+	my $record = ($procedures{$procedure}{skip_record} ne "Y");
 
 	my %variables;
 	foreach my $arg (keys %{$procedures{$procedure}{used_variables}}) {
@@ -437,6 +443,7 @@ sub run_procedure
 	my $parallel_begin = 0;
 	my @command_set = ();
 	my @command_with_log_set = ();
+	my $first_cmd_in_procedure = 1;
 	foreach my $cmd (@{$procedures{$procedure}{commands}}) {
 		my $command = $cmd;
 		while ($command =~ /\${(\w+)}/) {
@@ -494,9 +501,14 @@ sub run_procedure
 			} elsif ($procedures{$procedure}{skip_record} eq "Y") {
 				$command_with_log = "($command) >/dev/null 2>/dev/null";
 			} else {
+				my $hook_begin = ($first_cmd_in_procedure ? "" : ". $seqpipe_log_dir/$$.$run_counter.$procedure.env;");
 				$run_counter += 1;
 				$record_id = "$$.$run_counter";
-				$command_with_log = "($command) >>$seqpipe_log_dir/$record_id.$procedure.log 2>>$seqpipe_log_dir/$record_id.$procedure.err";
+				my $hook_end = "; env > $seqpipe_log_dir/$record_id.$procedure.env";
+				$first_cmd_in_procedure = 0;
+
+				$command_with_log = "($hook_begin $command $hook_end) >>$seqpipe_log_dir/$record_id.$procedure.log 2>>$seqpipe_log_dir/$record_id.$procedure.err";
+
 				open FILE, ">>" . "$seqpipe_log_dir/$record_id.$procedure.cmd";
 				printf FILE "$command\n";
 				close FILE;
@@ -550,6 +562,30 @@ sub run_procedure
 			exit 1;
 		} else {
 			$return_value = ($? >> 8);
+		}
+
+		if (($procedures{$procedure}{type} ne 'sysinfo') and
+			($procedures{$procedure}{skip_record} eq 'N')) {
+			my $last_line = '';
+			open ENV_FILE, "$seqpipe_log_dir/$record_id.$procedure.env";
+			print "ENV file: $seqpipe_log_dir/$record_id.$procedure.env\n";
+			while (my $line = <ENV_FILE>) {
+				chomp $line;
+				if ($last_line eq '') {
+					$line =~ s/^\s+//g;
+				} else {
+					my $b1 = ($last_line =~ s/\s+$//g);
+					my $b2 = ($line =~ s/^\s+//g);
+					$line = $last_line . (($b1 or $b2) ? ' ' : '') . $line;
+					$last_line = '';
+				}
+				if ($line =~ s/\\$//g) {
+					$last_line = $line;
+				} elsif ($line =~ /^(\w+)=(.*)$/) {
+					$variables{$1} = $2;
+				}
+			}
+			close ENV_FILE;
 		}
 
 		if ($record) {
