@@ -1,6 +1,8 @@
 #!/usr/bin/perl -w
 use strict;
 use warnings;
+use threads;
+use threads::shared;
 use File::Basename;
 use File::stat;
 use Cwd 'abs_path';
@@ -8,6 +10,8 @@ use Cwd 'abs_path';
 use constant LOG_DIR => './.seqpipe';
 
 my %valid_procedure_type = ( 'sysinfo' => 1, 'pipeline' => 2, 'stage' => 3, 'checker' => 4, 'evaluator' => 5 );
+my %need_record = ( 'pipeline' => 1, 'stage' => 1, 'evaluator' => 1 );
+my %exit_on_error = ( 'pipeline' => 1, 'stage' => 1 );
 
 my $help_mode = 0;
 my $help_detail_mode = 0;
@@ -18,7 +22,8 @@ my $enable_duplicate = 0;
 
 my %procedures;
 my %global_variables = ( SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dirname abs_path $0) );
-my $run_counter = 0;
+my $run_counter :shared;
+$run_counter = 0;
 
 my @module_files = ( (dirname abs_path $0) . '/default.pipe' );
 my $command_line = join(' ', ($0, @ARGV));
@@ -249,126 +254,135 @@ sub load_module
 
 	open MODULE_FILE, $module_file or die "Can not open module file '$module_file'!";
 	print STDERR "Load module file '$module_file'\n" if ($verbose and not $test_mode);
+
+	my $type = '';
+	my @inputs = ();
+	my @outputs = ();
+	my @requires = ();
 	while ($line = <MODULE_FILE>) {
 		chomp $line;
 
-		if ($line =~ /^#\[procedure\s+type="(.*?)"\s*\]$/) {
-			my $type = $1;
-			my @inputs = ();
-			my @outputs = ();
-			my @requires = ();
-
-			if (!exists $valid_procedure_type{$type}) {
-				print STDERR "Error: Unknown type of procedure: '$type'!\n";
-				exit 1;
+		if ($line =~ /^#\[procedure/) {
+			if ($line !~ /^#\[procedure(\s+(type|input|output|require)="(.*?)")+\s*\]$/) {
+				die "Bad format of procedure attribute declaration!";
 			}
-
-			while ($line = <MODULE_FILE>) {
-				if ($line =~ /^#\[workflow\s+(input|output|require)=.*\]$/) {
-					while ($line =~ /\s+(input|output|require)="(.*?)"/g) {
-						if ($1 eq "input") {
-							push @inputs, $2;
-						} elsif ($1 eq "output") {
-							push @outputs, $2;
-						} elsif ($1 eq "require") {
-							push @requires, $2;
-						}
+			while ($line =~ /\s+(type|input|output|require)="(.*?)"/g) {
+				if ($1 eq 'type') {
+					die "Duplicated procedure type declaration!" if $type ne '';
+					$type = $2;
+					if (!exists $valid_procedure_type{$type}) {
+						die "Error: Unknown type of procedure: '$type'!";
 					}
-				} elsif ($line =~ /^\s*function\s+/) {
-					die "Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
-
-					my $procedure_name = $1;
-					my @commands = ();
-					my %defined_variables = ();
-					my %eval_variables = ();
-					my %used_variables = ();
-
-					if (exists $procedures{$procedure_name}) {
-						print STDERR "Warning: Redeclaration of procedure '$procedure_name'\n"
-							if $verbose or not $enable_duplicate;
-						die "You may use '-d' option to enable the duplicated procedure declaration."
-							unless $enable_duplicate;
-					}
-
-					$line = <MODULE_FILE>;
-					chomp $line;
-					if ($line !~ /^{\s*$/) {
-						die "Invalid procedure declaration! Line '{' expected!";
-					}
-					my $last_line = '';
-					my @command_inputs = ();
-					my @command_outputs = ();
-					my @command_requires = ();
-					while ($line = <MODULE_FILE>) {
-						chomp $line;
-						if ($line =~ /^}\s*$/) {
-							if ($last_line ne '') {
-								die "Invalid procedure declaration! Last command line not finished!";
-							}
-							last;
-						}
-
-						if ($last_line eq '') {
-							$line =~ s/^\s+//g;
-						} else {
-							my $b1 = $last_line =~ s/\s+$//g;
-							my $b2 = $line =~ s/^\s+//g;
-							$line = $last_line . (($b1 or $b2) ? ' ' : '') . $line;
-							$last_line = '';
-						}
-
-						if ($line =~ s/\\$//) {
-							$last_line = $line;
-						} elsif ($line =~ /^#\[command\s+(input|output|require)=.*\]$/) {
-							while ($line =~ /\s+(input|output|require)="(.*?)"/g) {
-								if ($1 eq "input") {
-									push @command_inputs, $2;
-								} elsif ($1 eq "output") {
-									push @command_outputs, $2;
-								} elsif ($1 eq "require") {
-									push @command_requires, $2;
-								}
-							}
-						} elsif ($line !~ /^\s*$/) {
-							append_command \@commands,
-								\%defined_variables, \%eval_variables, \%used_variables, $line,
-								\@command_inputs, \@command_outputs, \@command_requires;
-							@command_inputs = ();
-							@command_outputs = ();
-							@command_requires = ();
-						}
-					}
-					if ($line !~ /^}\s*$/) {
-						die "Invalid procedure declaration! Line '}' expected!";
-					}
-
-					foreach my $variable (@inputs, @outputs, @requires) {
-						while ($variable =~ /\${(\w+)}/g) {
-							my $variable_name = $1;
-							if (!exists $used_variables{$variable_name}) {
-								$used_variables{$variable_name} = '';
-							}
-						}
-					}
-
-					$procedures{$procedure_name} = {
-						type              => $type,
-						inputs            => \@inputs,
-						outputs           => \@outputs,
-						requires          => \@requires,
-						commands          => \@commands,
-						defined_variables => \%defined_variables,
-						eval_variables    => \%eval_variables,
-						used_variables    => \%used_variables
-					};
-					last;
+				} elsif ($1 eq "input") {
+					push @inputs, $2;
+				} elsif ($1 eq "output") {
+					push @outputs, $2;
+				} elsif ($1 eq "require") {
+					push @requires, $2;
 				}
+				next;
 			}
-		} elsif ($line =~ /^\s*function\s+(\w+)\s*$/) {
+		} elsif ($line =~ /^\s*function\s+/) {
+			die "Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
+
+			# Ignore functions that are not 'procedure'.
+			if ($type eq '') {
+				while ($line = <MODULE_FILE>) {
+					chomp $line;
+					last if $line eq "}";
+				}
+				next;
+			}
+
+			my $procedure_name = $1;
+			my @commands = ();
+			my %defined_variables = ();
+			my %eval_variables = ();
+			my %used_variables = ();
+
+			if (exists $procedures{$procedure_name}) {
+				print STDERR "Warning: Redeclaration of procedure '$procedure_name'\n"
+					if $verbose or not $enable_duplicate;
+				die "You may use '-d' option to enable the duplicated procedure declaration."
+					unless $enable_duplicate;
+			}
+
+			$line = <MODULE_FILE>;
+			chomp $line;
+			if ($line !~ /^{\s*$/) {
+				die "Invalid procedure declaration! Line '{' expected!";
+			}
+			my $last_line = '';
+			my @command_inputs = ();
+			my @command_outputs = ();
+			my @command_requires = ();
 			while ($line = <MODULE_FILE>) {
 				chomp $line;
-				last if $line eq "}";
+				if ($line =~ /^}\s*$/) {
+					if ($last_line ne '') {
+						die "Invalid procedure declaration! Last command line not finished!";
+					}
+					last;
+				}
+
+				if ($last_line eq '') {
+					$line =~ s/^\s+//g;
+				} else {
+					my $b1 = $last_line =~ s/\s+$//g;
+					my $b2 = $line =~ s/^\s+//g;
+					$line = $last_line . (($b1 or $b2) ? ' ' : '') . $line;
+					$last_line = '';
+				}
+
+				if ($line =~ s/\\$//) {
+					$last_line = $line;
+				} elsif ($line =~ /^#\[command\s+(input|output|require)=.*\]$/) {
+					while ($line =~ /\s+(input|output|require)="(.*?)"/g) {
+						if ($1 eq "input") {
+							push @command_inputs, $2;
+						} elsif ($1 eq "output") {
+							push @command_outputs, $2;
+						} elsif ($1 eq "require") {
+							push @command_requires, $2;
+						}
+					}
+				} elsif ($line !~ /^\s*$/) {
+					append_command \@commands,
+						\%defined_variables, \%eval_variables, \%used_variables, $line,
+						\@command_inputs, \@command_outputs, \@command_requires;
+					@command_inputs = ();
+					@command_outputs = ();
+					@command_requires = ();
+				}
 			}
+			if ($line !~ /^}\s*$/) {
+				die "Invalid procedure declaration! Line '}' expected!";
+			}
+
+			foreach my $variable (@inputs, @outputs, @requires) {
+				while ($variable =~ /\${(\w+)}/g) {
+					my $variable_name = $1;
+					if (!exists $used_variables{$variable_name}) {
+						$used_variables{$variable_name} = '';
+					}
+				}
+			}
+
+			$procedures{$procedure_name} = {
+				type              => $type,
+				inputs            => \@inputs,
+				outputs           => \@outputs,
+				requires          => \@requires,
+				commands          => \@commands,
+				defined_variables => \%defined_variables,
+				eval_variables    => \%eval_variables,
+				used_variables    => \%used_variables
+			};
+
+			$type = '';
+			@inputs = ();
+			@outputs = ();
+			@requires = ();
 		} elsif ($line =~ /^\s*(\w+)=(.*)$/) {
 			my $option_name = $1;
 			my $option_value = $2;
@@ -397,7 +411,7 @@ sub print_usage
 {
 	print STDOUT '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.2.0 ($Rev$)
+Version: 0.2.1 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
@@ -426,6 +440,86 @@ sub list_procedures
 	print STDOUT "\n";
 }
 
+sub run_command
+{
+	my ($procedure_name, $procedure_type, $command, $record_id, $outputs_ref, $is_test_mode) = @_;
+
+	my $return_value = 0;
+	my @log_files = ();
+
+	if ($command =~ /^SP_run\s+(\w+)/) {
+		my @procedure_options = bash_line_decode($command);
+		shift @procedure_options;
+		my $procedure_name = shift @procedure_options;
+		
+		print LOG_FILE "[SeqPipe] Run procedure: $procedure_name\n" if (exists $need_record{$procedure_type});
+
+		$return_value = run_procedure($procedure_name, \@procedure_options, $is_test_mode, \@log_files);
+	} else {
+		my $command_with_log = '';
+		if ($procedure_type eq 'sysinfo') {
+			$command_with_log = "($command) 2>&1 >>" . LOG_DIR . "/$$.sysinfo";
+		} elsif ($procedure_type eq 'checker') {
+			$command_with_log = "($command) >/dev/null 2>/dev/null";
+		} else {
+			$command_with_log = "($command) "
+				. ">>" . LOG_DIR . "/$$.$record_id.$procedure_name.log "
+				. "2>>" . LOG_DIR . "/$$.$record_id.$procedure_name.err";
+
+			push @log_files, LOG_DIR . "/$$.$record_id.$procedure_name.log";
+
+			open FILE, ">>" . LOG_DIR . "/$$.$record_id.$procedure_name.cmd";
+			printf FILE "$command\n";
+			close FILE;
+		}
+		
+		my $start_time = time;
+		if (exists $need_record{$procedure_type}) {
+			print LOG_FILE "[SeqPipe] Command($$:$record_id): $command\n";
+			printf LOG_FILE "[SeqPipe] Command($$:$record_id) starts at %s\n", time_string($start_time);
+		}
+		
+		if (not open BASH, "| /bin/bash") {
+			print LOG_FILE "Can not launch command(s): $command\n";
+			exit 1;
+		}
+		print BASH $command_with_log;
+		close BASH;
+
+		if ($? == -1) {
+			print LOG_FILE "[SeqPipe] Command($$:$record_id) starts failed!\n";
+			close LOG_FILE;
+			exit 1;
+		} elsif ($? & 127) {
+			print LOG_FILE "[SeqPipe] Command($$:$record_id) starts failed! Child died with signal %d, %s coredump\n",
+				($? & 127), ($? & 128) ? 'with' : 'without';
+			close LOG_FILE;
+			exit 1;
+		} else {
+			$return_value = ($? >> 8);
+		}
+
+		if (exists $need_record{$procedure_type}) {
+			my $end_time = time;
+			printf LOG_FILE "[SeqPipe] Command($$:$record_id) ends at %s (elapsed: %s)\n",
+				time_string($end_time), time_elapse_string($start_time, $end_time);
+		}
+	}
+	
+	if (exists $exit_on_error{$procedure_type} and $return_value != 0) {
+		foreach my $output_file (@{$outputs_ref}) {
+			if (-e $output_file) {
+				if ($verbose) {
+					print LOG_FILE "[SeqPipe] Remove bad output file '$output_file'!\n";
+				}
+				unlink $output_file;
+			}
+		}
+		print LOG_FILE "[SeqPipe] Command($$:$record_id) returns $return_value\n";
+	}
+	return ( $return_value, @log_files );
+}
+
 sub run_procedure
 {
 	my ($procedure_name, $argv_ref, $is_test_mode, $log_files_ref) = @_;
@@ -436,9 +530,6 @@ sub run_procedure
 		exit 1;
 	}
 	my %procedure = %{$procedures{$procedure_name}};
-
-	my $record = ($procedure{type} eq 'pipeline' or $procedure{type} eq 'stage' or $procedure{type} eq 'evaluator');
-	my $exit_on_error = ($procedure{type} eq 'pipeline' or $procedure{type} eq 'stage');
 
 	my %variables;
 	foreach my $arg (keys %{$procedure{used_variables}}) {
@@ -490,16 +581,14 @@ sub run_procedure
 	}
 
 	my $in_parallel = 0;
-	my $parallel_begin = 0;
-	my @command_set = ();
-	my @command_with_log_set = ();
-	my @output_set = ();
+	my @thread_list = ();
 	foreach my $command_struct_ref (@{$procedure{commands}}) {
 		my $command = ${$command_struct_ref}{command};
 		my $inputs_ref = ${$command_struct_ref}{inputs};
 		my $outputs_ref = ${$command_struct_ref}{outputs};
 		my $requires_ref = ${$command_struct_ref}{requires};
 		
+		my @output_set = ();
 		foreach my $output_file (@{$outputs_ref}) {
 			my $filename = $output_file;
 			while ($filename =~ /\${(\w+)}/) {
@@ -509,7 +598,7 @@ sub run_procedure
 			push @output_set, $filename;
 		}
 		
-		if ($command =~ /^SP_run/ or $command =~ /^SP_set/) {
+		if ($command =~ /^SP_/) {
 			my @argv = bash_line_decode($command);
 			foreach my $arg (@argv) {
 				while ($arg =~ /\${(\w+)}/g) {
@@ -559,8 +648,8 @@ sub run_procedure
 					print LOG_FILE "Error: Invalid syntex of SP_set!\n";
 					exit 1;
 				}
-				$option_value = $1;
-				$option_name = $2;
+				$option_name = $1;
+				$option_value = $2;
 			} elsif ($cmd eq 'SP_eval') {
 				if ($setting !~ /^(\w+)$/) {
 					print LOG_FILE "Error: Invalid syntex of SP_eval!\n";
@@ -573,12 +662,10 @@ sub run_procedure
 				}
 			}
 			
-			my $value = 1;
 			if (scalar @procedure_options > 0) {
 				my $procedure_name = shift @procedure_options;
-				push @procedure_options, @{$argv_ref};
 				my @log_files = ();
-				$value = (run_procedure($procedure_name, \@procedure_options, 0, \@log_files) == 0);
+				my $value = run_procedure($procedure_name, \@procedure_options, 0, \@log_files);
 				next if ($cmd eq 'SP_set' and $value ne 0);
 				if ($cmd eq 'SP_eval') {
 					print "Info: Load log files for SP_eval: ", join(", ", @log_files), "\n" if $verbose;
@@ -603,24 +690,14 @@ sub run_procedure
 		}
 
 		if ($is_test_mode) {
-			if ($command =~ /^SP_run\s+(\w+)/) {
+			if ($command =~ /^SP_run/) {
 				print STDOUT "#$command\n" if $verbose;
 				my @procedure_options = bash_line_decode($command);
 				shift @procedure_options;
 				my $procedure_name = shift @procedure_options;
-				push @procedure_options, @{$argv_ref};
-				run_procedure($procedure_name, \@procedure_options, $is_test_mode);
-			} elsif ($command =~ /^SP_eval\s+(\w+)(|\s(.*))$/) {
-				print STDOUT "#$command\n" if $verbose;
-				my @procedure_options = bash_line_decode($command);
-				shift @procedure_options;
-				my $procedure_name = shift @procedure_options;
-				push @procedure_options, @{$argv_ref};
-				run_procedure($procedure_name, \@procedure_options, $is_test_mode);
+				run_procedure($procedure_name, \@procedure_options, $is_test_mode, $log_files_ref);
 			} elsif ($command eq 'SP_parallel_begin' or $command eq 'SP_parallel_end') {
-				if ($verbose) {
-					print STDOUT "#$command\n";
-				}
+				print STDOUT "#$command\n" if $verbose;
 			} else {
 				if ($verbose or $procedure{type} eq 'stage' or $procedure{type} eq 'pipeline') {
 					print STDOUT "#" unless $need_rerun;
@@ -628,127 +705,43 @@ sub run_procedure
 				}
 			}
 		} else {
-			if ($command =~ /^SP_run\s+(\w+)/) {
-				my @procedure_options = bash_line_decode($command);
-				shift @procedure_options;
-				my $procedure_name = shift @procedure_options;
-				push @procedure_options, @{$argv_ref};
-				
-				if ($record) {
-					print LOG_FILE "[SeqPipe] Run procedure: $procedure_name\n";
-				}
-				run_procedure($procedure_name, \@procedure_options, $is_test_mode);
-				next;
-			}
-
 			if ($command eq 'SP_parallel_begin') {
 				die "Already in parallel mode, duplicated '$command'!" if $in_parallel;
-				$parallel_begin = $run_counter + 1;
 				$in_parallel = 1;
 				next;
 			}
 			if ($command eq 'SP_parallel_end') {
 				die "Not in parallel mode, unexpected '$command'!" unless $in_parallel;
-				if (scalar @command_set == 0) {
-					print LOG_FILE "[SeqPipe] Skip parallel command block.\n";
-					$in_parallel = 0;
-					next;
+				$in_parallel = 0;
+				if (scalar @thread_list > 0) {
+					foreach my $thd (@thread_list) {
+						$thd->join();
+					}
+					@thread_list = ();
 				}
+				next;
 			}
 
-			my $record_id = '';
-			my $command_with_log = '';
-			if ($command ne 'SP_parallel_end') {
-				if ($procedure{type} eq 'sysinfo') {
-					$command_with_log = "($command) 2>&1 >>" . LOG_DIR . "/$$.sysinfo";
-				} elsif ($procedure{type} eq 'checker') {
-					$command_with_log = "($command) >/dev/null 2>/dev/null";
-				} else {
+			my $record_id = 0;
+			if (exists $need_record{$procedure{type}} and $command !~ /^SP_run/) {
+				{
+					lock($run_counter);
 					$run_counter += 1;
-					$record_id = "$$.$run_counter";
-
-					$command_with_log = "($command) "
-						. ">>" . LOG_DIR . "/$record_id.$procedure_name.log "
-						. "2>>" . LOG_DIR . "/$record_id.$procedure_name.err";
-					
-					push @{$log_files_ref}, LOG_DIR . "/$record_id.$procedure_name.log";
-
-					open FILE, ">>" . LOG_DIR . "/$record_id.$procedure_name.cmd";
-					printf FILE "$command\n";
-					close FILE;
+					$record_id = $run_counter;
 				}
+				push @{$log_files_ref}, LOG_DIR . "/$$.$record_id.$procedure_name.log";
 			}
-			
-			my $launcher = "/bin/bash";
+
+			my $thd = threads->create({'context' => 'list'}, \&run_command,
+				$procedure_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode);
+
 			if ($in_parallel) {
-				if ($command ne 'SP_parallel_end') {
-					push @command_set, $command;
-					push @command_with_log_set, $command_with_log;
-					next;
-				} else {
-					$launcher = "parallel";
-					$in_parallel = 0;
-					$command_with_log = join("\n", @command_with_log_set);
-					if ($parallel_begin != $run_counter) {
-						$record_id = "$$.$parallel_begin-$run_counter";
-					} else {
-						$record_id = "$$.$parallel_begin";
-					}
-				}
-			}
-		
-			my $start_time;
-			if ($record) {
-				if ($launcher eq 'parallel') {
-					foreach my $each_cmd (@command_set) {
-						print LOG_FILE "[SeqPipe] Command($record_id): $each_cmd\n";
-					}
-				} else {
-					print LOG_FILE "[SeqPipe] Command($record_id): $command\n";
-				}
-
-				$start_time = time;
-				printf LOG_FILE "[SeqPipe] Command($record_id) starts at %s\n", time_string($start_time);
-			}
-			
-			open BASH, "| $launcher" or die "Can not launch command(s): $command";
-			print BASH $command_with_log;
-			close BASH;
-			
-			if ($? == -1) {
-				print LOG_FILE "[SeqPipe] Command($record_id) starts failed!\n";
-				close LOG_FILE;
-				exit 1;
-			} elsif ($? & 127) {
-				print LOG_FILE "[SeqPipe] Command($record_id) starts failed! Child died with signal %d, %s coredump\n",
-					($? & 127), ($? & 128) ? 'with' : 'without';
-				close LOG_FILE;
-				exit 1;
+				push @thread_list, $thd;
 			} else {
-				$return_value = ($? >> 8);
+				my @return_list = $thd->join();
+				$return_value = shift @return_list;
+				push @{$log_files_ref}, @return_list;
 			}
-
-			if ($record) {
-				my $end_time = time;
-				printf LOG_FILE "[SeqPipe] Command($record_id) ends at %s (elapsed: %s)\n",
-					time_string($end_time), time_elapse_string($start_time, $end_time);
-			}
-			
-			if ($exit_on_error) {
-				if ($return_value != 0) {
-					foreach my $output_file (@output_set) {
-						if (-e $output_file) {
-							if ($verbose) {
-								print LOG_FILE "[SeqPipe] Remove bad output file '$output_file'!\n";
-							}
-							unlink $output_file;
-						}
-					}
-					print LOG_FILE "[SeqPipe] Command($$:$run_counter) returns $return_value\n";
-					exit $return_value;
-				}
-			}
-			@output_set = ();
 		}
 	}
 	return $return_value;
@@ -891,13 +884,15 @@ if ($test_mode) {
 
 	foreach my $sysinfo_procedure_name (keys %procedures) {
 		if ($procedures{$sysinfo_procedure_name}{type} eq 'sysinfo') {
-			run_procedure $sysinfo_procedure_name;
+			my @args = ();
+			my @log_files = ();
+			run_procedure $sysinfo_procedure_name, \@args, 0, \@log_files;
 		}
 	}
 }
 
-my @run_counter_list = ();
-my $return_value = run_procedure($procedure_name, \@argv, $test_mode, \@run_counter_list);
+my @log_files = ();
+my $return_value = run_procedure($procedure_name, \@argv, $test_mode, \@log_files);
 
 if (!$test_mode) {
 	my $end_time = time;
