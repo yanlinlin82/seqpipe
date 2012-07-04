@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#[seqpipe version="0.2.0 ($Id$)"]
+#[seqpipe version="0.2.1 ($Id$)"]
 #
 
 ###########################################################################
@@ -161,7 +161,7 @@ function if_no_arg
 }
 
 #[procedure type="checker"]
-#[workflow input="${INPUT_FASTA}"]
+#[procedure input="${INPUT_FASTA}"]
 function if_fasta_is_long_genome
 {
 	# Here we assume a genome is long if its file is bigger than 100Mb
@@ -169,7 +169,7 @@ function if_fasta_is_long_genome
 }
 
 #[procedure type="checker"]
-#[workflow input="${INPUT_FASTQ}"]
+#[procedure input="${INPUT_FASTQ}"]
 function if_fastq_is_base_33
 {
 	# Pick up first ten reads's quality to see if it contains number.
@@ -177,7 +177,7 @@ function if_fastq_is_base_33
 }
 
 #[procedure type="checker"]
-#[workflow input="${INPUT_FASTQ}"]
+#[procedure input="${INPUT_FASTQ}"]
 function if_fastq_is_not_base_33
 {
 	# Pick up first ten reads's quality to see if it contains number.
@@ -187,7 +187,7 @@ function if_fastq_is_not_base_33
 ###########################################################################
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_FASTQ}" output="${OUTPUT_ZIP}"]
+#[procedure input="${INPUT_FASTQ}" output="${OUTPUT_ZIP}"]
 function fastqc_check
 {
 	fastqc --noextract --nogroup -o $(dirname ${OUTPUT_ZIP}) ${INPUT_FASTQ}
@@ -195,7 +195,7 @@ function fastqc_check
 }
 
 #[procedure type="stage"]
-#[workflow input="${REFERENCE}" output="${REFERENCE}.bwt"]
+#[procedure input="${REFERENCE}" output="${REFERENCE}.bwt"]
 function bwa_build_index
 {
 	SP_set ALGORITHM="is"
@@ -205,8 +205,8 @@ function bwa_build_index
 }
 
 #[procedure type="stage"]
-#[workflow input="${FASTQ_1}" input="${FASTQ_2}" output="${OUTPUT_BAM}"]
-#[workflow require="${REFERENCE}"]
+#[procedure input="${FASTQ_1}" input="${FASTQ_2}" output="${OUTPUT_BAM}"]
+#[procedure require="${REFERENCE}"]
 function bwa_read_mapping
 {
 	SP_set BWA_ALN_OPTS="${BWA_ALN_OPTS}"
@@ -244,8 +244,8 @@ function bwa_read_mapping
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_FASTQ}" output="${OUTPUT_BAM}"]
-#[workflow require="${REFERENCE}"]
+#[procedure input="${INPUT_FASTQ}" output="${OUTPUT_BAM}"]
+#[procedure require="${REFERENCE}"]
 function bwa_read_mapping_se
 {
 	SP_set BWA_ALN_OPTS="${BWA_ALN_OPTS}"
@@ -274,7 +274,7 @@ function bwa_read_mapping_se
 }
 
 #[procedure type="stage"]
-#[workflow input="${BAM_1}" input="${BAM_2}" output="${OUTPUT_BAM}"]
+#[procedure input="${BAM_1}" input="${BAM_2}" output="${OUTPUT_BAM}"]
 function merge_bam
 {
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
@@ -313,7 +313,7 @@ function merge_bam
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
+#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
 function select_reads
 {
 	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
@@ -321,7 +321,7 @@ function select_reads
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
+#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
 function filter_reads
 {
 	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
@@ -329,7 +329,7 @@ function filter_reads
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${MAPPED_BAM}" output="${UNMAPPED_BAM}"]
+#[procedure input="${INPUT_BAM}" output="${MAPPED_BAM}" output="${UNMAPPED_BAM}"]
 function select_mapped_reads
 {
 	SP_parallel_begin
@@ -344,7 +344,7 @@ function select_mapped_reads
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
+#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
 function sort_bam
 {
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
@@ -367,7 +367,7 @@ function sort_bam
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${OUTPUT_FLAGSTAT_BZ2}"]
+#[procedure input="${INPUT_BAM}" output="${OUTPUT_FLAGSTAT_BZ2}"]
 function flagstat_bam
 {
 	#[command input="${INPUT_BAM}" output="${OUTPUT_FLAGSTAT_BZ2}"]
@@ -375,7 +375,7 @@ function flagstat_bam
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${UNIQ_BAM}" output="${REST_BAM}"]
+#[procedure input="${INPUT_BAM}" output="${UNIQ_BAM}" output="${REST_BAM}"]
 function select_unique_hit_reads
 {
 	#[command input="${INPUT_BAM}" output="${UNIQ_BAM}" output="${REST_BAM}"]
@@ -385,7 +385,7 @@ function select_unique_hit_reads
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
+#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
 function mark_duplicate_reads
 {
 	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}" output="${OUTPUT_BAM}.metrics"]
@@ -406,7 +406,7 @@ function mark_duplicate_reads
 }
 
 #[procedure type="stage"]
-#[workflow input="${SORTED_BAM}" output="${OUTPUT_MPILEUP_BZ2}"]
+#[procedure input="${SORTED_BAM}" output="${OUTPUT_MPILEUP_BZ2}"]
 function samtools_mpileup
 {
 	SP_set REFERENCE="${REFERENCE}"
@@ -418,8 +418,8 @@ function samtools_mpileup
 }
 
 #[procedure type="stage"]
-#[workflow input="${SORTED_BAM}" output="${OUTPUT_BCF}"]
-#[workflow require="${REFERENCE}"]
+#[procedure input="${SORTED_BAM}" output="${OUTPUT_BCF}"]
+#[procedure require="${REFERENCE}"]
 function samtools_call_variants
 {
 	#[command input="${SORTED_BAM}" output="${OUTPUT_BCF}"]
@@ -470,8 +470,8 @@ function picard_add_or_replace_read_group
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${INPUT_BAM}.realign.fixmate"]
-#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
+#[procedure input="${INPUT_BAM}" output="${INPUT_BAM}.realign.fixmate"]
+#[procedure require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_indel_realign
 {
 	#[command input="${INPUT_BAM}" output="${INPUT_BAM}.intervals"]
@@ -521,8 +521,8 @@ function gatk_indel_realign
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${INPUT_BAM}.recalibrated"]
-#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
+#[procedure input="${INPUT_BAM}" output="${INPUT_BAM}.recalibrated"]
+#[procedure require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_recalibrate
 {
 	#[command input="${INPUT_BAM}" output="${INPUT_BAM}.recalFile"]
@@ -558,8 +558,8 @@ function gatk_recalibrate
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${OUTPUT_VCF}"]
-#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
+#[procedure input="${INPUT_BAM}" output="${OUTPUT_VCF}"]
+#[procedure require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_genotype
 {
 	#[command input="${INPUT_BAM}" output="${OUTPUT_VCF}"]
@@ -580,10 +580,10 @@ function gatk_genotype
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_VCF}"]
-#[workflow output="${INPUT_VCF}.indel"]
-#[workflow output="${INPUT_VCF}.snp.filtered"]
-#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
+#[procedure input="${INPUT_VCF}"]
+#[procedure output="${INPUT_VCF}.indel"]
+#[procedure output="${INPUT_VCF}.snp.filtered"]
+#[procedure require="${REFERENCE}" require="${DBSNP_VCF}"]
 function gatk_filter_variants
 {
 	#[command input="${INPUT_VCF}" output="${INPUT_VCF}.snp"]
@@ -623,7 +623,7 @@ function gatk_filter_variants
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}" output="${INPUT_BAM}.vcf.snp.filtered" output="${INPUT_BAM}.vcf.indel"]
+#[procedure input="${INPUT_BAM}" output="${INPUT_BAM}.vcf.snp.filtered" output="${INPUT_BAM}.vcf.indel"]
 function gatk_call_variants
 {
 	SP_set REFERENCE="${REFERENCE}"
@@ -656,11 +656,11 @@ function eval_reference_date
 }
 
 #[procedure type="stage"]
-#[workflow input="${INPUT_BAM}"]
-#[workflow output="${OUTPUT_PREFIX}_D.vcf"]
-#[workflow output="${OUTPUT_PREFIX}_SI.vcf"]
-#[workflow output="${OUTPUT_PREFIX}_INV.vcf"]
-#[workflow output="${OUTPUT_PREFIX}_TD.vcf"]
+#[procedure input="${INPUT_BAM}"]
+#[procedure output="${OUTPUT_PREFIX}_D.vcf"]
+#[procedure output="${OUTPUT_PREFIX}_SI.vcf"]
+#[procedure output="${OUTPUT_PREFIX}_INV.vcf"]
+#[procedure output="${OUTPUT_PREFIX}_TD.vcf"]
 function pindel_call_structure_variants
 {
 	SP_eval REFERENCE_NAME eval_reference_name REFERENCE=${REFERENCE}
@@ -680,22 +680,11 @@ function pindel_call_structure_variants
 		-p ${OUTPUT_PREFIX}_TD -v ${OUTPUT_PREFIX}_TD.vcf
 }
 
-#[procedure type="pipeline"]
-#[workflow input="${FASTQ_1}" input="${FASTQ_2}"]
-#[workflow output="${SAMPLE_NAME}.bcf"]
-#[workflow output="${SAMPLE_NAME}_sv_D.vcf"]
-#[workflow output="${SAMPLE_NAME}_sv_SI.vcf"]
-#[workflow output="${SAMPLE_NAME}_sv_INV.vcf"]
-#[workflow output="${SAMPLE_NAME}_sv_TD.vcf"]
-#[workflow require="${REFERENCE}"]
-function DNAseq_analysis
+#[procedure type="stage"]
+#[procedure input="${SAMPLE_NAME}.bam"]
+#[procedure output="${SAMPLE_NAME}.bcf"]
+function DNAseq_samtools_call_variants
 {
-	SP_run bwa_read_mapping \
-		REFERENCE="${REFERENCE}" \
-		FASTQ_1="${FASTQ_1}" FASTQ_2="${FASTQ_2}" \
-		INSERT_SIZE="${INSERT_SIZE}" \
-		OUTPUT_BAM="${SAMPLE_NAME}.bam"
-	
 	SP_run select_mapped_reads \
 		INPUT_BAM="${SAMPLE_NAME}.bam" \
 		MAPPED_BAM="${SAMPLE_NAME}.mapped.bam" \
@@ -726,7 +715,17 @@ function DNAseq_analysis
 		REFERENCE="${REFERENCE}" \
 		SORTED_BAM="${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam" \
 		OUTPUT_BCF="${SAMPLE_NAME}.bcf"
+}
 
+#[procedure type="stage"]
+#[procedure input="${SAMPLE_NAME}.bam"]
+#[procedure output="${SAMPLE_NAME}_sv_D.vcf"]
+#[procedure output="${SAMPLE_NAME}_sv_SI.vcf"]
+#[procedure output="${SAMPLE_NAME}_sv_INV.vcf"]
+#[procedure output="${SAMPLE_NAME}_sv_TD.vcf"]
+#[procedure require="${REFERENCE}"]
+function DNAseq_picard_call_structure_variants
+{
 	SP_run sort_bam \
 		VALIDATION_STRINGENCY=SILENT \
 		INPUT_BAM="${SAMPLE_NAME}.bam" \
@@ -738,4 +737,34 @@ function DNAseq_analysis
 		INPUT_BAM="${SAMPLE_NAME}.sorted.bam" \
 		INSERT_SIZE="${INSERT_SIZE}" \
 		OUTPUT_PREFIX="${SAMPLE_NAME}_sv"
+}
+
+#[procedure type="pipeline"]
+#[procedure input="${FASTQ_1}" input="${FASTQ_2}"]
+#[procedure output="${SAMPLE_NAME}.bcf"]
+#[procedure output="${SAMPLE_NAME}_sv_D.vcf"]
+#[procedure output="${SAMPLE_NAME}_sv_SI.vcf"]
+#[procedure output="${SAMPLE_NAME}_sv_INV.vcf"]
+#[procedure output="${SAMPLE_NAME}_sv_TD.vcf"]
+#[procedure require="${REFERENCE}"]
+function DNAseq_analysis
+{
+	SP_run bwa_read_mapping \
+		REFERENCE="${REFERENCE}" \
+		FASTQ_1="${FASTQ_1}" FASTQ_2="${FASTQ_2}" \
+		INSERT_SIZE="${INSERT_SIZE}" \
+		OUTPUT_BAM="${SAMPLE_NAME}.bam"
+
+	SP_parallel_begin
+
+	SP_run DNAseq_samtools_call_variants \
+		REFERENCE=${REFERENCE} \
+		SAMPLE_NAME=${SAMPLE_NAME}
+
+	SP_run DNAseq_picard_call_structure_variants \
+		REFERENCE=${REFERENCE} \
+		SAMPLE_NAME=${SAMPLE_NAME} \
+		INSERT_SIZE=${INSERT_SIZE}
+
+	SP_parallel_end
 }
