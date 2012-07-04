@@ -12,6 +12,7 @@ Table of Content
 1. Goal & Philosiphy
 2. Directories & Files
 3. Demo Pipeline
+4. Others
 
 ---------------------------------------------------------------------------
 
@@ -47,5 +48,26 @@ create a shell explainer for the pipeline.
 
 3. Demo Pipeline
 
-   See as $/test/test.sh
+   See as $/test/test_*.sh
 
+---------------------------------------------------------------------------
+
+4. Others
+
+Variables are supported, for example:
+
+#[procedure type="evaluator"]
+function get_temp_file
+{
+	mktemp
+}
+
+#[procedure type="stage"]
+function foo
+{
+	SP_eval TMP_FILE get_temp_file
+	ls > ${TMP_FILE}
+	cat ${TMP_FILE}
+	wc ${TMP_FILE}
+	rm ${TMP_FILE}
+}
