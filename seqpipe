@@ -1,11 +1,16 @@
 #!/usr/bin/perl -w
 use strict;
 use warnings;
-use threads;
-use threads::shared;
 use File::Basename;
 use File::stat;
 use Cwd 'abs_path';
+
+my $can_use_threads = eval 'use threads; 1';
+if ($can_use_threads) {
+	use threads::shared;
+} else {
+	print STDERR "Warning: Your Perl does not support threads! Parallel mode is disabled.\n";
+}
 
 use constant LOG_DIR => './.seqpipe';
 
@@ -732,13 +737,20 @@ sub run_procedure
 				push @{$log_files_ref}, LOG_DIR . "/$$.$record_id.$procedure_name.log";
 			}
 
-			my $thd = threads->create({'context' => 'list'}, \&run_command,
-				$procedure_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode);
+			if ($can_use_threads) {
+				my $thd = threads->create({'context' => 'list'}, \&run_command,
+					$procedure_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode);
 
-			if ($in_parallel) {
-				push @thread_list, $thd;
+				if ($in_parallel) {
+					push @thread_list, $thd;
+				} else {
+					my @return_list = $thd->join();
+					$return_value = shift @return_list;
+					push @{$log_files_ref}, @return_list;
+				}
 			} else {
-				my @return_list = $thd->join();
+				my @return_list = run_command(
+					$procedure_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode);
 				$return_value = shift @return_list;
 				push @{$log_files_ref}, @return_list;
 			}
