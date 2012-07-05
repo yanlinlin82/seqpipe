@@ -724,7 +724,7 @@ function DNAseq_samtools_call_variants
 #[procedure output="${SAMPLE_NAME}_sv_INV.vcf"]
 #[procedure output="${SAMPLE_NAME}_sv_TD.vcf"]
 #[procedure require="${REFERENCE}"]
-function DNAseq_picard_call_structure_variants
+function DNAseq_pindel_call_structure_variants
 {
 	SP_run sort_bam \
 		VALIDATION_STRINGENCY=SILENT \
@@ -761,7 +761,7 @@ function DNAseq_analysis
 		REFERENCE=${REFERENCE} \
 		SAMPLE_NAME=${SAMPLE_NAME}
 
-	SP_run DNAseq_picard_call_structure_variants \
+	SP_run DNAseq_pindel_call_structure_variants \
 		REFERENCE=${REFERENCE} \
 		SAMPLE_NAME=${SAMPLE_NAME} \
 		INSERT_SIZE=${INSERT_SIZE}
