@@ -607,7 +607,7 @@ sub run_procedure
 	
 	my $start_time = time;
 	if (exists $need_record{$procedure{type}}) {
-		print LOG_FILE "[SeqPipe] [$call_depth] Procedure '$procedure_name' starts at " . time_string($start_time) . "\n";
+		print LOG_FILE "[SeqPipe] [$call_depth] Procedure($$.$record_id) '$procedure_name' starts at " . time_string($start_time) . "\n";
 	}
 
 	my $in_parallel = 0;
@@ -792,7 +792,7 @@ sub run_procedure
 	
 	if (exists $need_record{$procedure{type}}) {
 		my $end_time = time;
-		printf LOG_FILE "[SeqPipe] [$call_depth] Procedure '$procedure_name' ends at %s (elapsed: %s)\n",
+		printf LOG_FILE "[SeqPipe] [$call_depth] Procedure($$.$record_id) '$procedure_name' ends at %s (elapsed: %s)\n",
 			time_string($end_time), time_elapse_string($start_time, $end_time);
 	}
 	return $return_value;
