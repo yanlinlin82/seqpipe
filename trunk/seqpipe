@@ -371,11 +371,14 @@ sub load_module
 				}
 			}
 
+			my @procedure_inputs = @inputs;
+			my @procedure_outputs = @outputs;
+			my @procedure_requires = @requires;
 			$procedures{$procedure_name} = {
 				type              => $type,
-				inputs            => \@inputs,
-				outputs           => \@outputs,
-				requires          => \@requires,
+				inputs            => \@procedure_inputs,
+				outputs           => \@procedure_outputs,
+				requires          => \@procedure_requires,
 				commands          => \@commands,
 				defined_variables => \%defined_variables,
 				eval_variables    => \%eval_variables,
@@ -445,19 +448,18 @@ sub list_procedures
 
 sub run_command
 {
-	my ($procedure_name, $procedure_type, $command, $record_id, $outputs_ref, $is_test_mode) = @_;
+	my ($procedure_name, $procedure_type, $command, $record_id, $outputs_ref, $is_test_mode, $call_depth) = @_;
 
 	my $return_value = 0;
 	my @log_files = ();
+	my @pipe_structure = ();
 
 	if ($command =~ /^SP_run\s+(\w+)/) {
 		my @procedure_options = bash_line_decode($command);
 		shift @procedure_options;
 		my $procedure_name = shift @procedure_options;
-		
-		print LOG_FILE "[SeqPipe] Run procedure: $procedure_name\n" if (exists $need_record{$procedure_type});
 
-		$return_value = run_procedure($procedure_name, \@procedure_options, $is_test_mode, \@log_files);
+		$return_value = run_procedure($procedure_name, \@procedure_options, $is_test_mode, \@log_files, $call_depth, \@pipe_structure);
 	} else {
 		my $command_with_log = '';
 		if ($procedure_type eq 'sysinfo') {
@@ -470,31 +472,34 @@ sub run_command
 				. "2>>" . LOG_DIR . "/$$.$record_id.$procedure_name.err";
 
 			push @log_files, LOG_DIR . "/$$.$record_id.$procedure_name.log";
+			my $depth_text = '';
+			for my $i (1 .. $call_depth) { $depth_text .= '   '; }
+			push @pipe_structure, $depth_text . "($record_id) " . $command;
 
 			open FILE, ">>" . LOG_DIR . "/$$.$record_id.$procedure_name.cmd";
-			printf FILE "$command\n";
+			print FILE "$command\n";
 			close FILE;
 		}
 		
 		my $start_time = time;
 		if (exists $need_record{$procedure_type}) {
-			print LOG_FILE "[SeqPipe] Command($$:$record_id): $command\n";
-			printf LOG_FILE "[SeqPipe] Command($$:$record_id) starts at %s\n", time_string($start_time);
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id): $command\n";
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts at " . time_string($start_time) . "\n";
 		}
 		
 		if (not open BASH, "| /bin/bash") {
-			print LOG_FILE "Can not launch command(s): $command\n";
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed!\n";
 			exit 1;
 		}
 		print BASH $command_with_log;
 		close BASH;
 
 		if ($? == -1) {
-			print LOG_FILE "[SeqPipe] Command($$:$record_id) starts failed!\n";
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed!\n";
 			close LOG_FILE;
 			exit 1;
 		} elsif ($? & 127) {
-			print LOG_FILE "[SeqPipe] Command($$:$record_id) starts failed! Child died with signal %d, %s coredump\n",
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed! Child died with signal %d, %s coredump\n",
 				($? & 127), ($? & 128) ? 'with' : 'without';
 			close LOG_FILE;
 			exit 1;
@@ -504,7 +509,7 @@ sub run_command
 
 		if (exists $need_record{$procedure_type}) {
 			my $end_time = time;
-			printf LOG_FILE "[SeqPipe] Command($$:$record_id) ends at %s (elapsed: %s)\n",
+			printf LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) ends at %s (elapsed: %s)\n",
 				time_string($end_time), time_elapse_string($start_time, $end_time);
 		}
 	}
@@ -513,19 +518,19 @@ sub run_command
 		foreach my $output_file (@{$outputs_ref}) {
 			if (-e $output_file) {
 				if ($verbose) {
-					print LOG_FILE "[SeqPipe] Remove bad output file '$output_file'!\n";
+					print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) removes bad output file '$output_file'!\n";
 				}
 				unlink $output_file;
 			}
 		}
-		print LOG_FILE "[SeqPipe] Command($$:$record_id) returns $return_value\n";
+		print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) returns $return_value\n";
 	}
-	return ( $return_value, @log_files );
+	return ( $return_value, \@log_files, \@pipe_structure );
 }
 
 sub run_procedure
 {
-	my ($procedure_name, $argv_ref, $is_test_mode, $log_files_ref) = @_;
+	my ($procedure_name, $argv_ref, $is_test_mode, $log_files_ref, $call_depth, $pipe_structure_ref) = @_;
 	my $return_value = 0;
 
 	if (not exists $procedures{$procedure_name}) {
@@ -579,8 +584,30 @@ sub run_procedure
 		\@{$procedure{inputs}}, \@{$procedure{outputs}}, \@{$procedure{requires}});
 
 	if (not $is_test_mode and not $need_rerun) {
-		print LOG_FILE "[SeqPipe] Skip procedure '$procedure_name'\n";
+		print LOG_FILE "[SeqPipe] [$call_depth] Skip procedure '$procedure_name'\n";
 		return 0;
+	}
+
+	my $record_id = 0;
+	my $depth_text = '';
+	if (exists $need_record{$procedure{type}}) {
+		{
+			lock($run_counter);
+			$run_counter += 1;
+			$record_id = $run_counter;
+		}
+		open FILE, ">>" . LOG_DIR . "/$$.$record_id.$procedure_name.pipe";
+		print FILE bash_line_encode("SP_run", $procedure_name, @{$argv_ref}) . "\n";
+		close FILE;
+	
+		foreach my $i (1 .. $call_depth) { $depth_text .= '   '; }
+		push @{$pipe_structure_ref}, $depth_text . "($record_id) " . bash_line_encode("SP_run", $procedure_name, @{$argv_ref});
+		$depth_text .= '   ';
+	}
+	
+	my $start_time = time;
+	if (exists $need_record{$procedure{type}}) {
+		print LOG_FILE "[SeqPipe] [$call_depth] Procedure '$procedure_name' starts at " . time_string($start_time) . "\n";
 	}
 
 	my $in_parallel = 0;
@@ -632,7 +659,7 @@ sub run_procedure
 		if (not $is_test_mode) {
 			if (not check_inputs_outputs_requires($procedure_name, \%variables,
 				\@{$inputs_ref}, \@{$outputs_ref}, \@{$requires_ref})) {
-				print LOG_FILE "[SeqPipe] Skip command: $command\n";
+				print LOG_FILE "[SeqPipe] [$call_depth] Skip command: $command\n";
 				next;
 			}
 		}
@@ -668,7 +695,8 @@ sub run_procedure
 			if (scalar @procedure_options > 0) {
 				my $procedure_name = shift @procedure_options;
 				my @log_files = ();
-				my $value = run_procedure($procedure_name, \@procedure_options, 0, \@log_files);
+				my @pipe_structure = ();
+				my $value = run_procedure($procedure_name, \@procedure_options, 0, \@log_files, $call_depth + 1, \@pipe_structure);
 				next if ($cmd eq 'SP_set' and $value ne 0);
 				if ($cmd eq 'SP_eval') {
 					print "Info: Load log files for SP_eval: ", join(", ", @log_files), "\n" if $verbose;
@@ -698,7 +726,7 @@ sub run_procedure
 				my @procedure_options = bash_line_decode($command);
 				shift @procedure_options;
 				my $procedure_name = shift @procedure_options;
-				run_procedure($procedure_name, \@procedure_options, $is_test_mode, $log_files_ref);
+				run_procedure($procedure_name, \@procedure_options, $is_test_mode, $log_files_ref, $call_depth + 1, $pipe_structure_ref);
 			} elsif ($command eq 'SP_parallel_begin' or $command eq 'SP_parallel_end') {
 				print STDOUT "#$command\n" if $verbose;
 			} else {
@@ -711,6 +739,7 @@ sub run_procedure
 			if ($command eq 'SP_parallel_begin') {
 				die "Error: Already in parallel mode, duplicated '$command'!" if $in_parallel;
 				$in_parallel = 1;
+				push @{$pipe_structure_ref}, $depth_text . ">>>>>";
 				next;
 			}
 			if ($command eq 'SP_parallel_end') {
@@ -718,10 +747,14 @@ sub run_procedure
 				$in_parallel = 0;
 				if (scalar @thread_list > 0) {
 					foreach my $thd (@thread_list) {
-						$thd->join();
+						my ($return_log_files_ref, $return_pipe_structure_ref);
+						($return_value, $return_log_files_ref, $return_pipe_structure_ref) = $thd->join();
+						push @{$log_files_ref}, @{$return_log_files_ref};
+						push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 					}
 					@thread_list = ();
 				}
+				push @{$pipe_structure_ref}, $depth_text . "<<<<<";
 				next;
 			}
 
@@ -737,22 +770,30 @@ sub run_procedure
 
 			if ($can_use_threads) {
 				my $thd = threads->create({'context' => 'list'}, \&run_command,
-					$procedure_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode);
+					$procedure_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode, $call_depth + 1);
 
 				if ($in_parallel) {
 					push @thread_list, $thd;
 				} else {
-					my @return_list = $thd->join();
-					$return_value = shift @return_list;
-					push @{$log_files_ref}, @return_list;
+					my ($return_log_files_ref, $return_pipe_structure_ref);
+					($return_value, $return_log_files_ref, $return_pipe_structure_ref) = $thd->join();
+					push @{$log_files_ref}, @{$return_log_files_ref};
+					push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 				}
 			} else {
-				my @return_list = run_command(
-					$procedure_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode);
-				$return_value = shift @return_list;
-				push @{$log_files_ref}, @return_list;
+				my ($return_log_files_ref, $return_pipe_structure_ref);
+				($return_value, $return_log_files_ref, $return_pipe_structure_ref) = run_command(
+					$procedure_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode, $call_depth + 1);
+				push @{$log_files_ref}, @{$return_log_files_ref};
+				push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 			}
 		}
+	}
+	
+	if (exists $need_record{$procedure{type}}) {
+		my $end_time = time;
+		printf LOG_FILE "[SeqPipe] [$call_depth] Procedure '$procedure_name' ends at %s (elapsed: %s)\n",
+			time_string($end_time), time_elapse_string($start_time, $end_time);
 	}
 	return $return_value;
 }
@@ -884,32 +925,35 @@ open LOG_FILE, ">>" . LOG_DIR . "/history.log";
 printf LOG_FILE "%d\t%s\n", $$, $command_line;
 close LOG_FILE;
 
-my $start_time = time;
 if ($test_mode) {
 	open LOG_FILE, ">/dev/stderr";
 } else {
 	open LOG_FILE, "| tee -ai " . LOG_DIR . "/$$.log";
 
-	printf LOG_FILE "[SeqPipe] Pipeline($$): $command_line\n";
-	printf LOG_FILE "[SeqPipe] Pipeline($$) starts at %s\n", time_string($start_time);
+	printf LOG_FILE "[SeqPipe] Top Command($$): $command_line\n";
 
 	foreach my $sysinfo_procedure_name (keys %procedures) {
 		if ($procedures{$sysinfo_procedure_name}{type} eq 'sysinfo') {
 			my @args = ();
 			my @log_files = ();
-			run_procedure $sysinfo_procedure_name, \@args, 0, \@log_files;
+			my @pipe_struct = ();
+			run_procedure $sysinfo_procedure_name, \@args, 0, \@log_files, 0, \@pipe_struct;
 		}
 	}
 }
 
 my @log_files = ();
-my $return_value = run_procedure($procedure_name, \@argv, $test_mode, \@log_files);
+my @pipe_structure = ();
+my $return_value = run_procedure($procedure_name, \@argv, $test_mode, \@log_files, 0, \@pipe_structure);
+
+close LOG_FILE;
 
 if (not $test_mode) {
-	my $end_time = time;
-	printf LOG_FILE "[SeqPipe] Pipeline($$) ends at %s (elapsed: %s)\n",
-		time_string($end_time), time_elapse_string($start_time, $end_time);
+	open LOG_FILE, ">>" . LOG_DIR . "/$$.cmd";
+	foreach my $text (@pipe_structure) {
+		print LOG_FILE "$text\n";
+	}
+	close LOG_FILE;
 }
-close LOG_FILE;
 
 exit $return_value;
