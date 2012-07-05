@@ -6,9 +6,8 @@ use File::stat;
 use Cwd 'abs_path';
 
 my $can_use_threads = eval 'use threads; use threads::shared; 1';
-if (not $can_use_threads) {
+if (not $can_use_threads and not eval 'use forks;') {
 	print STDERR "Warning: Your Perl does not support threads! Parallel mode is disabled.\n";
-	use forks;
 }
 
 use constant LOG_DIR => './.seqpipe';
