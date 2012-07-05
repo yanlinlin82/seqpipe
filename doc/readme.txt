@@ -13,6 +13,7 @@ Table of Content
 2. Directories & Files
 3. Demo Pipeline
 4. Others
+5. Problems
 
 ---------------------------------------------------------------------------
 
@@ -71,3 +72,11 @@ function foo
 	wc ${TMP_FILE}
 	rm ${TMP_FILE}
 }
+
+---------------------------------------------------------------------------
+
+5. Problems
+
+   If your perl does not support threads, and you do not want to re-install
+perl, you may use 'forks' packages instead.
+
