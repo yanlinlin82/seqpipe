@@ -229,14 +229,14 @@ sub append_command
 
 	if ($command =~ /^SP_set/) {
 		my @args = bash_line_decode($command);
-		die 'Invalid option for SP_set!' if ($args[0] ne 'SP_set' or $args[1] !~ /^(\w+)=(.*?)$/);
+		die 'Error: Invalid option for SP_set!' if ($args[0] ne 'SP_set' or $args[1] !~ /^(\w+)=(.*?)$/);
 		if (not exists ${$defined_variables_ref}{$1}) {
 			${$defined_variables_ref}{$1} = $2;
 		}
 	} elsif ($command =~ /^SP_eval/) {
 		my @args = bash_line_decode($command);
-		die 'Invalid option for SP_eval!' if ($args[0] ne 'SP_eval' or $args[1] !~ /^(\w+)$/);
-		die "Unknown procedure '$args[2]' for SP_eval!" unless (exists $procedures{$args[2]});
+		die 'Error: Invalid option for SP_eval!' if ($args[0] ne 'SP_eval' or $args[1] !~ /^(\w+)$/);
+		die "Error: Unknown procedure '$args[2]' for SP_eval!" unless (exists $procedures{$args[2]});
 		if (not exists ${$eval_variables_ref}{$args[1]}) {
 			${$eval_variables_ref}{$args[1]} = '';
 		}
@@ -255,7 +255,7 @@ sub load_module
 	my ($module_file) = @_;
 	my $line;
 
-	open MODULE_FILE, $module_file or die "Can not open module file '$module_file'!";
+	open MODULE_FILE, $module_file or die "Error: Can not open module file '$module_file'!";
 	print STDERR "Load module file '$module_file'\n" if ($verbose and not $test_mode);
 
 	my $type = '';
@@ -267,11 +267,11 @@ sub load_module
 
 		if ($line =~ /^#\[procedure/) {
 			if ($line !~ /^#\[procedure(\s+(type|input|output|require)="(.*?)")+\s*\]$/) {
-				die "Bad format of procedure attribute declaration!";
+				die "Error: Bad format of procedure attribute declaration!";
 			}
 			while ($line =~ /\s+(type|input|output|require)="(.*?)"/g) {
 				if ($1 eq 'type') {
-					die "Duplicated procedure type declaration!" if $type ne '';
+					die "Error: Duplicated procedure type declaration!" if $type ne '';
 					$type = $2;
 					if (not exists $valid_procedure_type{$type}) {
 						die "Error: Unknown type of procedure: '$type'!";
@@ -286,7 +286,7 @@ sub load_module
 				next;
 			}
 		} elsif ($line =~ /^\s*function\s+/) {
-			die "Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
+			die "Error: Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
 
 			# Ignore functions that are not 'procedure'.
 			if ($type eq '') {
@@ -313,7 +313,7 @@ sub load_module
 			$line = <MODULE_FILE>;
 			chomp $line;
 			if ($line !~ /^{\s*$/) {
-				die "Invalid procedure declaration! Line '{' expected!";
+				die "Error: Invalid procedure declaration! Line '{' expected!";
 			}
 			my $last_line = '';
 			my @command_inputs = ();
@@ -323,7 +323,7 @@ sub load_module
 				chomp $line;
 				if ($line =~ /^}\s*$/) {
 					if ($last_line ne '') {
-						die "Invalid procedure declaration! Last command line not finished!";
+						die "Error: Invalid procedure declaration! Last command line not finished!";
 					}
 					last;
 				}
@@ -359,7 +359,7 @@ sub load_module
 				}
 			}
 			if ($line !~ /^}\s*$/) {
-				die "Invalid procedure declaration! Line '}' expected!";
+				die "Error: Invalid procedure declaration! Line '}' expected!";
 			}
 
 			foreach my $variable (@inputs, @outputs, @requires) {
@@ -394,7 +394,7 @@ sub load_module
 			if (exists $global_variables{$option_name}) {
 				print STDERR "Warning: Reassignment of global variable '$option_name'\n"
 					if $verbose or not $enable_duplicate;
-				die "You may use '-d' option to enable the duplicated global variable declaration."
+				die "Error: You may use '-d' option to enable the duplicated global variable declaration."
 					unless $enable_duplicate;
 			}
 			while ($option_value =~ /\${(\w+)}/g) {
@@ -709,12 +709,12 @@ sub run_procedure
 			}
 		} else {
 			if ($command eq 'SP_parallel_begin') {
-				die "Already in parallel mode, duplicated '$command'!" if $in_parallel;
+				die "Error: Already in parallel mode, duplicated '$command'!" if $in_parallel;
 				$in_parallel = 1;
 				next;
 			}
 			if ($command eq 'SP_parallel_end') {
-				die "Not in parallel mode, unexpected '$command'!" unless $in_parallel;
+				die "Error: Not in parallel mode, unexpected '$command'!" unless $in_parallel;
 				$in_parallel = 0;
 				if (scalar @thread_list > 0) {
 					foreach my $thd (@thread_list) {
@@ -878,6 +878,7 @@ if ($help_mode) {
 }
 
 system "mkdir", "-p", LOG_DIR unless -d LOG_DIR;
+die "Error: Can not initialize .seqpipe directory!" unless -d LOG_DIR;
 
 open LOG_FILE, ">>" . LOG_DIR . "/history.log";
 printf LOG_FILE "%d\t%s\n", $$, $command_line;
