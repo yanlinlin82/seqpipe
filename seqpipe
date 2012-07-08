@@ -116,17 +116,6 @@ sub check_inputs_outputs_requires
 	return 0;
 }
 
-sub fetch_one_char {
-	my ($line_ref) = @_;
-	if (${$line_ref} eq '') {
-		print LOG_FILE "Error: Unexpected EOL in command!\n";
-		exit 1;
-	}
-	my $c = substr(${$line_ref}, 0, 1);
-	${$line_ref} = substr(${$line_ref}, 1);
-	return $c;
-}
-
 sub bash_line_encode {
 	my @argv = @_;
 	foreach my $arg (@argv) {
@@ -148,47 +137,29 @@ sub bash_line_encode {
 
 sub bash_line_decode {
 	my ($line) = @_;
-	my $i = 0;
 	my @argv = ();
-	my $arg = '';
-	
-	while ($line ne '') {
-		my $c = fetch_one_char(\$line);
-		if ($c eq '#') {
-			last if $arg eq '';
-			$arg .= $c;
-		} elsif ($c =~ /\s/) {
-			push @argv, $arg if ($arg ne '');
-			$arg = '';
-		} elsif ($c eq ';') {
-			push @argv, $arg if ($arg ne '');
-			push @argv, ';';
-			$arg = '';
-		} elsif ($c eq '\\') {
-			$c = fetch_one_char(\$line);
-			$arg .= $c;
-		} elsif ($c eq "'" or $c eq '"') {
-			my $quot = $c;
-			do {
-				$c = fetch_one_char(\$line);
-				if ($c ne $quot) {
-					if ($c eq '\\') {
-						$c = fetch_one_char(\$line);
-						if ($c eq $quot) {
-							$arg .= $quot;
-							$c = '';
-						} elsif ($quot eq "'" or ($c ne '$' and $c ne '\\')) {
-							$arg .= '\\';
-						}
-					}
-					$arg .= $c;
-				}
-			} while $c ne $quot;
-		} else {
-			$arg .= $c;
-		}
+
+	die "Bad bash line!" if ($line !~ /^((("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)(\s|$))*/);
+
+	while ($line =~ /(("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)/g) {
+		push @argv, $1;
 	}
-	push @argv, $arg if $arg ne '';
+	foreach my $arg (@argv) {
+		my $result = '';
+		while ($arg =~ /("((\\.|[^"])*)"|'([^']*)'|([^\s'"]+))/g) {
+			my $part = '';
+			if (defined $2) {
+				$part = $2;
+				$part =~ s/\\(.)/$1/g;
+			} elsif (defined $4) {
+				$part = $4;
+			} elsif (defined $5) {
+				$part = $5;
+			}
+			$result .= $part;
+		}
+		$arg = $result;
+	}
 	return @argv;
 }
 
