@@ -372,13 +372,16 @@ sub load_module
 					unless $enable_duplicate;
 			}
 			while ($option_value =~ /\${(\w+)}/g) {
-				if (exists $global_variables{$option_name}) {
-					$option_value =~ s/\${$option_name}/$global_variables{$option_name}/g;
+				my $name = $1;
+				if (exists $global_variables{$name}) {
+					$option_value =~ s/\${$name}/$global_variables{$name}/g;
 				} else {
-					$option_value =~ s/\${$option_name}//g;
+					$option_value =~ s/\${$name}//g;
 				}
 			}
 			$global_variables{$option_name} = $option_value;
+
+			print "$option_name=$option_value\n" if $verbose;
 		}
 	}
 	close MODULE_FILE;
