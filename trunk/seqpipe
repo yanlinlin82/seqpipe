@@ -139,11 +139,18 @@ sub bash_line_decode {
 	my ($line) = @_;
 	my @argv = ();
 
-	die "Bad bash line!" if ($line !~ /^((("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)(\s|$))*/);
+	# Remove leading whitespace and tailing comments.
+	$line =~ s/^\s*(((("\\.|[^"]*"|'[^']*'|[^\s'"#]+)+)(\s+|$))*)(#.*|)$/$1/;
+	
+	# Checking format.
+	die "Bad bash line!" if ($line !~ /^((("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)(\s+|$))*/);
 
+	# Split bash command line to @argv.
 	while ($line =~ /(("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)/g) {
 		push @argv, $1;
 	}
+
+	# Process quot strings.
 	foreach my $arg (@argv) {
 		my $result = '';
 		while ($arg =~ /("((\\.|[^"])*)"|'([^']*)'|([^\s'"]+))/g) {
