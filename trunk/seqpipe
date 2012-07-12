@@ -565,7 +565,7 @@ sub run_procedure
 		\@{$procedure{inputs}}, \@{$procedure{outputs}}, \@{$procedure{requires}});
 
 	if (not $is_test_mode and not $need_rerun) {
-		print LOG_FILE "[SeqPipe] [$call_depth] Skip procedure '$procedure_name'\n";
+		print LOG_FILE "[SeqPipe] [$call_depth] Skip procedure '$procedure_name' (" . bash_line_encode(@{$argv_ref}) . ")\n";
 		return 0;
 	}
 
