@@ -173,7 +173,7 @@ function if_fasta_is_long_genome
 function if_fastq_is_base_33
 {
 	# Pick up first ten reads's quality to see if it contains number.
-	test -n "$(less ${INPUT_FASTQ} | sed -n '4~4p' | head | grep '[0-9]')"
+	test -n "$(less ${INPUT_FASTQ} | sed -n '4~4p' | head -n1000 | grep '[0-9]')"
 }
 
 #[procedure type="checker"]
@@ -181,7 +181,7 @@ function if_fastq_is_base_33
 function if_fastq_is_not_base_33
 {
 	# Pick up first ten reads's quality to see if it contains number.
-	test -z "$(less ${INPUT_FASTQ} | sed -n '4~4p' | head | grep '[0-9]')"
+	test -z "$(less ${INPUT_FASTQ} | sed -n '4~4p' | head -n1000 | grep '[0-9]')"
 }
 
 ###########################################################################
@@ -234,13 +234,53 @@ function bwa_read_mapping
 	#[command input="${FASTQ_2}" input="${FASTQ_2}.sai"]
 	#[command require="${REFERENCE}"]
 	#[command output="${OUTPUT_BAM}"]
-	bwa sampe -P ${REFERENCE} -a ${INSERT_SIZE} \
+	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
 		${FASTQ_1}.sai ${FASTQ_2}.sai ${FASTQ_1} ${FASTQ_2} ${BWA_SAMPE_OPTS} \
 		| samtools view -Sb - \
 		> ${OUTPUT_BAM}
 
 	#[command require="${OUTPUT_BAM}"]
 	rm -f ${FASTQ_1}.sai ${FASTQ_2}.sai
+}
+
+#[procedure type="stage"]
+#[procedure input="${FASTQ_1}.bz2" input="${FASTQ_2}.bz2" output="${OUTPUT_BAM}"]
+#[procedure require="${REFERENCE}"]
+function bwa_read_mapping_bz2
+{
+	SP_set BWA_ALN_OPTS="${BWA_ALN_OPTS}"
+	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${FASTQ_1}.bz2"
+	SP_set BWA_SAMPE_OPTS="${BWA_SAMPE_OPTS}"
+	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
+	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
+
+	# This will be skipped if the index files exist.
+	SP_run bwa_build_index REFERENCE="${REFERENCE}"
+
+	SP_parallel_begin
+	
+	#[command input="${FASTQ_1}.bz2" output="${FASTQ_1}.bz2.sai" require="${REFERENCE}"]
+	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${REFERENCE} <(bzcat ${FASTQ_1}.bz2) -f ${FASTQ_1}.bz2.sai ${BWA_ALN_OPTS}
+	
+	#[command input="${FASTQ_2}.bz2" output="${FASTQ_2}.bz2.sai" require="${REFERENCE}"]
+	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${REFERENCE} <(bzcat ${FASTQ_2}.bz2) -f ${FASTQ_2}.bz2.sai ${BWA_ALN_OPTS}
+	
+	SP_parallel_end
+
+	#[command input="${FASTQ_1}.bz2" input="${FASTQ_1}.bz2.sai"]
+	#[command input="${FASTQ_2}.bz2" input="${FASTQ_2}.bz2.sai"]
+	#[command require="${REFERENCE}"]
+	#[command output="${OUTPUT_BAM}"]
+	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
+		${FASTQ_1}.bz2.sai ${FASTQ_2}.bz2.sai \
+		<(bzcat ${FASTQ_1}.bz2) <(bzcat ${FASTQ_2}.bz2) ${BWA_SAMPE_OPTS} \
+		| samtools view -Sb - \
+		> ${OUTPUT_BAM}
+
+	#[command require="${OUTPUT_BAM}"]
+	rm -f ${FASTQ_1}.bz2.sai ${FASTQ_2}.bz2.sai
 }
 
 #[procedure type="stage"]
@@ -760,7 +800,7 @@ function DNAseq_analysis
 	SP_run bwa_read_mapping \
 		REFERENCE="${REFERENCE}" \
 		FASTQ_1="${FASTQ_1}" FASTQ_2="${FASTQ_2}" \
-		INSERT_SIZE="${INSERT_SIZE}" \
+		MAX_INSERT_SIZE="${MAX_INSERT_SIZE}" \
 		OUTPUT_BAM="${SAMPLE_NAME}.bam"
 
 	SP_parallel_begin
