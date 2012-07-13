@@ -388,11 +388,14 @@ function select_unique_hit_reads
 #[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
 function mark_duplicate_reads
 {
+	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+
 	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}" output="${OUTPUT_BAM}.metrics"]
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
 		-jar ${PICARD_ROOT}/MarkDuplicates.jar \
 		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
 		TMP_DIR=${TMP_DIR} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=false \
 		CREATE_MD5_FILE=false \
@@ -446,12 +449,14 @@ function picard_add_or_replace_read_group
 	SP_set DESCRIPTION="${DESCRIPTION}"
 	SP_set PICARD_OPTS="${PICARD_OPTS}"
 	SP_set PICARD_OPTS="${PICARD_OPTS} RGDS=\"${DESCRIPTION}\"" if_has_arg ARG="${DESCRIPTION}"
+	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
 
 	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
 		-jar ${PICARD_ROOT}/AddOrReplaceReadGroups.jar \
 		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
 		TMP_DIR=${TMP_DIR} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=false \
 		CREATE_MD5_FILE=false \
@@ -501,11 +506,14 @@ function gatk_indel_realign
 	#[command require="${INPUT_BAM}.realign"]
 	rm -f ${INPUT_BAM}.intervals
 	
+	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+
 	#[command input="${INPUT_BAM}.realign" output="${INPUT_BAM}.realign.fixmate"]
 	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
 		-jar ${PICARD_ROOT}/FixMateInformation.jar \
 		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
 		TMP_DIR=${TMP_DIR} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=false \
 		CREATE_MD5_FILE=false \
