@@ -214,6 +214,11 @@ function bwa_read_mapping
 	SP_set BWA_SAMPE_OPTS="${BWA_SAMPE_OPTS}"
 	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
 	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
+	SP_set RGID="1" if_no_arg ARG="${RGID}"
+	SP_set SAMPLE_NAME="${RGID}" if_no_arg ARG="${SAMPLE_NAME}"
+	SP_set RGLB="${RGID}" if_no_arg ARG="${RGLB}"
+	SP_set RGPL="illumina" if_no_arg ARG="${RGPL}"
+	SP_set RGCN="BGI" if_no_arg ARG="${RGCN}"
 
 	# This will be skipped if the index files exist.
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
@@ -235,6 +240,7 @@ function bwa_read_mapping
 	#[command require="${REFERENCE}"]
 	#[command output="${OUTPUT_BAM}"]
 	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
+		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
 		${FASTQ_1}.sai ${FASTQ_2}.sai ${FASTQ_1} ${FASTQ_2} ${BWA_SAMPE_OPTS} \
 		| samtools view -Sb - \
 		> ${OUTPUT_BAM}
@@ -253,6 +259,11 @@ function bwa_read_mapping_bz2
 	SP_set BWA_SAMPE_OPTS="${BWA_SAMPE_OPTS}"
 	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
 	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
+	SP_set RGID="1" if_no_arg ARG="${RGID}"
+	SP_set SAMPLE_NAME="${RGID}" if_no_arg ARG="${SAMPLE_NAME}"
+	SP_set RGLB="${RGID}" if_no_arg ARG="${RGLB}"
+	SP_set RGPL="illumina" if_no_arg ARG="${RGPL}"
+	SP_set RGCN="BGI" if_no_arg ARG="${RGCN}"
 
 	# This will be skipped if the index files exist.
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
@@ -274,6 +285,7 @@ function bwa_read_mapping_bz2
 	#[command require="${REFERENCE}"]
 	#[command output="${OUTPUT_BAM}"]
 	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
+		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
 		${FASTQ_1}.bz2.sai ${FASTQ_2}.bz2.sai \
 		<(bzcat ${FASTQ_1}.bz2) <(bzcat ${FASTQ_2}.bz2) ${BWA_SAMPE_OPTS} \
 		| samtools view -Sb - \
@@ -293,6 +305,11 @@ function bwa_read_mapping_se
 	SP_set BWA_SAMSE_OPTS="${BWA_SAMSE_OPTS}"
 	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
 	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
+	SP_set RGID="1" if_no_arg ARG="${RGID}"
+	SP_set SAMPLE_NAME="${RGID}" if_no_arg ARG="${SAMPLE_NAME}"
+	SP_set RGLB="${RGID}" if_no_arg ARG="${RGLB}"
+	SP_set RGPL="illumina" if_no_arg ARG="${RGPL}"
+	SP_set RGCN="BGI" if_no_arg ARG="${RGCN}"
 
 	# This will be skipped if the index files exist.
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
@@ -305,7 +322,9 @@ function bwa_read_mapping_se
 	#[command input="${INPUT_FASTQ}" input="${INPUT_FASTQ}.sai"]
 	#[command require="${REFERENCE}"]
 	#[command output="${OUTPUT_BAM}"]
-	bwa samse ${REFERENCE} ${INPUT_FASTQ}.sai ${INPUT_FASTQ} ${BWA_SAMSE_OPTS} \
+	bwa samse \
+		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
+		${REFERENCE} ${INPUT_FASTQ}.sai ${INPUT_FASTQ} ${BWA_SAMSE_OPTS} \
 		| samtools view -Sb - \
 		> ${OUTPUT_BAM}
 
