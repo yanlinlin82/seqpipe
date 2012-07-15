@@ -426,6 +426,30 @@ function sort_bam
 }
 
 #[procedure type="stage"]
+#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
+#[procedure require="${REFERENCE}"]
+function reorder_bam
+{
+	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+
+	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-jar ${PICARD_ROOT}/ReorderSam.jar \
+		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
+		TMP_DIR=${TMP_DIR} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 \
+		CREATE_INDEX=false \
+		CREATE_MD5_FILE=false \
+		INPUT=${INPUT_BAM} \
+		OUTPUT=${OUTPUT_BAM} \
+		REFERENCE=${REFERENCE}
+
+	#[command input="${OUTPUT_BAM}" output="${OUTPUT_BAM}.bai"]
+	samtools index ${OUTPUT_BAM}
+}
+
+#[procedure type="stage"]
 #[procedure input="${INPUT_BAM}" output="${OUTPUT_FLAGSTAT_BZ2}"]
 function flagstat_bam
 {
