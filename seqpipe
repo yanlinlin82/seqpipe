@@ -232,166 +232,177 @@ sub load_module
 {
 	my ($module_file) = @_;
 	my $line;
+	my @file_handles = ();
 
 	open MODULE_FILE, $module_file or die "Error: Can not open module file '$module_file'!";
 	print STDERR "Load module file '$module_file'\n" if ($verbose and not $test_mode);
+	unshift @file_handles, *MODULE_FILE;
 
 	my $type = '';
 	my @inputs = ();
 	my @outputs = ();
 	my @requires = ();
-	while ($line = <MODULE_FILE>) {
-		chomp $line;
-
-		if ($line =~ /^#\[procedure/) {
-			if ($line !~ /^#\[procedure(\s+(type|input|output|require)="(.*?)")+\s*\]$/) {
-				die "Error: Bad format of procedure attribute declaration!";
-			}
-			while ($line =~ /\s+(type|input|output|require)="(.*?)"/g) {
-				if ($1 eq 'type') {
-					die "Error: Duplicated procedure type declaration!" if $type ne '';
-					$type = $2;
-					if (not exists $valid_procedure_type{$type}) {
-						die "Error: Unknown type of procedure: '$type'!";
-					}
-				} elsif ($1 eq "input") {
-					push @inputs, $2;
-				} elsif ($1 eq "output") {
-					push @outputs, $2;
-				} elsif ($1 eq "require") {
-					push @requires, $2;
-				}
-				next;
-			}
-		} elsif ($line =~ /^\s*function\s+/) {
-			die "Error: Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
-
-			# Ignore functions that are not 'procedure'.
-			if ($type eq '') {
-				while ($line = <MODULE_FILE>) {
-					chomp $line;
-					last if $line eq "}";
-				}
-				next;
-			}
-
-			my $procedure_name = $1;
-			my @commands = ();
-			my %defined_variables = ();
-			my %eval_variables = ();
-			my %used_variables = ();
-
-			if (exists $procedures{$procedure_name}) {
-				print STDERR "Warning: Redeclaration of procedure '$procedure_name'\n"
-					if $verbose or not $enable_duplicate;
-				die "You may use '-d' option to enable the duplicated procedure declaration."
-					unless $enable_duplicate;
-			}
-
-			$line = <MODULE_FILE>;
+	while (scalar @file_handles > 0) {
+		my $file_handle = $file_handles[0];
+		while ($line = <$file_handle>) {
 			chomp $line;
-			if ($line !~ /^{\s*$/) {
-				die "Error: Invalid procedure declaration! Line '{' expected!";
-			}
-			my $last_line = '';
-			my @command_inputs = ();
-			my @command_outputs = ();
-			my @command_requires = ();
-			while ($line = <MODULE_FILE>) {
-				chomp $line;
-				if ($line =~ /^}\s*$/) {
-					if ($last_line ne '') {
-						die "Error: Invalid procedure declaration! Last command line not finished!";
+
+			if ($line =~ /^\.\s+(\S*)\s*$/) {
+				local *FILE;
+				open FILE, $1 or die "Warning: Can not open module file '$1'!\n";
+				unshift @file_handles, *FILE;
+				$file_handle = *FILE;
+			} elsif ($line =~ /^#\[procedure/) {
+				if ($line !~ /^#\[procedure(\s+(type|input|output|require)="(.*?)")+\s*\]$/) {
+					die "Error: Bad format of procedure attribute declaration!";
+				}
+				while ($line =~ /\s+(type|input|output|require)="(.*?)"/g) {
+					if ($1 eq 'type') {
+						die "Error: Duplicated procedure type declaration!" if $type ne '';
+						$type = $2;
+						if (not exists $valid_procedure_type{$type}) {
+							die "Error: Unknown type of procedure: '$type'!";
+						}
+					} elsif ($1 eq "input") {
+						push @inputs, $2;
+					} elsif ($1 eq "output") {
+						push @outputs, $2;
+					} elsif ($1 eq "require") {
+						push @requires, $2;
 					}
-					last;
+					next;
+				}
+			} elsif ($line =~ /^\s*function\s+/) {
+				die "Error: Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
+
+				# Ignore functions that are not 'procedure'.
+				if ($type eq '') {
+					while ($line = <$file_handle>) {
+						chomp $line;
+						last if $line eq "}";
+					}
+					next;
 				}
 
-				if ($last_line eq '') {
-					$line =~ s/^\s+//g;
-				} else {
-					my $b1 = $last_line =~ s/\s+$//g;
-					my $b2 = $line =~ s/^\s+//g;
-					$line = $last_line . (($b1 or $b2) ? ' ' : '') . $line;
-					$last_line = '';
+				my $procedure_name = $1;
+				my @commands = ();
+				my %defined_variables = ();
+				my %eval_variables = ();
+				my %used_variables = ();
+
+				if (exists $procedures{$procedure_name}) {
+					print STDERR "Warning: Redeclaration of procedure '$procedure_name'\n"
+						if $verbose or not $enable_duplicate;
+					die "You may use '-d' option to enable the duplicated procedure declaration."
+						unless $enable_duplicate;
 				}
 
-				if ($line =~ s/\\$//) {
-					$last_line = $line;
-				} elsif ($line =~ /^#\[command\s+(input|output|require)=.*\]$/) {
-					while ($line =~ /\s+(input|output|require)="(.*?)"/g) {
-						if ($1 eq "input") {
-							push @command_inputs, $2;
-						} elsif ($1 eq "output") {
-							push @command_outputs, $2;
-						} elsif ($1 eq "require") {
-							push @command_requires, $2;
+				$line = <$file_handle>;
+				chomp $line;
+				if ($line !~ /^{\s*$/) {
+					die "Error: Invalid procedure declaration! Line '{' expected!";
+				}
+				my $last_line = '';
+				my @command_inputs = ();
+				my @command_outputs = ();
+				my @command_requires = ();
+				while ($line = <$file_handle>) {
+					chomp $line;
+					if ($line =~ /^}\s*$/) {
+						if ($last_line ne '') {
+							die "Error: Invalid procedure declaration! Last command line not finished!";
+						}
+						last;
+					}
+
+					if ($last_line eq '') {
+						$line =~ s/^\s+//g;
+					} else {
+						my $b1 = $last_line =~ s/\s+$//g;
+						my $b2 = $line =~ s/^\s+//g;
+						$line = $last_line . (($b1 or $b2) ? ' ' : '') . $line;
+						$last_line = '';
+					}
+
+					if ($line =~ s/\\$//) {
+						$last_line = $line;
+					} elsif ($line =~ /^#\[command\s+(input|output|require)=.*\]$/) {
+						while ($line =~ /\s+(input|output|require)="(.*?)"/g) {
+							if ($1 eq "input") {
+								push @command_inputs, $2;
+							} elsif ($1 eq "output") {
+								push @command_outputs, $2;
+							} elsif ($1 eq "require") {
+								push @command_requires, $2;
+							}
+						}
+					} elsif ($line !~ /^\s*$/) {
+						append_command \@commands,
+							\%defined_variables, \%eval_variables, \%used_variables, $line,
+							\@command_inputs, \@command_outputs, \@command_requires;
+						@command_inputs = ();
+						@command_outputs = ();
+						@command_requires = ();
+					}
+				}
+				if ($line !~ /^}\s*$/) {
+					die "Error: Invalid procedure declaration! Line '}' expected!";
+				}
+
+				foreach my $variable (@inputs, @outputs, @requires) {
+					while ($variable =~ /\${(\w+)}/g) {
+						my $variable_name = $1;
+						if (not exists $used_variables{$variable_name}) {
+							$used_variables{$variable_name} = '';
 						}
 					}
-				} elsif ($line !~ /^\s*$/) {
-					append_command \@commands,
-						\%defined_variables, \%eval_variables, \%used_variables, $line,
-						\@command_inputs, \@command_outputs, \@command_requires;
-					@command_inputs = ();
-					@command_outputs = ();
-					@command_requires = ();
 				}
-			}
-			if ($line !~ /^}\s*$/) {
-				die "Error: Invalid procedure declaration! Line '}' expected!";
-			}
 
-			foreach my $variable (@inputs, @outputs, @requires) {
-				while ($variable =~ /\${(\w+)}/g) {
-					my $variable_name = $1;
-					if (not exists $used_variables{$variable_name}) {
-						$used_variables{$variable_name} = '';
+				my @procedure_inputs = @inputs;
+				my @procedure_outputs = @outputs;
+				my @procedure_requires = @requires;
+				$procedures{$procedure_name} = {
+					type              => $type,
+					inputs            => \@procedure_inputs,
+					outputs           => \@procedure_outputs,
+					requires          => \@procedure_requires,
+					commands          => \@commands,
+					defined_variables => \%defined_variables,
+					eval_variables    => \%eval_variables,
+					used_variables    => \%used_variables
+				};
+
+				$type = '';
+				@inputs = ();
+				@outputs = ();
+				@requires = ();
+			} elsif ($line =~ /^\s*(\w+)=(.*)$/) {
+				my $option_name = $1;
+				my $option_value = $2;
+				$option_value =~ s/\s+#.*$//g;      # Remove tailing comments and whitespaces.
+				$option_value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
+				if (exists $global_variables{$option_name}) {
+					print STDERR "Warning: Reassignment of global variable '$option_name'\n"
+						if $verbose or not $enable_duplicate;
+					die "Error: You may use '-d' option to enable the duplicated global variable declaration."
+						unless $enable_duplicate;
+				}
+				while ($option_value =~ /\${(\w+)}/g) {
+					my $name = $1;
+					if (exists $global_variables{$name}) {
+						$option_value =~ s/\${$name}/$global_variables{$name}/g;
+					} else {
+						$option_value =~ s/\${$name}//g;
 					}
 				}
-			}
+				$global_variables{$option_name} = $option_value;
 
-			my @procedure_inputs = @inputs;
-			my @procedure_outputs = @outputs;
-			my @procedure_requires = @requires;
-			$procedures{$procedure_name} = {
-				type              => $type,
-				inputs            => \@procedure_inputs,
-				outputs           => \@procedure_outputs,
-				requires          => \@procedure_requires,
-				commands          => \@commands,
-				defined_variables => \%defined_variables,
-				eval_variables    => \%eval_variables,
-				used_variables    => \%used_variables
-			};
-
-			$type = '';
-			@inputs = ();
-			@outputs = ();
-			@requires = ();
-		} elsif ($line =~ /^\s*(\w+)=(.*)$/) {
-			my $option_name = $1;
-			my $option_value = $2;
-			$option_value =~ s/\s+#.*$//g;      # Remove tailing comments and whitespaces.
-			$option_value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
-			if (exists $global_variables{$option_name}) {
-				print STDERR "Warning: Reassignment of global variable '$option_name'\n"
-					if $verbose or not $enable_duplicate;
-				die "Error: You may use '-d' option to enable the duplicated global variable declaration."
-					unless $enable_duplicate;
+				print "$option_name=$option_value\n" if $verbose;
 			}
-			while ($option_value =~ /\${(\w+)}/g) {
-				my $name = $1;
-				if (exists $global_variables{$name}) {
-					$option_value =~ s/\${$name}/$global_variables{$name}/g;
-				} else {
-					$option_value =~ s/\${$name}//g;
-				}
-			}
-			$global_variables{$option_name} = $option_value;
-
-			print "$option_name=$option_value\n" if $verbose;
 		}
+		close $file_handle;
+		shift @file_handles;
 	}
-	close MODULE_FILE;
 }
 
 sub print_usage
