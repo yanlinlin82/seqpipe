@@ -231,6 +231,7 @@ sub append_command
 sub load_module
 {
 	my ($module_file) = @_;
+	my $dir = dirname abs_path $module_file;
 	my $line;
 	my @file_handles = ();
 
@@ -249,7 +250,7 @@ sub load_module
 
 			if ($line =~ /^\.\s+(\S*)\s*$/) {
 				local *FILE;
-				open FILE, $1 or die "Warning: Can not open module file '$1'!\n";
+				open FILE, $dir . "/" . $1 or die "Warning: Can not open module file '$1'!\n";
 				unshift @file_handles, *FILE;
 				$file_handle = *FILE;
 			} elsif ($line =~ /^#\[procedure/) {
