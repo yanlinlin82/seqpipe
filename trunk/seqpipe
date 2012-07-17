@@ -28,6 +28,9 @@ my %global_variables = ( SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dir
 my $run_counter :shared;
 $run_counter = 0;
 
+my $exiting :shared;
+$exiting = 0;
+
 my @module_files = ( (dirname abs_path $0) . '/default.pipe' );
 my $command_line = join(' ', ($0, @ARGV));
 
@@ -61,6 +64,16 @@ sub time_elapse_string
 	$time_elapse_text =~ s/\s$//g;
 	return $time_elapse_text;
 }
+
+sub kill_signal_handler
+{
+	$exiting = 1;
+	print STDERR "Error: Catch KILL signal!\n";
+}
+$SIG{'INT'} = \&kill_signal_handler;
+$SIG{'ABRT'} = \&kill_signal_handler;
+$SIG{'QUIT'} = \&kill_signal_handler;
+$SIG{'TERM'} = \&kill_signal_handler;
 
 sub check_inputs_outputs_requires
 {
@@ -451,6 +464,9 @@ sub run_command
 	my $return_value = 0;
 	my @log_files = ();
 	my @pipe_structure = ();
+	my $start_failed = 0;
+
+	return ( -1, \@log_files, \@pipe_structure ) if $exiting;
 
 	if ($command =~ /^SP_run\s+(\w+)/) {
 		my @procedure_options = bash_line_decode($command);
@@ -487,28 +503,32 @@ sub run_command
 		
 		if (not open BASH, "| /bin/bash") {
 			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed!\n";
-			exit 1;
-		}
-		print BASH $command_with_log;
-		close BASH;
-
-		if ($? == -1) {
-			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed!\n";
-			close LOG_FILE;
-			exit 1;
-		} elsif ($? & 127) {
-			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed! Child died with signal %d, %s coredump\n",
-				($? & 127), ($? & 128) ? 'with' : 'without';
-			close LOG_FILE;
-			exit 1;
+			$return_value = -1;
+			$start_failed = 1;
 		} else {
-			$return_value = ($? >> 8);
-		}
+			print BASH $command_with_log;
+			close BASH;
+		
+			if ($? == -1) {
+				print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed!\n";
+				close LOG_FILE;
+				$return_value = -1;
+				$start_failed = 1;
+			} elsif ($? & 127) {
+				printf LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed! Child died with signal %d (%s coredump)\n",
+					($? & 127), ($? & 128) ? 'with' : 'without';
+				close LOG_FILE;
+				$return_value = -1;
+				$start_failed = 1;
+			} else {
+				$return_value = ($? >> 8);
 
-		if (exists $need_record{$procedure_type}) {
-			my $end_time = time;
-			printf LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) ends at %s (elapsed: %s)\n",
-				time_string($end_time), time_elapse_string($start_time, $end_time);
+				if (exists $need_record{$procedure_type}) {
+					my $end_time = time;
+					printf LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) ends at %s (elapsed: %s)\n",
+						time_string($end_time), time_elapse_string($start_time, $end_time);
+				}
+			}
 		}
 	}
 	
@@ -521,7 +541,7 @@ sub run_command
 				unlink $output_file;
 			}
 		}
-		print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) returns $return_value\n";
+		print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) returns $return_value\n" if not $start_failed;
 	}
 	return ( $return_value, \@log_files, \@pipe_structure );
 }
@@ -531,9 +551,11 @@ sub run_procedure
 	my ($procedure_name, $argv_ref, $is_test_mode, $log_files_ref, $call_depth, $pipe_structure_ref) = @_;
 	my $return_value = 0;
 
+	return -1 if $exiting;
+
 	if (not exists $procedures{$procedure_name}) {
 		print LOG_FILE "Error: Unknown procedure '$procedure_name'! Use 'seqpipe -l' to list available procedures.\n";
-		exit 1;
+		return -1;
 	}
 	my %procedure = %{$procedures{$procedure_name}};
 
@@ -558,7 +580,7 @@ sub run_procedure
 			$variables{$option_name} = $option_value;
 		} else {
 			print LOG_FILE "Error: Invalid procedure option '$arg'! It should be the format of 'NAME=VALUE'!\n";
-			exit 1;
+			return -1;
 		}
 	}
 	foreach my $arg (keys %{$procedure{defined_variables}}) {
@@ -574,7 +596,7 @@ sub run_procedure
 	foreach my $arg (sort keys %{$procedure{used_variables}}) {
 		if (not exists $variables{$arg}) {
 			print LOG_FILE "Error: Option '$arg' is required for procedure '$procedure_name'!\n";
-			exit 1;
+			return -1;
 		}
 	}
 
@@ -674,19 +696,19 @@ sub run_procedure
 			if ($cmd eq 'SP_set') {
 				if ($setting !~ /^(\w+)=(.*)$/) {
 					print LOG_FILE "Error: Invalid syntex of SP_set!\n";
-					exit 1;
+					return -1;
 				}
 				$option_name = $1;
 				$option_value = $2;
 			} elsif ($cmd eq 'SP_eval') {
 				if ($setting !~ /^(\w+)$/) {
 					print LOG_FILE "Error: Invalid syntex of SP_eval!\n";
-					exit 1;
+					return -1;
 				}
 				$option_name = $1;
 				if (scalar @procedure_options == 0) {
 					print LOG_FILE "Error: Invalid syntex of SP_eval!\n";
-					exit 1;
+					return -1;
 				}
 			}
 			
@@ -735,13 +757,19 @@ sub run_procedure
 			}
 		} else {
 			if ($command eq 'SP_parallel_begin') {
-				die "Error: Already in parallel mode, duplicated '$command'!" if $in_parallel;
+				if ($in_parallel) {
+					print STDERR "Error: Already in parallel mode, duplicated '$command'!";
+					return -1;
+				}
 				$in_parallel = 1;
 				push @{$pipe_structure_ref}, $depth_text . ">>>>>";
 				next;
 			}
 			if ($command eq 'SP_parallel_end') {
-				die "Error: Not in parallel mode, unexpected '$command'!" unless $in_parallel;
+				if (not $in_parallel) {
+					print STDERR "Error: Not in parallel mode, unexpected '$command'!";
+					return -1;
+				}
 				$in_parallel = 0;
 				if (scalar @thread_list > 0) {
 					foreach my $thd (@thread_list) {
