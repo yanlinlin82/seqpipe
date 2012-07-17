@@ -276,14 +276,8 @@ sub load_module
 			} elsif ($line =~ /^\s*function\s+/) {
 				die "Error: Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
 
-				# Ignore functions that are not 'procedure'.
-				if ($type eq '') {
-					while ($line = <$file_handle>) {
-						chomp $line;
-						last if $line eq "}";
-					}
-					next;
-				}
+				# Treat functions without type declearation as a 'stage'.
+				$type = 'stage' if $type eq '';
 
 				my $procedure_name = $1;
 				my @commands = ();
@@ -780,6 +774,7 @@ sub run_procedure
 				push @{$log_files_ref}, @{$return_log_files_ref};
 				push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 			}
+			last if exists $exit_on_error{$procedure{type}} and $return_value != 0;
 		}
 	}
 	
@@ -939,6 +934,13 @@ my @log_files = ();
 my @pipe_structure = ();
 my $return_value = run_procedure($procedure_name, \@argv, $test_mode, \@log_files, 0, \@pipe_structure);
 
+if (not $test_mode) {
+	if ($return_value == 0) {
+		printf LOG_FILE "[SeqPipe] Pipeline($$) finished successfully!\n";
+	} else {
+		printf LOG_FILE "[SeqPipe] Pipeline($$) finished abnormally with exit value: $return_value!\n";
+	}
+}
 close LOG_FILE;
 
 if (not $test_mode) {
