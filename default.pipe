@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#[seqpipe version="0.2.1 ($Id$)"]
+#[seqpipe version="0.2.2 ($Id$)"]
 #
 . common.inc
 
@@ -10,13 +10,15 @@
 #[global]
 TMP_DIR=/rd/tmp                         # Temporary directory
 JAVA_MAX_MEM_SIZE=8G                    # For Java's -Xmx option
-JAVA_GC_THREAD_NUM=4                    # For Java's -XX:ParallelGCThreads option
+JAVA_GC_THREAD_NUM=2                    # For Java's -XX:ParallelGCThreads option
+JAVA_OPTS="-Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} -Djava.io.tmpdir=${TMP_DIR}"
 
 THREAD_NUM=1                            # For multiple-thread running
 
 # Picard options
 PICARD_ROOT=/rd/build/picard-tools       # Path of picard tools
 MAX_RECORDS_IN_RAM=1875000               # For enhance performance of picard
+PICARD_OPTS="MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM}"
 
 # GATK options
 GATK_ROOT=/rd/build/gatk                 # Path of GATK tools
@@ -24,6 +26,7 @@ GATK_KEY=${GATK_ROOT}/gatk_cbi.key       # Key file for offline using GATK
 GATK_BUNDLE_ROOT=/rd/data/public/gatk_bundle/1.5/b37
 DBSNP_VCF=${GATK_BUNDLE_ROOT}/dbsnp_135.b37.vcf
                                          # Path of dbSNP VCF file
+GATK_OPTS="-et NO_ET -K ${GATK_KEY}"
 
 ###########################################################################
 
@@ -52,16 +55,16 @@ function sysinfo
 
 ###########################################################################
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_FASTQ}" output="${OUTPUT_ZIP}"]
+#[procedure input="${INPUT_FASTQ}"]
+#[procedure output="${OUTPUT}.fastqc.zip"]
 function fastqc_check
 {
-	fastqc --noextract --nogroup -o $(dirname ${OUTPUT_ZIP}) ${INPUT_FASTQ}
-	mv $(dirname ${OUTPUT_ZIP})/$(basename ${INPUT_FASTQ} | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT_ZIP}
+	fastqc --noextract --nogroup -o $(dirname ${OUTPUT}.fastqc.zip) ${INPUT_FASTQ}
+	mv -v $(dirname ${OUTPUT}.fastqc.zip)/$(basename ${INPUT_FASTQ} | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}.fastqc.zip
 }
 
-#[procedure type="stage"]
-#[procedure input="${REFERENCE}" output="${REFERENCE}.bwt"]
+#[procedure input="${REFERENCE}"]
+#[procedure output="${REFERENCE}.bwt"]
 function bwa_build_index
 {
 	SP_set ALGORITHM="is"
@@ -70,9 +73,10 @@ function bwa_build_index
 	bwa index -a ${ALGORITHM} ${REFERENCE}
 }
 
-#[procedure type="stage"]
-#[procedure input="${FASTQ_1}" input="${FASTQ_2}" output="${OUTPUT_BAM}"]
 #[procedure require="${REFERENCE}"]
+#[procedure input="${FASTQ_1}"]
+#[procedure input="${FASTQ_2}"]
+#[procedure output="${OUTPUT}.bam"]
 function bwa_read_mapping
 {
 	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${FASTQ_1}"
@@ -90,33 +94,39 @@ function bwa_read_mapping
 
 	SP_parallel_begin
 	
-	#[command input="${FASTQ_1}" output="${FASTQ_1}.sai" require="${REFERENCE}"]
+	#[command require="${REFERENCE}"]
+	#[command input="${FASTQ_1}"]
+	#[command output="${FASTQ_1}.sai"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REFERENCE} ${FASTQ_1} -f ${FASTQ_1}.sai ${BWA_ALN_OPTS}
 	
-	#[command input="${FASTQ_2}" output="${FASTQ_2}.sai" require="${REFERENCE}"]
+	#[command require="${REFERENCE}"]
+	#[command input="${FASTQ_2}"]
+	#[command output="${FASTQ_2}.sai"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REFERENCE} ${FASTQ_2} -f ${FASTQ_2}.sai ${BWA_ALN_OPTS}
 	
 	SP_parallel_end
 
-	#[command input="${FASTQ_1}" input="${FASTQ_1}.sai"]
-	#[command input="${FASTQ_2}" input="${FASTQ_2}.sai"]
 	#[command require="${REFERENCE}"]
-	#[command output="${OUTPUT_BAM}"]
+	#[command input="${FASTQ_1}"]
+	#[command input="${FASTQ_2}"]
+	#[command input="${FASTQ_1}.sai"]
+	#[command input="${FASTQ_2}.sai"]
+	#[command output="${OUTPUT}.bam"]
 	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
 		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
 		${FASTQ_1}.sai ${FASTQ_2}.sai ${FASTQ_1} ${FASTQ_2} ${BWA_SAMPE_OPTS} \
 		| samtools view -Sb - \
-		> ${OUTPUT_BAM}
+		> ${OUTPUT}.bam
 
-	#[command require="${OUTPUT_BAM}"]
-	rm -f ${FASTQ_1}.sai ${FASTQ_2}.sai
+	#[command require="${OUTPUT}.bam"]
+	rm -vf ${FASTQ_1}.sai ${FASTQ_2}.sai
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_FASTQ}" output="${OUTPUT_BAM}"]
 #[procedure require="${REFERENCE}"]
+#[procedure input="${INPUT_FASTQ}"]
+#[procedure output="${OUTPUT}.bam"]
 function bwa_read_mapping_se
 {
 	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${INPUT_FASTQ}"
@@ -132,208 +142,183 @@ function bwa_read_mapping_se
 	# This will be skipped if the index files exist.
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
 
-	#[command input="${INPUT_FASTQ}" output="${INPUT_FASTQ}.sai"]
 	#[command require="${REFERENCE}"]
+	#[command input="${INPUT_FASTQ}"]
+	#[command output="${INPUT_FASTQ}.sai"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REFERENCE} ${INPUT_FASTQ} -f ${INPUT_FASTQ}.sai ${BWA_ALN_OPTS}
 
-	#[command input="${INPUT_FASTQ}" input="${INPUT_FASTQ}.sai"]
 	#[command require="${REFERENCE}"]
-	#[command output="${OUTPUT_BAM}"]
+	#[command input="${INPUT_FASTQ}"]
+	#[command input="${INPUT_FASTQ}.sai"]
+	#[command output="${OUTPUT}.bam"]
 	bwa samse \
 		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
 		${REFERENCE} ${INPUT_FASTQ}.sai ${INPUT_FASTQ} ${BWA_SAMSE_OPTS} \
 		| samtools view -Sb - \
-		> ${OUTPUT_BAM}
+		> ${OUTPUT}.bam
 
-	#[command require="${OUTPUT_BAM}"]
-	rm -f ${INPUT_FASTQ}.sai
+	#[command require="${OUTPUT}.bam"]
+	rm -vf ${INPUT_FASTQ}.sai
 }
 
-#[procedure type="stage"]
-#[procedure input="${BAM_1}" input="${BAM_2}" output="${OUTPUT_BAM}"]
+#[procedure input="${INPUT_1}.bam"]
+#[procedure input="${INPUT_2}.bam"]
+#[procedure output="${OUTPUT}.bam"]
 function merge_bam
 {
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
-	SP_set BAM_3="${BAM_3}"
-	SP_set BAM_4="${BAM_4}"
-	SP_set BAM_5="${BAM_5}"
-	SP_set BAM_6="${BAM_6}"
-	SP_set BAM_7="${BAM_7}"
-	SP_set BAM_8="${BAM_8}"
-	SP_set BAM_9="${BAM_9}"
+	SP_set INPUT_3="${INPUT_3}"
+	SP_set INPUT_4="${INPUT_4}"
+	SP_set INPUT_5="${INPUT_5}"
+	SP_set INPUT_6="${INPUT_6}"
+	SP_set INPUT_7="${INPUT_7}"
+	SP_set INPUT_8="${INPUT_8}"
+	SP_set INPUT_9="${INPUT_9}"
 	SP_set MORE_INPUT_FILES=""
-	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${BAM_3}" if_has_arg ARG="${BAM_3}"
-	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${BAM_4}" if_has_arg ARG="${BAM_4}"
-	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${BAM_5}" if_has_arg ARG="${BAM_5}"
-	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${BAM_6}" if_has_arg ARG="${BAM_6}"
-	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${BAM_7}" if_has_arg ARG="${BAM_7}"
-	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${BAM_8}" if_has_arg ARG="${BAM_8}"
-	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${BAM_9}" if_has_arg ARG="${BAM_9}"
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_3}.bam" if_has_arg ARG="${INPUT_3}"
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_4}.bam" if_has_arg ARG="${INPUT_4}"
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_5}.bam" if_has_arg ARG="${INPUT_5}"
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_6}.bam" if_has_arg ARG="${INPUT_6}"
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_7}.bam" if_has_arg ARG="${INPUT_7}"
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_8}.bam" if_has_arg ARG="${INPUT_8}"
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_9}.bam" if_has_arg ARG="${INPUT_9}"
 
-	#[command input="${BAM_1}" input="${BAM_2}" output="${OUTPUT_BAM}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-jar ${PICARD_ROOT}/MergeSamFiles.jar \
-		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
-		TMP_DIR=${TMP_DIR} \
+	#[command input="${INPUT_1}.bam"]
+	#[command input="${INPUT_2}.bam"]
+	#[command output="${OUTPUT}.bam"]
+	#[command output="${OUTPUT}.bai"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=false \
+		CREATE_INDEX=true \
 		CREATE_MD5_FILE=false \
-		INPUT=${BAM_1} \
-		INPUT=${BAM_2} \
+		INPUT=${INPUT_1}.bam \
+		INPUT=${INPUT_2}.bam \
 		${MORE_INPUT_FILES} \
-		OUTPUT=${OUTPUT_BAM}
+		OUTPUT=${OUTPUT}.bam
 
-	#[command input="${OUTPUT_BAM}" output="${OUTPUT_BAM}.bai"]
-	samtools index ${OUTPUT_BAM}
+	#[command require="${OUTPUT}.bai"]
+	mv -v ${OUTPUT}.bai ${OUTPUT}.bam.bai
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
-function select_reads
-{
-	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
-	samtools view ${INPUT_BAM} -f ${SAM_FLAG} -b > ${OUTPUT_BAM}
-}
-
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
-function filter_reads
-{
-	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
-	samtools view ${INPUT_BAM} -F ${SAM_FLAG} -b > ${OUTPUT_BAM}
-}
-
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${MAPPED_BAM}" output="${UNMAPPED_BAM}"]
-function select_mapped_reads
-{
-	SP_parallel_begin
-
-	#[command input="${INPUT_BAM}" output="${MAPPED_BAM}"]
-	SP_run filter_reads SAM_FLAG=4 INPUT_BAM=${INPUT_BAM} OUTPUT_BAM=${MAPPED_BAM}
-
-	#[command input="${INPUT_BAM}" output="${UNMAPPED_BAM}"]
-	SP_run select_reads SAM_FLAG=4 INPUT_BAM=${INPUT_BAM} OUTPUT_BAM=${UNMAPPED_BAM}
-
-	SP_parallel_end
-}
-
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${OUTPUT}.bam"]
 function sort_bam
 {
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
 
-	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-jar ${PICARD_ROOT}/SortSam.jar \
-		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
-		TMP_DIR=${TMP_DIR} \
+	#[command input="${INPUT}.bam"]
+	#[command output="${OUTPUT}.bam"]
+	#[command output="${OUTPUT}.bai"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/SortSam.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=false \
+		CREATE_INDEX=true \
 		CREATE_MD5_FILE=false \
 		SORT_ORDER=coordinate \
-		INPUT=${INPUT_BAM} \
-		OUTPUT=${OUTPUT_BAM}
+		INPUT=${INPUT}.bam \
+		OUTPUT=${OUTPUT}.bam
 
-	#[command input="${OUTPUT_BAM}" output="${OUTPUT_BAM}.bai"]
-	samtools index ${OUTPUT_BAM}
+	#[command require="${OUTPUT}.bai"]
+	mv -v ${OUTPUT}.bai ${OUTPUT}.bam.bai
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
 #[procedure require="${REFERENCE}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${OUTPUT}.bam"]
 function reorder_bam
 {
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
 
-	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-jar ${PICARD_ROOT}/ReorderSam.jar \
-		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
-		TMP_DIR=${TMP_DIR} \
+	#[command input="${INPUT}.bam"]
+	#[command output="${OUTPUT}.bam"]
+	#[command output="${OUTPUT}.bai"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/ReorderSam.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=false \
 		CREATE_MD5_FILE=false \
-		INPUT=${INPUT_BAM} \
-		OUTPUT=${OUTPUT_BAM} \
+		INPUT=${INPUT}.bam \
+		OUTPUT=${OUTPUT}.bam \
 		REFERENCE=${REFERENCE}
 
-	#[command input="${OUTPUT_BAM}" output="${OUTPUT_BAM}.bai"]
-	samtools index ${OUTPUT_BAM}
+	#[command require="${OUTPUT}.bai"]
+	mv -v ${OUTPUT}.bai ${OUTPUT}.bam.bai
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${OUTPUT_FLAGSTAT_BZ2}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${INPUT}.flagstat.txt"]
 function flagstat_bam
 {
-	#[command input="${INPUT_BAM}" output="${OUTPUT_FLAGSTAT_BZ2}"]
-	samtools flagstat ${INPUT_BAM} | bzip2 -9c > ${OUTPUT_FLAGSTAT_BZ2}
+	#[command input="${INPUT}.bam" output="${INPUT}.flagstat.txt"]
+	samtools flagstat ${INPUT}.bam > ${INPUT}.flagstat.txt
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${UNIQ_BAM}" output="${REST_BAM}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${UNIQ}.bam"]
+#[procedure output="${REST}.bam"]
 function select_unique_hit_reads
 {
-	#[command input="${INPUT_BAM}" output="${UNIQ_BAM}" output="${REST_BAM}"]
-	samtools view -h ${INPUT_BAM} | tee \
-		>(egrep '^@|XT:A:U' | samtools view -Sb - > ${UNIQ_BAM}) \
-		>(egrep -v 'XT:A:U' | samtools view -Sb - > ${REST_BAM})
+	#[command input="${INPUT}.bam" output="${UNIQ}.bam" output="${REST}.bam"]
+	samtools view -h ${INPUT}.bam | tee \
+		>(egrep '^@|XT:A:U' | samtools view -Sb - > ${UNIQ}.bam) \
+		| egrep -v 'XT:A:U' | samtools view -Sb - > ${REST}.bam
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure input="${INPUT}.bam.bai"]
+#[procedure output="${OUTPUT}.bam"]
 function mark_duplicate_reads
 {
+	SP_set ASSUME_SORTED="false" if_no_arg ARG="${ASSUME_SORTED}"
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
 
-	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}" output="${OUTPUT_BAM}.metrics"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-jar ${PICARD_ROOT}/MarkDuplicates.jar \
-		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
-		TMP_DIR=${TMP_DIR} \
+	#[command input="${INPUT}.bam"]
+	#[command output="${OUTPUT}.bam"]
+	#[command output="${OUTPUT}.bai"]
+	#[command output="${OUTPUT}.metrics"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=false \
+		CREATE_INDEX=true \
 		CREATE_MD5_FILE=false \
-		INPUT=${INPUT_BAM} \
-		OUTPUT=${OUTPUT_BAM} \
-		METRICS_FILE=${OUTPUT_BAM}.metrics \
+		INPUT=${INPUT}.bam \
+		OUTPUT=${OUTPUT}.bam \
+		METRICS_FILE=${OUTPUT}.metrics \
 		REMOVE_DUPLICATES=false
 
-	#[command input="${OUTPUT_BAM}" output="${OUTPUT_BAM}.bai"]
-	samtools index ${OUTPUT_BAM}
+	#[command require="${OUTPUT}.bai"]
+	mv -v ${OUTPUT}.bai ${OUTPUT}.bam.bai
 }
 
-#[procedure type="stage"]
-#[procedure input="${SORTED_BAM}" output="${OUTPUT_MPILEUP_BZ2}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure input="${INPUT}.bam.bai"]
+#[procedure output="${OUTPUT}.mpileup.bz2"]
 function samtools_mpileup
 {
 	SP_set REFERENCE="${REFERENCE}"
-	SP_set SAMTOOLS_OPTS="${SAMTOOLS_OPTS}"
 	SP_set SAMTOOLS_OPTS="${SAMTOOLS_OPTS} -f ${REFERENCE}" if_has_arg ARG="${REFERENCE}"
 
-	#[command input="${SORTED_BAM}" output="${OUTPUT_MPILEUP_BZ2}"]
-	samtools mpileup ${SAMTOOLS_OPTS} ${SORTED_BAM} | bzip2 -9c > ${OUTPUT_MPILEUP_BZ2}
+	#[command input="${INPUT}.bam"]
+	#[command output="${OUTPUT}.mpileup.bz2"]
+	samtools mpileup ${SAMTOOLS_OPTS} ${INPUT}.bam | bzip2 -9c > ${OUTPUT}.mpileup.bz2
 }
 
-#[procedure type="stage"]
-#[procedure input="${SORTED_BAM}" output="${OUTPUT_BCF}"]
 #[procedure require="${REFERENCE}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure input="${INPUT}.bam.bai"]
+#[procedure output="${OUTPUT}.samtools.vcf"]
 function samtools_call_variants
 {
-	#[command input="${SORTED_BAM}" output="${OUTPUT_BCF}"]
-	samtools mpileup -f ${REFERENCE} ${SORTED_BAM} -u \
-		| bcftools view -bvcg - \
-		> ${OUTPUT_BCF}
+	samtools mpileup -f ${REFERENCE} ${INPUT}.bam -u \
+		| bcftools view -vcg - \
+		> ${OUTPUT}.samtools.vcf
 }
 
-#[procedure type="stage"]
-function picard_add_or_replace_read_group
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${OUTPUT}.bam"]
+function picard_set_read_group
 {
 	# READ_GROUP_ID   : Read Group ID  Default value: 1. This option can be set to 'null' to clear the default 
 	# LIBRARY         : Read Group Library  Required. 
@@ -348,214 +333,249 @@ function picard_add_or_replace_read_group
 	SP_set PLATFORM_UNIT="flowcell.lane" if_no_arg ARG="${PLATFORM_UNIT}"
 	SP_set SEQ_CENTER_NAME="BGI" if_no_arg ARG="${SEQ_CENTER_NAME}"
 	SP_set DESCRIPTION="${DESCRIPTION}"
-	SP_set PICARD_OPTS="${PICARD_OPTS}"
-	SP_set PICARD_OPTS="${PICARD_OPTS} RGDS=\"${DESCRIPTION}\"" if_has_arg ARG="${DESCRIPTION}"
+	SP_set PICARD_RG_OPTS="${PICARD_RG_OPTS} RGDS=\"${DESCRIPTION}\"" if_has_arg ARG="${DESCRIPTION}"
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
 
-	#[command input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-jar ${PICARD_ROOT}/AddOrReplaceReadGroups.jar \
-		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
-		TMP_DIR=${TMP_DIR} \
+	#[command input="${INPUT}.bam"]
+	#[command output="${OUTPUT}.bam"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/AddOrReplaceReadGroups.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=false \
+		CREATE_INDEX=true \
 		CREATE_MD5_FILE=false \
-		INPUT=${INPUT_BAM} \
-		OUTPUT=${OUTPUT_BAM} \
+		INPUT=${INPUT}.bam \
+		OUTPUT=${OUTPUT}.bam \
 		RGID=${READ_GROUP_ID} \
 		RGLB=${LIBRARY} \
 		RGPL=${PLATFORM} \
 		RGPU=${PLATFORM_UNIT} \
 		RGSM=${SAMPLE_NAME} \
 		RGCN=${SEQ_CENTER_NAME} \
-		${PICARD_OPTS}
-
-	#[command input="${OUTPUT_BAM}" output="${OUTPUT_BAM}.bai"]
-	samtools index ${OUTPUT_BAM}
+		${PICARD_RG_OPTS}
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${INPUT_BAM}.realign.fixmate"]
-#[procedure require="${REFERENCE}" require="${DBSNP_VCF}"]
+#[procedure require="${REFERENCE}"]
+#[procedure require="${DBSNP_VCF}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${INPUT}.realign.fixmate.bam"]
 function gatk_indel_realign
 {
-	#[command input="${INPUT_BAM}" output="${INPUT_BAM}.intervals"]
+	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+
 	#[command require="${REFERENCE}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-Djava.io.tmpdir=${TMP_DIR} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+	#[command input="${INPUT}.bam"]
+	#[command output="${INPUT}.intervals"]
+	java ${JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T RealignerTargetCreator \
 		-R ${REFERENCE} \
-		-I ${INPUT_BAM} \
-		-o ${INPUT_BAM}.intervals \
+		-I ${INPUT}.bam \
+		-o ${INPUT}.intervals \
 		-known ${DBSNP_VCF} \
 		--num_threads ${THREAD_NUM}
 
-	#[command input="${INPUT_BAM}" input="$INPUT_BAM}.intervals"]
-	#[command output="${INPUT_BAM}.realign"]
 	#[command require="${REFERENCE}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-Djava.io.tmpdir=${TMP_DIR} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+	#[command input="${INPUT}.bam"]
+	#[command input="${INPUT}.intervals"]
+	#[command output="${INPUT}.realign.bam"]
+	java ${JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T IndelRealigner \
 		-R ${REFERENCE} \
-		-I ${INPUT_BAM} \
-		-targetIntervals ${INPUT_BAM}.intervals \
-		-o ${INPUT_BAM}.realign
+		-I ${INPUT}.bam \
+		-targetIntervals ${INPUT}.intervals \
+		-o ${INPUT}.realign.bam
 
-	#[command require="${INPUT_BAM}.realign"]
-	rm -f ${INPUT_BAM}.intervals
+	#[command require="${INPUT}.realign.bam"]
+	rm -vf ${INPUT}.intervals
 	
-	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
-
-	#[command input="${INPUT_BAM}.realign" output="${INPUT_BAM}.realign.fixmate"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-jar ${PICARD_ROOT}/FixMateInformation.jar \
-		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
-		TMP_DIR=${TMP_DIR} \
+	#[command input="${INPUT}.realign.bam"]
+	#[command output="${INPUT}.realign.fixmate.bam"]
+	#[command output="${INPUT}.realign.fixmate.bai"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/FixMateInformation.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=false \
+		CREATE_INDEX=true \
 		CREATE_MD5_FILE=false \
-		INPUT=${INPUT_BAM}.realign \
-		OUTPUT=${INPUT_BAM}.realign.fixmate
+		INPUT=${INPUT}.realign.bam \
+		OUTPUT=${INPUT}.realign.fixmate.bam
 
-	#[command input="${INPUT_BAM}.realign.fixmate"]
-	#[command output="${INPUT_BAM}.realign.fixmate.bai"]
-	samtools index ${INPUT_BAM}.realign.fixmate
+	#[command require="${INPUT}.realign.fixmate.bai"]
+	mv -v ${INPUT}.realign.fixmate.bai ${INPUT}.realign.fixmate.bam.bai
 
-	#[command require="${INPUT_BAM}.realign.fixmate"]
-	rm -f ${INPUT_BAM}.realign
+	#[command require="${INPUT}.realign.fixmate.bam"]
+	rm -vf ${INPUT}.realign.bam
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${INPUT_BAM}.recalibrated"]
-#[procedure require="${REFERENCE}" require="${DBSNP_VCF}"]
+#[procedure require="${REFERENCE}"]
+#[procedure require="${DBSNP_VCF}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${INPUT}.recal.bam"]
 function gatk_recalibrate
 {
-	#[command input="${INPUT_BAM}" output="${INPUT_BAM}.recalFile"]
-	#[command require="${REFERENCE}" require="${DBSNP_VCF}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-Djava.io.tmpdir=${TMP_DIR} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+	#[command require="${REFERENCE}"]
+	#[command require="${DBSNP_VCF}"]
+	#[command input="${INPUT}.bam"]
+	#[command output="${INPUT}.recal"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T CountCovariates \
 		-R ${REFERENCE} \
-		-I ${INPUT_BAM} \
+		-I ${INPUT}.bam \
 		-knownSites ${DBSNP_VCF} \
 		-cov ReadGroupCovariate \
 		-cov QualityScoreCovariate \
 		-cov CycleCovariate \
 		-cov DinucCovariate \
-		-recalFile ${INPUT_BAM}.recalFile \
+		-recalFile ${INPUT}.recal \
 		--num_threads ${THREAD_NUM}
 	
-	#[command input="${INPUT_BAM}" input="${INPUT_BAM}.recalFile"]
-	#[command output="${INPUT_BAM}.recalbrated"]
 	#[command require="${REFERENCE}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-Djava.io.tmpdir=${TMP_DIR} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+	#[command input="${INPUT}.bam"]
+	#[command input="${INPUT}.recal"]
+	#[command output="${INPUT}.recal.bam"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T TableRecalibration \
 		-R ${REFERENCE} \
-		-I ${INPUT_BAM} \
-		-recalFile ${INPUT_BAM}.recalFile \
-		-o ${INPUT_BAM}.recalibrated
+		-I ${INPUT}.bam \
+		-recalFile ${INPUT}.recal \
+		-o ${INPUT}.recal.bam
 
-	#[command require="${INPUT_BAM}.recalibrated"]
-	rm -f ${INPUT_BAM}.recalFile
+	#[command require="${INPUT}.recal.bam"]
+	rm -f ${INPUT}.recal
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${OUTPUT_VCF}"]
-#[procedure require="${REFERENCE}" require="${DBSNP_VCF}"]
+#[procedure require="${REFERENCE}"]
+#[procedure require="${DBSNP_VCF}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${OUTPUT}.vcf"]
 function gatk_genotype
 {
 	SP_set STAND_CALL_CONF=30  # GATK UnifiedGenotyper -stand_call_conf
 	SP_set STAND_EMIT_CONF=10  # GATK UnifiedGenotyper -stand_emit_conf
 
-	#[command input="${INPUT_BAM}" output="${OUTPUT_VCF}"]
-	#[command require="${REFERENCE}" require="${DBSNP_VCF}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-Djava.io.tmpdir=${TMP_DIR} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+	#[command require="${REFERENCE}"]
+	#[command require="${DBSNP_VCF}"]
+	#[command input="${INPUT}.bam"]
+	#[command output="${OUTPUT}.vcf"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T UnifiedGenotyper \
 		-R ${REFERENCE} \
-		-I ${INPUT_BAM} \
+		-I ${INPUT}.bam \
 		-glm BOTH \
 		--min_base_quality_score 20 \
 		--dbsnp ${DBSNP_VCF} \
 		-stand_call_conf ${STAND_CALL_CONF} \
 		-stand_emit_conf ${STAND_EMIT_CONF} \
-		-o ${OUTPUT_VCF} \
+		-o ${OUTPUT}.vcf \
 		--num_threads ${THREAD_NUM}
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_VCF}"]
-#[procedure output="${INPUT_VCF}.indel"]
-#[procedure output="${INPUT_VCF}.snp.filtered"]
-#[procedure require="${REFERENCE}" require="${DBSNP_VCF}"]
+#[procedure require="${REFERENCE}"]
+#[procedure input="${INPUT}.vcf"]
+#[procedure output="${INPUT}.filtered.vcf"]
 function gatk_filter_variants
 {
 	SP_set FILTER_NAME="Filter"
-	SP_set FILTER_EXPRESSION="(AB ?: 0) > 0.75 || QUAL < 50.0 || DP < 10 || DP > 360 || (SB ?: -1) > -0.1 || MQ0>=4"
+	SP_set FILTER_EXPRESSION="(AB ?: 0) > 0.75 || QUAL < 50.0 || DP < 10 || DP > 360 || (SB ?: -1) > -0.1 || MQ0 >= 4"
 
-	#[command input="${INPUT_VCF}" output="${INPUT_VCF}.snp"]
+##### Select Different Types of Variants #####
+	SP_parallel_begin
+
 	#[command require="${REFERENCE}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-Djava.io.tmpdir=${TMP_DIR} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+	#[command input="${INPUT}.vcf"]
+	#[command output="${INPUT}.snp.vcf"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T SelectVariants \
 		-R ${REFERENCE} \
-		--variant ${INPUT_VCF} \
+		--variant ${INPUT}.vcf \
 		-selectType SNP -selectType MNP \
-		-o ${INPUT_VCF}.snp
+		-o ${INPUT}.snp.vcf
 
-	#[command input="${INPUT_VCF}" output="${INPUT_VCF}.indel"]
 	#[command require="${REFERENCE}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-Djava.io.tmpdir=${TMP_DIR} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+	#[command input="${INPUT}.vcf"]
+	#[command output="${INPUT}.indel.vcf"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T SelectVariants \
 		-R ${REFERENCE} \
-		--variant ${INPUT_VCF} \
+		--variant ${INPUT}.vcf \
 		-selectType INDEL \
-		-o ${INPUT_VCF}.indel
+		-o ${INPUT}.indel.vcf
 
-	#[command input="${INPUT_VCF}.snp" output="${INPUT_VCF}.snp.filtered"]
+	SP_parallel_end
+
+##### Filter Variants #####
+	SP_parallel_begin
+
 	#[command require="${REFERENCE}"]
-	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
-		-Djava.io.tmpdir=${TMP_DIR} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+	#[command input="${INPUT}.snp.vcf"]
+	#[command output="${INPUT}.snp.filtered.vcf"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T VariantFiltration \
 		-R ${REFERENCE} \
-		--variant ${INPUT_VCF}.snp \
+		--variant ${INPUT}.snp.vcf \
 		--filterExpression "${FILTER_EXPRESSION}" \
 		--filterName "${FILTER_NAME}" \
 		--clusterWindowSize 10 \
-		-o ${INPUT_VCF}.snp.filtered
+		-o ${INPUT}.snp.filtered.vcf
+
+	#[command require="${REFERENCE}"]
+	#[command input="${INPUT}.indel.vcf"]
+	#[command output="${INPUT}.indel.filtered.vcf"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+		-T VariantFiltration \
+		-R ${REFERENCE} \
+		--variant ${INPUT}.snp.vcf \
+		--filterExpression "${FILTER_EXPRESSION}" \
+		--filterName "${FILTER_NAME}" \
+		--clusterWindowSize 10 \
+		-o ${INPUT}.indel.filtered.vcf
+
+	SP_parallel_end
+
+##### Combine Variants #####
+	#[command input="${INPUT}.snp.filtered.vcf"]
+	#[command input="${INPUT}.indel.filtered.vcf"]
+	#[command output="${INPUT}.filtered.vcf"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+		-T CombineVariants \
+		-R ${REFERENCE} \
+		--variant:SNP ${INPUT}.snp.filtered.vcf \
+		--variant:INDEL ${INPUT}.indel.filtered.vcf \
+		-o ${INPUT}.filtered.vcf \
+		-genotypeMergeOptions UNIQUIFY
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}" output="${INPUT_BAM}.vcf.snp.filtered" output="${INPUT_BAM}.vcf.indel"]
+#[procedure require="${REFERENCE}"]
+#[procedure require="${DBSNP_VCF}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${OUTPUT}.gatk.vcf"]
 function gatk_call_variants
 {
-	SP_set REFERENCE="${REFERENCE}"
-	SP_set DBSNP_VCF="${DBSNP_VCF}"
-
 	SP_run gatk_indel_realign \
-		INPUT_BAM="${INPUT_BAM}"
+		REFERENCE=${REFERENCE} DBSNP_VCF=${DBSNP_VCF} \
+		INPUT=${INPUT}
 
 	SP_run gatk_recalibrate \
-		INPUT_BAM="${INPUT_BAM}.realign.fixmate"
+		REFERENCE=${REFERENCE} DBSNP_VCF=${DBSNP_VCF} \
+		INPUT=${INPUT}.realign.fixmate
 
 	SP_run gatk_genotype \
-		INPUT_BAM="${INPUT_BAM}.realign.fixmate.recalibrated" \
-		OUTPUT_VCF="${INPUT_BAM}.vcf"
+		REFERENCE=${REFERENCE} DBSNP_VCF=${DBSNP_VCF} \
+		INPUT=${INPUT}.realign.fixmate.recal \
+		OUTPUT=${OUTPUT}
 
 	SP_run gatk_filter_variants \
-		INPUT_VCF="${INPUT_BAM}.vcf"
+		REFERENCE=${REFERENCE} \
+		INPUT=${OUTPUT}
+
+	#[command require="${OUTPUT}.filtered.vcf"]
+	mv -v ${OUTPUT}.filtered.vcf ${OUTPUT}.gatk.vcf
 }
 
 #[procedure type="evaluator"]
@@ -570,116 +590,155 @@ function eval_reference_date
 	stat ${REFERENCE} | grep Modify | awk '{print $2}' | sed 's/-//g'
 }
 
-#[procedure type="stage"]
-#[procedure input="${INPUT_BAM}"]
-#[procedure output="${OUTPUT_PREFIX}_D.vcf"]
-#[procedure output="${OUTPUT_PREFIX}_SI.vcf"]
-#[procedure output="${OUTPUT_PREFIX}_INV.vcf"]
-#[procedure output="${OUTPUT_PREFIX}_TD.vcf"]
+#[procedure require="${REFERENCE}"]
+#[procedure input="${INPUT}.bam"]
+#[procedure require="${INPUT}.bam.bai"]
+#[procedure output="${OUTPUT}.pindel.vcf"]
 function pindel_call_structure_variants
 {
 	SP_eval REFERENCE_NAME eval_reference_name REFERENCE=${REFERENCE}
 	SP_eval REFERENCE_DATE eval_reference_date REFERENCE=${REFERENCE}
 
+##### Call Structure Variants #####
+	#[command require="${REFERENCE}"]
+	#[command input="${INPUT}.bam"]
+	#[command output="${OUTPUT}_D"]
+	#[command output="${OUTPUT}_SI"]
+	#[command output="${OUTPUT}_INV"]
+	#[command output="${OUTPUT}_TD"]
 	pindel -f ${REFERENCE} \
-		-i <(echo "${INPUT_BAM} ${INSERT_SIZE} ${SAMPLE_NAME}") \
-		-l -k -s -c ALL -o ${OUTPUT_PREFIX}
+		-i <(echo "${INPUT}.bam ${INSERT_SIZE} ${SAMPLE_NAME}") \
+		-l -k -s -c ALL -o ${OUTPUT}
 
+##### Convert to VCF #####
+	SP_parallel_begin
+
+	#[command require="${REFERENCE}"]
+	#[command input="${OUTPUT}_D"]
+	#[command output="${OUTPUT}_D.vcf"]
 	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
-		-p ${OUTPUT_PREFIX}_D -v ${OUTPUT_PREFIX}_D.vcf
+		-p ${OUTPUT}_D -v ${OUTPUT}_D.vcf
+
+	#[command require="${REFERENCE}"]
+	#[command input="${OUTPUT}_SI"]
+	#[command output="${OUTPUT}_SI.vcf"]
 	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
-		-p ${OUTPUT_PREFIX}_SI -v ${OUTPUT_PREFIX}_SI.vcf
+		-p ${OUTPUT}_SI -v ${OUTPUT}_SI.vcf
+	
+	#[command require="${REFERENCE}"]
+	#[command input="${OUTPUT}_INV"]
+	#[command output="${OUTPUT}_INV.vcf"]
 	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
-		-p ${OUTPUT_PREFIX}_INV -v ${OUTPUT_PREFIX}_INV.vcf
+		-p ${OUTPUT}_INV -v ${OUTPUT}_INV.vcf
+	
+	#[command require="${REFERENCE}"]
+	#[command input="${OUTPUT}_TD"]
+	#[command output="${OUTPUT}_TD.vcf"]
 	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
-		-p ${OUTPUT_PREFIX}_TD -v ${OUTPUT_PREFIX}_TD.vcf
+		-p ${OUTPUT}_TD -v ${OUTPUT}_TD.vcf
+
+	SP_parallel_end
+
+##### Combine Variants #####
+	#[command require="${REFERENCE}"]
+	#[command input="${OUTPUT}_D.vcf"]
+	#[command input="${OUTPUT}_SI.vcf"]
+	#[command input="${OUTPUT}_INV.vcf"]
+	#[command input="${OUTPUT}_TD.vcf"]
+	#[command output="${INPUT}.pindel.vcf"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+		-T CombineVariants \
+		-R ${REFERENCE} \
+		--variant:D ${OUTPUT}_D.vcf \
+		--variant:SI ${OUTPUT}_SI.vcf \
+		--variant:INV ${OUTPUT}_INV.vcf \
+		--variant:TD ${OUTPUT}_TD.vcf \
+		-o ${OUTPUT}.pindel.vcf \
+		-genotypeMergeOptions UNIQUIFY
 }
 
-#[procedure type="stage"]
-#[procedure input="${SAMPLE_NAME}.bam"]
-#[procedure output="${SAMPLE_NAME}.bcf"]
-function DNAseq_samtools_call_variants
+#[procedure type="pipeline"]
+#[procedure require="${REFERENCE}"]
+#[procedure input="${FASTQ_1}.fq.gz"]
+#[procedure input="${FASTQ_2}.fq.gz"]
+#[procedure output="${SAMPLE_NAME}.samtools.vcf"]
+#[procedure output="${SAMPLE_NAME}.gatk.vcf"]
+#[procedure output="${SAMPLE_NAME}.pindel.vcf"]
+function DNAseq_analysis
 {
-	SP_run select_mapped_reads \
-		INPUT_BAM="${SAMPLE_NAME}.bam" \
-		MAPPED_BAM="${SAMPLE_NAME}.mapped.bam" \
-		UNMAPPED_BAM="${SAMPLE_NAME}.unmapped.bam"
+	SP_set RGID="${RGID}"
+	SP_set RGLB="${RGLB}"
+	SP_set RGPL="${RGPL}"
+	SP_set RGCN="${RGCN}"
+
+##### FastQC #####
+	SP_parallel_begin
+	SP_run fastqc_check INPUT_FASTQ=${FASTQ_1}.fq.gz OUTPUT=${FASTQ_1}
+	SP_run fastqc_check INPUT_FASTQ=${FASTQ_2}.fq.gz OUTPUT=${FASTQ_2}
+	SP_parallel_end
+
+##### Read Mapping #####
+	SP_run bwa_read_mapping \
+		REFERENCE=${REFERENCE} \
+		FASTQ_1=${FASTQ_1}.fq.gz \
+		FASTQ_2=${FASTQ_2}.fq.gz \
+		MAX_INSERT_SIZE=${MAX_INSERT_SIZE} \
+		OUTPUT=${SAMPLE_NAME} \
+		RGID=${RGID} \
+		RGLB=${RGLB} \
+		SAMPLE_NAME=${SAMPLE_NAME} \
+		RGPL=${RGPL} \
+		RGCN=${RGCN}
+
+##### Call Variants #####
+	SP_parallel_begin
+	#[command input="${SAMPLE_NAME}.bam" output="${SAMPLE_NAME}.mapped.bam"]
+	samtools view ${SAMPLE_NAME}.bam -F 4 -b > ${SAMPLE_NAME}.mapped.bam
+	#[command input="${SAMPLE_NAME}.bam" output="${SAMPLE_NAME}.unmapped.bam"]
+	samtools view ${SAMPLE_NAME}.bam -f 4 -b > ${SAMPLE_NAME}.unmapped.bam
+	SP_parallel_end
 
 	SP_run select_unique_hit_reads \
-		INPUT_BAM="${SAMPLE_NAME}.mapped.bam" \
-		UNIQ_BAM="${SAMPLE_NAME}.mapped.uniq.bam" \
-		REST_BAM="${SAMPLE_NAME}.mapped.non_uniq.bam"
+		INPUT=${SAMPLE_NAME}.mapped \
+		UNIQ=${SAMPLE_NAME}.mapped.uniq \
+		REST=${SAMPLE_NAME}.mapped.non_uniq
 	#[command require="${SAMPLE_NAME}.mapped.uniq.bam"]
 	#[command require="${SAMPLE_NAME}.mapped.non_uniq.bam"]
 	rm -f ${SAMPLE_NAME}.mapped.bam
 
 	SP_run sort_bam \
-		INPUT_BAM="${SAMPLE_NAME}.mapped.uniq.bam" \
-		OUTPUT_BAM="${SAMPLE_NAME}.mapped.uniq.sorted.bam"
+		INPUT=${SAMPLE_NAME}.mapped.uniq \
+		OUTPUT=${SAMPLE_NAME}.mapped.uniq.sorted
 	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.bam"]
 	rm -f ${SAMPLE_NAME}.mapped.uniq.bam
 
 	SP_run mark_duplicate_reads \
-		INPUT_BAM="${SAMPLE_NAME}.mapped.uniq.sorted.bam" \
-		OUTPUT_BAM="${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam"
+		INPUT=${SAMPLE_NAME}.mapped.uniq.sorted \
+		OUTPUT=${SAMPLE_NAME}.mapped.uniq.sorted.mkdup
 	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam"]
-	rm -f ${SAMPLE_NAME}.mapped.uniq.sorted.bam \
-		${SAMPLE_NAME}.mapped.uniq.sorted.bam.bai
+	rm -f ${SAMPLE_NAME}.mapped.uniq.sorted.bam{,.bai}
 
 	SP_run samtools_call_variants \
-		REFERENCE="${REFERENCE}" \
-		SORTED_BAM="${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam" \
-		OUTPUT_BCF="${SAMPLE_NAME}.bcf"
-}
+		REFERENCE=${REFERENCE} \
+		INPUT=${SAMPLE_NAME}.mapped.uniq.sorted.mkdup \
+		OUTPUT=${SAMPLE_NAME}
 
-#[procedure type="stage"]
-#[procedure input="${SAMPLE_NAME}.bam"]
-#[procedure output="${SAMPLE_NAME}_sv_D.vcf"]
-#[procedure output="${SAMPLE_NAME}_sv_SI.vcf"]
-#[procedure output="${SAMPLE_NAME}_sv_INV.vcf"]
-#[procedure output="${SAMPLE_NAME}_sv_TD.vcf"]
-#[procedure require="${REFERENCE}"]
-function DNAseq_pindel_call_structure_variants
-{
+	SP_run gatk_call_variants \
+		REFERENCE=${REFERENCE} \
+		INPUT=${SAMPLE_NAME}.mapped.uniq.sorted.mkdup \
+		OUTPUT=${SAMPLE_NAME}
+
+##### Call Structure Variants #####
 	SP_run sort_bam \
 		VALIDATION_STRINGENCY=SILENT \
-		INPUT_BAM="${SAMPLE_NAME}.bam" \
-		OUTPUT_BAM="${SAMPLE_NAME}.sorted.bam"
+		INPUT=${SAMPLE_NAME} \
+		OUTPUT=${SAMPLE_NAME}.sorted
 
 	SP_run pindel_call_structure_variants \
-		REFERENCE="${REFERENCE}" \
-		SAMPLE_NAME="${SAMPLE_NAME}" \
-		INPUT_BAM="${SAMPLE_NAME}.sorted.bam" \
-		INSERT_SIZE="${INSERT_SIZE}" \
-		OUTPUT_PREFIX="${SAMPLE_NAME}_sv"
-}
-
-#[procedure type="pipeline"]
-#[procedure input="${FASTQ_1}" input="${FASTQ_2}"]
-#[procedure output="${SAMPLE_NAME}.bcf"]
-#[procedure output="${SAMPLE_NAME}_sv_D.vcf"]
-#[procedure output="${SAMPLE_NAME}_sv_SI.vcf"]
-#[procedure output="${SAMPLE_NAME}_sv_INV.vcf"]
-#[procedure output="${SAMPLE_NAME}_sv_TD.vcf"]
-#[procedure require="${REFERENCE}"]
-function DNAseq_analysis
-{
-	SP_run bwa_read_mapping \
-		REFERENCE="${REFERENCE}" \
-		FASTQ_1="${FASTQ_1}" FASTQ_2="${FASTQ_2}" \
-		MAX_INSERT_SIZE="${MAX_INSERT_SIZE}" \
-		OUTPUT_BAM="${SAMPLE_NAME}.bam"
-
-	SP_parallel_begin
-
-	SP_run DNAseq_samtools_call_variants \
-		REFERENCE=${REFERENCE} \
-		SAMPLE_NAME=${SAMPLE_NAME}
-
-	SP_run DNAseq_pindel_call_structure_variants \
 		REFERENCE=${REFERENCE} \
 		SAMPLE_NAME=${SAMPLE_NAME} \
-		INSERT_SIZE=${INSERT_SIZE}
-
-	SP_parallel_end
+		INSERT_SIZE=${INSERT_SIZE} \
+		INPUT=${SAMPLE_NAME}.sorted \
+		OUTPUT=${SAMPLE_NAME}
 }
