@@ -5,17 +5,21 @@ use File::Basename;
 use File::stat;
 use Cwd 'abs_path';
 
+# Check Perl ithread support.
 my $can_use_threads = eval 'use threads; use threads::shared; 1' or eval 'use forks; 1';
 if (not $can_use_threads) {
 	print STDERR "Warning: Your Perl does not support threads! Parallel mode is disabled.\n";
 }
 
+# All logs are stored in this directory.
 use constant LOG_DIR => './.seqpipe';
 
+# Procedure types and attributes.
 my %valid_procedure_type = ( 'sysinfo' => 1, 'pipeline' => 2, 'stage' => 3, 'checker' => 4, 'evaluator' => 5 );
 my %need_record = ( 'pipeline' => 1, 'stage' => 1, 'evaluator' => 1 );
 my %exit_on_error = ( 'pipeline' => 1, 'stage' => 1 );
 
+# Command line parsing results.
 my $help_mode = 0;
 my $help_detail_mode = 0;
 my $verbose = 0;
@@ -23,16 +27,41 @@ my $list_mode = 0;
 my $test_mode = 0;
 my $enable_duplicate = 0;
 
+# All procedures are loaded at startup.
 my %procedures;
+
+# Global variables (which are defined outside procedures in .pipe files).
 my %global_variables = ( SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dirname abs_path $0) );
+
+# Count how many commands have been run so far.
 my $run_counter :shared;
 $run_counter = 0;
 
+# Flag for exiting (when received KILL or Ctrl+C).
 my $exiting :shared;
 $exiting = 0;
 
+# Module file list for loading at startup.
 my @module_files = ( (dirname abs_path $0) . '/default.pipe' );
+
+# Command line entered by user.
 my $command_line = join(' ', ($0, @ARGV));
+
+############################################################
+# Catch signals for KILL, Ctrl+C, etc.
+
+sub kill_signal_handler
+{
+	$exiting = 1;
+	print STDERR "Error: Catch KILL signal!\n";
+}
+$SIG{'INT'} = \&kill_signal_handler;
+$SIG{'ABRT'} = \&kill_signal_handler;
+$SIG{'QUIT'} = \&kill_signal_handler;
+$SIG{'TERM'} = \&kill_signal_handler;
+
+############################################################
+# Time display helper functions
 
 sub time_string
 {
@@ -65,69 +94,7 @@ sub time_elapse_string
 	return $time_elapse_text;
 }
 
-sub kill_signal_handler
-{
-	$exiting = 1;
-	print STDERR "Error: Catch KILL signal!\n";
-}
-$SIG{'INT'} = \&kill_signal_handler;
-$SIG{'ABRT'} = \&kill_signal_handler;
-$SIG{'QUIT'} = \&kill_signal_handler;
-$SIG{'TERM'} = \&kill_signal_handler;
-
-sub check_inputs_outputs_requires
-{
-	my ($procedure_name, $variables_ref, $inputs_ref, $outputs_ref, $requires_ref) = @_;
-	
-	my @inputs = ();
-	foreach my $input (@{$inputs_ref}) {
-		my $filename = $input;
-		while ($filename =~ /\${(\w+)}/) {
-			my $option_name = $1;
-			$filename =~ s/\${$option_name}/${$variables_ref}{$option_name}/g;
-		}
-		if (not -e $filename) {
-			print LOG_FILE "Error: Input file '$filename' of procedure '$procedure_name' does not exist!\n";
-			exit 1;
-		}
-		push @inputs, $filename;
-	}
-
-	foreach my $require (@{$requires_ref}) {
-		my $filename = $require;
-		while ($filename =~ /\${(\w+)}/) {
-			my $option_name = $1;
-			$filename =~ s/\${$option_name}/${$variables_ref}{$option_name}/g;
-		}
-		if (not -e $filename) {
-			print LOG_FILE "Error: Required file '$filename' of procedure '$procedure_name' does not exist!\n";
-			exit 1;
-		}
-	}
-	
-	if (scalar @{$outputs_ref} == 0) {
-		return 1;
-	}
-	foreach my $output (@{$outputs_ref}) {
-		my $filename = $output;
-		while ($filename =~ /\${(\w+)}/) {
-			my $option_name = $1;
-			$filename =~ s/\${$option_name}/${$variables_ref}{$option_name}/g;
-		}
-		if (-e $filename) {
-			foreach my $input (@inputs) {
-				if ((stat($input))->mtime > (stat($filename))->mtime) {
-					return 1;
-				}
-			}
-		} else {
-			my $output_dir = dirname $filename;
-			system "mkdir", "-p", $output_dir unless -d $output_dir;
-			return 1;
-		}
-	}
-	return 0;
-}
+############################################################
 
 sub bash_line_encode {
 	my @argv = @_;
@@ -222,7 +189,15 @@ sub append_command
 		my @args = bash_line_decode($command);
 		die 'Error: Invalid option for SP_set!' if ($args[0] ne 'SP_set' or $args[1] !~ /^(\w+)=(.*?)$/);
 		if (not exists ${$defined_variables_ref}{$1}) {
-			${$defined_variables_ref}{$1} = $2;
+			if (defined $args[2] and ($args[2] eq '' or ($args[2] eq 'if_no_arg' and defined $args[3] and $args[3] eq 'ARG="${' . $1 . '}"'))) {
+				if ($2 eq '${' . $1 . '}') {
+					${$defined_variables_ref}{$1} = "(null)";
+				} else {
+					${$defined_variables_ref}{$1} = $2;
+				}
+			} else {
+				${$defined_variables_ref}{$1} = "(runtime-evaluate)";
+			}
 		}
 	} elsif ($command =~ /^SP_eval/) {
 		my @args = bash_line_decode($command);
@@ -455,6 +430,60 @@ sub list_procedures
 		}
 	}
 	print STDOUT "\n";
+}
+
+sub check_inputs_outputs_requires
+{
+	my ($procedure_name, $variables_ref, $inputs_ref, $outputs_ref, $requires_ref) = @_;
+	
+	my @inputs = ();
+	foreach my $input (@{$inputs_ref}) {
+		my $filename = $input;
+		while ($filename =~ /\${(\w+)}/) {
+			my $option_name = $1;
+			$filename =~ s/\${$option_name}/${$variables_ref}{$option_name}/g;
+		}
+		if (not -e $filename) {
+			print LOG_FILE "Error: Input file '$filename' of procedure '$procedure_name' does not exist!\n";
+			exit 1;
+		}
+		push @inputs, $filename;
+	}
+
+	foreach my $require (@{$requires_ref}) {
+		my $filename = $require;
+		while ($filename =~ /\${(\w+)}/) {
+			my $option_name = $1;
+			$filename =~ s/\${$option_name}/${$variables_ref}{$option_name}/g;
+		}
+		if (not -e $filename) {
+			print LOG_FILE "Error: Required file '$filename' of procedure '$procedure_name' does not exist!\n";
+			exit 1;
+		}
+	}
+	
+	if (scalar @{$outputs_ref} == 0) {
+		return 1;
+	}
+	foreach my $output (@{$outputs_ref}) {
+		my $filename = $output;
+		while ($filename =~ /\${(\w+)}/) {
+			my $option_name = $1;
+			$filename =~ s/\${$option_name}/${$variables_ref}{$option_name}/g;
+		}
+		if (-e $filename) {
+			foreach my $input (@inputs) {
+				if ((stat($input))->mtime > (stat($filename))->mtime) {
+					return 1;
+				}
+			}
+		} else {
+			my $output_dir = dirname $filename;
+			system "mkdir", "-p", $output_dir unless -d $output_dir;
+			return 1;
+		}
+	}
+	return 0;
 }
 
 sub run_command
@@ -824,6 +853,9 @@ sub run_procedure
 	}
 	return $return_value;
 }
+
+############################################################
+# Main program start from here.
 
 my @argv = ();
 my $procedure_name = '';

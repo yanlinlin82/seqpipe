@@ -75,7 +75,6 @@ function bwa_build_index
 #[procedure require="${REFERENCE}"]
 function bwa_read_mapping
 {
-	SP_set BWA_ALN_OPTS="${BWA_ALN_OPTS}"
 	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${FASTQ_1}"
 	SP_set BWA_SAMPE_OPTS="${BWA_SAMPE_OPTS}"
 	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
@@ -116,57 +115,10 @@ function bwa_read_mapping
 }
 
 #[procedure type="stage"]
-#[procedure input="${FASTQ_1}.bz2" input="${FASTQ_2}.bz2" output="${OUTPUT_BAM}"]
-#[procedure require="${REFERENCE}"]
-function bwa_read_mapping_bz2
-{
-	SP_set BWA_ALN_OPTS="${BWA_ALN_OPTS}"
-	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${FASTQ_1}.bz2"
-	SP_set BWA_SAMPE_OPTS="${BWA_SAMPE_OPTS}"
-	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
-	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
-	SP_set RGID="1" if_no_arg ARG="${RGID}"
-	SP_set SAMPLE_NAME="${RGID}" if_no_arg ARG="${SAMPLE_NAME}"
-	SP_set RGLB="${RGID}" if_no_arg ARG="${RGLB}"
-	SP_set RGPL="illumina" if_no_arg ARG="${RGPL}"
-	SP_set RGCN="BGI" if_no_arg ARG="${RGCN}"
-
-	# This will be skipped if the index files exist.
-	SP_run bwa_build_index REFERENCE="${REFERENCE}"
-
-	SP_parallel_begin
-	
-	#[command input="${FASTQ_1}.bz2" output="${FASTQ_1}.bz2.sai" require="${REFERENCE}"]
-	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REFERENCE} <(bzcat ${FASTQ_1}.bz2) -f ${FASTQ_1}.bz2.sai ${BWA_ALN_OPTS}
-	
-	#[command input="${FASTQ_2}.bz2" output="${FASTQ_2}.bz2.sai" require="${REFERENCE}"]
-	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REFERENCE} <(bzcat ${FASTQ_2}.bz2) -f ${FASTQ_2}.bz2.sai ${BWA_ALN_OPTS}
-	
-	SP_parallel_end
-
-	#[command input="${FASTQ_1}.bz2" input="${FASTQ_1}.bz2.sai"]
-	#[command input="${FASTQ_2}.bz2" input="${FASTQ_2}.bz2.sai"]
-	#[command require="${REFERENCE}"]
-	#[command output="${OUTPUT_BAM}"]
-	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
-		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
-		${FASTQ_1}.bz2.sai ${FASTQ_2}.bz2.sai \
-		<(bzcat ${FASTQ_1}.bz2) <(bzcat ${FASTQ_2}.bz2) ${BWA_SAMPE_OPTS} \
-		| samtools view -Sb - \
-		> ${OUTPUT_BAM}
-
-	#[command require="${OUTPUT_BAM}"]
-	rm -f ${FASTQ_1}.bz2.sai ${FASTQ_2}.bz2.sai
-}
-
-#[procedure type="stage"]
 #[procedure input="${INPUT_FASTQ}" output="${OUTPUT_BAM}"]
 #[procedure require="${REFERENCE}"]
 function bwa_read_mapping_se
 {
-	SP_set BWA_ALN_OPTS="${BWA_ALN_OPTS}"
 	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${INPUT_FASTQ}"
 	SP_set BWA_SAMSE_OPTS="${BWA_SAMSE_OPTS}"
 	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
