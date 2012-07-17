@@ -840,10 +840,6 @@ if ($#ARGV < 0) {
 		}
 	}
 }
-if ($procedure_name eq '') {
-	print STDERR "Error: No procedure name provided!\n" if not $help_mode;
-	$help_mode = 1;
-}
 
 foreach my $module_file (@module_files) {
 	load_module $module_file;
@@ -857,8 +853,9 @@ if ($list_mode) {
 	list_procedures;
 	exit 1;
 }
-if ($help_mode) {
+if ($procedure_name eq '' or $help_mode) {
 	if ($procedure_name eq '') {
+		print STDERR "Error: No procedure name provided!\n" if not $help_mode;
 		print_usage;
 		print STDOUT "\n";
 		exit 1;
