@@ -248,7 +248,9 @@ sub load_module
 		while ($line = <$file_handle>) {
 			chomp $line;
 
-			if ($line =~ /^\.\s+(\S*)\s*$/) {
+			if ($line =~ /^\#\[primitive\]\s*$/) {
+				$type = 'primitive';
+			} elsif ($line =~ /^\.\s+(\S*)\s*$/) {
 				local *FILE;
 				open FILE, $dir . "/" . $1 or die "Warning: Can not open module file '$1'!\n";
 				unshift @file_handles, *FILE;
@@ -275,6 +277,14 @@ sub load_module
 				}
 			} elsif ($line =~ /^\s*function\s+/) {
 				die "Error: Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
+
+				if ($type eq 'primitive') {
+					while ($line = <$file_handle>) {
+						last if $line =~ '^}\s*$';
+					}
+					$type = '';
+					next;
+				}
 
 				# Treat functions without type declearation as a 'stage'.
 				$type = 'stage' if $type eq '';
@@ -410,11 +420,12 @@ Copyright: 2012, Centre for Bioinformatics, Peking University, China
 Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
 
 Options:
-   -h           Show this help.
-   -H           Show detail help (including optional parameters).
+   -h           Show this help or require parameters for a procedure.
+   -H           Show detail help for a procedure (including optional parameters).
    -v           Show verbose message.
    -m <file>    Load procedure module file, this option can be used many times.
    -d           Enable duplcated global variables and procedures (overwrited as the latters).
+   -D           Disable loading "default.pipe".
    -l           List current available procedures.
    -t           Test mode, only print the commands rather than execute them.
 ';
@@ -854,7 +865,7 @@ if ($help_mode) {
 
 	print_usage;
 
-	print STDOUT "\nOptions for procedure '$procedure_name':\n";
+	print STDOUT "\nParameters for procedure '$procedure_name':\n";
 	my $used_var_ref = \%{$procedures{$procedure_name}{used_variables}};
 	my $defined_var_ref = \%{$procedures{$procedure_name}{defined_variables}};
 	my $eval_var_ref = \%{$procedures{$procedure_name}{eval_variables}};
