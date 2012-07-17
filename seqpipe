@@ -420,7 +420,7 @@ Copyright: 2012, Centre for Bioinformatics, Peking University, China
 Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
 
 Options:
-   -h           Show this help or require parameters for a procedure.
+   -h / --help  Show this help or require parameters for a procedure.
    -H           Show detail help for a procedure (including optional parameters).
    -v           Show verbose message.
    -m <file>    Load procedure module file, this option can be used many times.
@@ -804,7 +804,7 @@ if ($#ARGV < 0) {
 	$help_mode = 1;
 } else {
 	while (my $arg = shift @ARGV) {
-		if ($arg eq '-h' or $arg eq '-H') {
+		if ($arg eq '-h' or $arg eq '--help' or $arg eq '-H') {
 			$help_mode = 1;
 			$help_detail_mode = 1 if ($arg eq '-H');
 		} elsif ($arg eq '-v') {
@@ -821,6 +821,10 @@ if ($#ARGV < 0) {
 				exit 1;
 			}
 			push(@module_files, shift @ARGV);
+		} elsif ($arg eq '-D') {
+			if ($module_files[0] eq (dirname abs_path $0) . '/default.pipe') {
+				shift @module_files;
+			}
 		} elsif ($arg =~ '^-') {
 			print "Error: Unknown option '$arg'!\n";
 			exit 1;
