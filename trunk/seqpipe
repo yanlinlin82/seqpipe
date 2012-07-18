@@ -48,6 +48,10 @@ my @module_files = ( (dirname abs_path $0) . '/default.pipe' );
 
 # Command line entered by user.
 my $command_line = join(' ', ($0, @ARGV));
+my $uniq_id;
+
+my ($sec, $min, $hour, $mday, $mon, $year) = localtime time;
+$uniq_id = sprintf("%02d%02d%02d.%d", $year % 100, $mon + 1, $mday, $$);
 
 ############################################################
 # Catch signals for KILL, Ctrl+C, etc.
@@ -519,32 +523,32 @@ sub run_command
 	} else {
 		my $command_with_log = '';
 		if ($procedure_type eq 'sysinfo') {
-			$command_with_log = "($command) 2>&1 >>" . LOG_DIR . "/$$.sysinfo";
+			$command_with_log = "($command) 2>&1 >>" . LOG_DIR . "/$uniq_id.sysinfo";
 		} elsif ($procedure_type eq 'checker') {
 			$command_with_log = "($command) >/dev/null 2>/dev/null";
 		} else {
 			$command_with_log = "($command) "
-				. ">>" . LOG_DIR . "/$$.$record_id.$procedure_name.log "
-				. "2>>" . LOG_DIR . "/$$.$record_id.$procedure_name.err";
+				. ">>" . LOG_DIR . "/$uniq_id.$record_id.$procedure_name.log "
+				. "2>>" . LOG_DIR . "/$uniq_id.$record_id.$procedure_name.err";
 
-			push @log_files, LOG_DIR . "/$$.$record_id.$procedure_name.log";
+			push @log_files, LOG_DIR . "/$uniq_id.$record_id.$procedure_name.log";
 			my $depth_text = '';
 			for my $i (1 .. $call_depth) { $depth_text .= '   '; }
 			push @pipe_structure, $depth_text . "($record_id) " . $command;
 
-			open FILE, ">>" . LOG_DIR . "/$$.$record_id.$procedure_name.cmd";
+			open FILE, ">>" . LOG_DIR . "/$uniq_id.$record_id.$procedure_name.cmd";
 			print FILE "$command\n";
 			close FILE;
 		}
 		
 		my $start_time = time;
 		if (exists $need_record{$procedure_type}) {
-			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id): $command\n";
-			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts at " . time_string($start_time) . "\n";
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id): $command\n";
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) starts at " . time_string($start_time) . "\n";
 		}
 		
 		if (not open BASH, "| /bin/bash") {
-			print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed!\n";
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) starts failed!\n";
 			$return_value = -1;
 			$start_failed = 1;
 		} else {
@@ -552,12 +556,12 @@ sub run_command
 			close BASH;
 		
 			if ($? == -1) {
-				print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed!\n";
+				print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) starts failed!\n";
 				close LOG_FILE;
 				$return_value = -1;
 				$start_failed = 1;
 			} elsif ($? & 127) {
-				printf LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) starts failed! Child died with signal %d (%s coredump)\n",
+				printf LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) starts failed! Child died with signal %d (%s coredump)\n",
 					($? & 127), ($? & 128) ? 'with' : 'without';
 				close LOG_FILE;
 				$return_value = -1;
@@ -567,7 +571,7 @@ sub run_command
 
 				if (exists $need_record{$procedure_type}) {
 					my $end_time = time;
-					printf LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) ends at %s (elapsed: %s)\n",
+					printf LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) ends at %s (elapsed: %s)\n",
 						time_string($end_time), time_elapse_string($start_time, $end_time);
 				}
 			}
@@ -578,12 +582,12 @@ sub run_command
 		foreach my $output_file (@{$outputs_ref}) {
 			if (-e $output_file) {
 				if ($verbose) {
-					print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) removes bad output file '$output_file'!\n";
+					print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) removes bad output file '$output_file'!\n";
 				}
 				unlink $output_file;
 			}
 		}
-		print LOG_FILE "[SeqPipe] [$call_depth] Command($$:$record_id) returns $return_value\n" if not $start_failed;
+		print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) returns $return_value\n" if not $start_failed;
 	}
 	return ( $return_value, \@log_files, \@pipe_structure );
 }
@@ -658,7 +662,7 @@ sub run_procedure
 			$run_counter += 1;
 			$record_id = $run_counter;
 		}
-		open FILE, ">>" . LOG_DIR . "/$$.$record_id.$procedure_name.pipe";
+		open FILE, ">>" . LOG_DIR . "/$uniq_id.$record_id.$procedure_name.pipe";
 		print FILE bash_line_encode("SP_run", $procedure_name, @{$argv_ref}) . "\n";
 		close FILE;
 	
@@ -669,7 +673,7 @@ sub run_procedure
 	
 	my $start_time = time;
 	if (exists $need_record{$procedure{type}}) {
-		print LOG_FILE "[SeqPipe] [$call_depth] Procedure($$.$record_id) '$procedure_name' starts at " . time_string($start_time) . "\n";
+		print LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id) '$procedure_name' starts at " . time_string($start_time) . "\n";
 	}
 
 	my $in_parallel = 0;
@@ -833,7 +837,7 @@ sub run_procedure
 					$run_counter += 1;
 					$record_id = $run_counter;
 				}
-				push @{$log_files_ref}, LOG_DIR . "/$$.$record_id.$procedure_name.log";
+				push @{$log_files_ref}, LOG_DIR . "/$uniq_id.$record_id.$procedure_name.log";
 			}
 
 			if ($can_use_threads) {
@@ -861,7 +865,7 @@ sub run_procedure
 	
 	if (exists $need_record{$procedure{type}}) {
 		my $end_time = time;
-		printf LOG_FILE "[SeqPipe] [$call_depth] Procedure($$.$record_id) '$procedure_name' ends at %s (elapsed: %s)\n",
+		printf LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id) '$procedure_name' ends at %s (elapsed: %s)\n",
 			time_string($end_time), time_elapse_string($start_time, $end_time);
 	}
 	return $return_value;
@@ -1005,15 +1009,15 @@ system "mkdir", "-p", LOG_DIR unless -d LOG_DIR;
 die "Error: Can not initialize .seqpipe directory!" unless -d LOG_DIR;
 
 open LOG_FILE, ">>" . LOG_DIR . "/history.log";
-printf LOG_FILE "%d\t%s\n", $$, $command_line;
+print LOG_FILE "$uniq_id\t$command_line\n";
 close LOG_FILE;
 
 if ($test_mode) {
 	open LOG_FILE, ">/dev/stderr";
 } else {
-	open LOG_FILE, "| tee -ai " . LOG_DIR . "/$$.log";
+	open LOG_FILE, "| tee -ai " . LOG_DIR . "/$uniq_id.log";
 
-	printf LOG_FILE "[SeqPipe] Top Command($$): $command_line\n";
+	printf LOG_FILE "[SeqPipe] Top Command($uniq_id): $command_line\n";
 
 	foreach my $sysinfo_procedure_name (keys %procedures) {
 		if ($procedures{$sysinfo_procedure_name}{type} eq 'sysinfo') {
@@ -1031,15 +1035,15 @@ my $return_value = run_procedure($procedure_name, \@argv, $test_mode, \@log_file
 
 if (not $test_mode) {
 	if ($return_value == 0) {
-		printf LOG_FILE "[SeqPipe] Pipeline($$) finished successfully!\n";
+		printf LOG_FILE "[SeqPipe] Pipeline($uniq_id) finished successfully!\n";
 	} else {
-		printf LOG_FILE "[SeqPipe] Pipeline($$) finished abnormally with exit value: $return_value!\n";
+		printf LOG_FILE "[SeqPipe] Pipeline($uniq_id) finished abnormally with exit value: $return_value!\n";
 	}
 }
 close LOG_FILE;
 
 if (not $test_mode) {
-	open LOG_FILE, ">>" . LOG_DIR . "/$$.cmd";
+	open LOG_FILE, ">>" . LOG_DIR . "/$uniq_id.cmd";
 	foreach my $text (@pipe_structure) {
 		print LOG_FILE "$text\n";
 	}
