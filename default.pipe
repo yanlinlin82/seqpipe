@@ -348,7 +348,9 @@ function picard_set_read_group
 		${PICARD_RG_OPTS}
 
 	# Rename index file if sorted
-	[ -f ${INPUT}.rg.bai ] && mv -v ${INPUT}.rg.bai ${INPUT}.rg.bam.bai
+	if [ -f ${INPUT}.rg.bai ]; then \
+		mv -v ${INPUT}.rg.bai ${INPUT}.rg.bam.bai; \
+	fi
 }
 
 #[procedure require="${REFERENCE}"]
