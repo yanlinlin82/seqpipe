@@ -542,7 +542,7 @@ sub run_command
 		}
 		
 		my $start_time = time;
-		if (exists $need_record{$procedure_type}) {
+		if (not $is_test_mode and exists $need_record{$procedure_type}) {
 			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id): $command\n";
 			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) starts at " . time_string($start_time) . "\n";
 		}
@@ -569,7 +569,7 @@ sub run_command
 			} else {
 				$return_value = ($? >> 8);
 
-				if (exists $need_record{$procedure_type}) {
+				if (not $is_test_mode and exists $need_record{$procedure_type}) {
 					my $end_time = time;
 					printf LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) ends at %s (elapsed: %s)\n",
 						time_string($end_time), time_elapse_string($start_time, $end_time);
@@ -654,8 +654,11 @@ sub run_procedure
 			$filename =~ s/\${$option_name}/$variables{$option_name}/g;
 		}
 	}
-	my $need_rerun = check_requires_inputs_outputs($procedure_name, \%variables,
-		$procedure{requires}, $procedure{inputs}, $procedure{outputs});
+	my $need_rerun = 0;
+	if (not $is_test_mode) {
+		$need_rerun = check_requires_inputs_outputs($procedure_name, \%variables,
+			$procedure{requires}, $procedure{inputs}, $procedure{outputs});
+	}
 
 	if (not $is_test_mode and not $need_rerun) {
 		print LOG_FILE "[SeqPipe] [$call_depth] Skip procedure '$procedure_name' (" . bash_line_encode(@{$argv_ref}) . ")\n";
@@ -664,7 +667,7 @@ sub run_procedure
 
 	my $record_id = 0;
 	my $depth_text = '';
-	if (exists $need_record{$procedure{type}}) {
+	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
 		{
 			lock($run_counter);
 			$run_counter += 1;
@@ -680,7 +683,7 @@ sub run_procedure
 	}
 	
 	my $start_time = time;
-	if (exists $need_record{$procedure{type}}) {
+	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
 		print LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id) '$procedure_name' starts at " . time_string($start_time) . "\n";
 	}
 
@@ -882,7 +885,7 @@ sub run_procedure
 		}
 	}
 	
-	if (exists $need_record{$procedure{type}}) {
+	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
 		my $end_time = time;
 		printf LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id) '$procedure_name' ends at %s (elapsed: %s)\n",
 			time_string($end_time), time_elapse_string($start_time, $end_time);
@@ -1027,13 +1030,13 @@ if ($procedure_name eq '' or $help_mode) {
 system "mkdir", "-p", LOG_DIR unless -d LOG_DIR;
 die "Error: Can not initialize .seqpipe directory!" unless -d LOG_DIR;
 
-open LOG_FILE, ">>" . LOG_DIR . "/history.log";
-print LOG_FILE "$uniq_id\t$command_line\n";
-close LOG_FILE;
-
 if ($test_mode) {
 	open LOG_FILE, ">/dev/stderr";
 } else {
+	open LOG_FILE, ">>" . LOG_DIR . "/history.log";
+	print LOG_FILE "$uniq_id\t$command_line\n";
+	close LOG_FILE;
+
 	open LOG_FILE, "| tee -ai " . LOG_DIR . "/$uniq_id.log";
 
 	printf LOG_FILE "[SeqPipe] Top Command($uniq_id): $command_line\n";
