@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#[seqpipe version="0.2.2 ($Id$)"]
+#[seqpipe version="0.2.3 ($Id$)"]
 #
 . common.inc
 
@@ -203,14 +203,14 @@ function merge_bam
 }
 
 #[procedure input="${INPUT}.bam"]
-#[procedure output="${OUTPUT}.bam"]
+#[procedure output="${INPUT}.sorted.bam"]
 function sort_bam
 {
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
 
 	#[command input="${INPUT}.bam"]
-	#[command output="${OUTPUT}.bam"]
-	#[command output="${OUTPUT}.bai"]
+	#[command output="${INPUT}.sorted.bam"]
+	#[command output="${INPUT}.sorted.bai"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/SortSam.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
@@ -218,33 +218,32 @@ function sort_bam
 		CREATE_MD5_FILE=false \
 		SORT_ORDER=coordinate \
 		INPUT=${INPUT}.bam \
-		OUTPUT=${OUTPUT}.bam
+		OUTPUT=${INPUT}.sorted.bam
 
-	#[command require="${OUTPUT}.bai"]
-	mv -v ${OUTPUT}.bai ${OUTPUT}.bam.bai
+	#[command require="${INPUT}.sorted.bai"]
+	mv -v ${INPUT}.sorted.bai ${INPUT}.sorted.bam.bai
 }
 
 #[procedure require="${REFERENCE}"]
 #[procedure input="${INPUT}.bam"]
-#[procedure output="${OUTPUT}.bam"]
+#[procedure output="${INPUT}.reordered.bam"]
 function reorder_bam
 {
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
 
 	#[command input="${INPUT}.bam"]
-	#[command output="${OUTPUT}.bam"]
-	#[command output="${OUTPUT}.bai"]
+	#[command output="${INPUT}.reordered.bam"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/ReorderSam.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=false \
+		CREATE_INDEX=true \
 		CREATE_MD5_FILE=false \
 		INPUT=${INPUT}.bam \
-		OUTPUT=${OUTPUT}.bam \
+		OUTPUT=${INPUT}.reordered.bam \
 		REFERENCE=${REFERENCE}
 
-	#[command require="${OUTPUT}.bai"]
-	mv -v ${OUTPUT}.bai ${OUTPUT}.bam.bai
+	# Rename index file if sorted
+	[ -f ${INPUT}.reordered.bai ] && mv -v ${INPUT}.reordered.bai ${INPUT}.reordered.bam.bai
 }
 
 #[procedure input="${INPUT}.bam"]
@@ -256,53 +255,48 @@ function flagstat_bam
 }
 
 #[procedure input="${INPUT}.bam"]
-#[procedure output="${UNIQ}.bam"]
-#[procedure output="${REST}.bam"]
+#[procedure output="${INPUT}.uniq.bam"]
+#[procedure output="${INPUT}.non_uniq.bam"]
 function select_unique_hit_reads
 {
-	#[command input="${INPUT}.bam" output="${UNIQ}.bam" output="${REST}.bam"]
 	samtools view -h ${INPUT}.bam | tee \
-		>(egrep '^@|XT:A:U' | samtools view -Sb - > ${UNIQ}.bam) \
-		| egrep -v 'XT:A:U' | samtools view -Sb - > ${REST}.bam
+		>(egrep '^@|XT:A:U' | samtools view -Sb - > ${INPUT}.uniq.bam) \
+		| egrep -v 'XT:A:U' | samtools view -Sb - > ${INPUT}.non_uniq.bam
 }
 
 #[procedure input="${INPUT}.bam"]
-#[procedure input="${INPUT}.bam.bai"]
-#[procedure output="${OUTPUT}.bam"]
+#[procedure output="${INPUT}.mkdup.bam"]
 function mark_duplicate_reads
 {
 	SP_set ASSUME_SORTED="false" if_no_arg ARG="${ASSUME_SORTED}"
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
 
 	#[command input="${INPUT}.bam"]
-	#[command output="${OUTPUT}.bam"]
-	#[command output="${OUTPUT}.bai"]
-	#[command output="${OUTPUT}.metrics"]
+	#[command output="${INPUT}.mkdup.bam"]
+	#[command output="${INPUT}.mkdup.metrics"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=true \
 		CREATE_MD5_FILE=false \
 		INPUT=${INPUT}.bam \
-		OUTPUT=${OUTPUT}.bam \
-		METRICS_FILE=${OUTPUT}.metrics \
+		OUTPUT=${INPUT}.mkdup.bam \
+		METRICS_FILE=${INPUT}.mkdup.metrics \
 		REMOVE_DUPLICATES=false
 
-	#[command require="${OUTPUT}.bai"]
-	mv -v ${OUTPUT}.bai ${OUTPUT}.bam.bai
+	#[command require="${INPUT}.mkdup.bai"]
+	mv -v ${INPUT}.mkdup.bai ${INPUT}.mkdup.bam.bai
 }
 
 #[procedure input="${INPUT}.bam"]
 #[procedure input="${INPUT}.bam.bai"]
-#[procedure output="${OUTPUT}.mpileup.bz2"]
+#[procedure output="${INPUT}.mpileup.bz2"]
 function samtools_mpileup
 {
 	SP_set REFERENCE="${REFERENCE}"
 	SP_set SAMTOOLS_OPTS="${SAMTOOLS_OPTS} -f ${REFERENCE}" if_has_arg ARG="${REFERENCE}"
 
-	#[command input="${INPUT}.bam"]
-	#[command output="${OUTPUT}.mpileup.bz2"]
-	samtools mpileup ${SAMTOOLS_OPTS} ${INPUT}.bam | bzip2 -9c > ${OUTPUT}.mpileup.bz2
+	samtools mpileup ${SAMTOOLS_OPTS} ${INPUT}.bam | bzip2 -9c > ${INPUT}.mpileup.bz2
 }
 
 #[procedure require="${REFERENCE}"]
@@ -317,7 +311,7 @@ function samtools_call_variants
 }
 
 #[procedure input="${INPUT}.bam"]
-#[procedure output="${OUTPUT}.bam"]
+#[procedure output="${INPUT}.rg.bam"]
 function picard_set_read_group
 {
 	# READ_GROUP_ID   : Read Group ID  Default value: 1. This option can be set to 'null' to clear the default 
@@ -337,14 +331,14 @@ function picard_set_read_group
 	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
 
 	#[command input="${INPUT}.bam"]
-	#[command output="${OUTPUT}.bam"]
+	#[command output="${INPUT}.rg.bam"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/AddOrReplaceReadGroups.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
 		CREATE_INDEX=true \
 		CREATE_MD5_FILE=false \
 		INPUT=${INPUT}.bam \
-		OUTPUT=${OUTPUT}.bam \
+		OUTPUT=${INPUT}.rg.bam \
 		RGID=${READ_GROUP_ID} \
 		RGLB=${LIBRARY} \
 		RGPL=${PLATFORM} \
@@ -352,6 +346,9 @@ function picard_set_read_group
 		RGSM=${SAMPLE_NAME} \
 		RGCN=${SEQ_CENTER_NAME} \
 		${PICARD_RG_OPTS}
+
+	# Rename index file if sorted
+	[ -f ${INPUT}.rg.bai ] && mv -v ${INPUT}.rg.bai ${INPUT}.rg.bam.bai
 }
 
 #[procedure require="${REFERENCE}"]
@@ -699,23 +696,16 @@ function DNAseq_analysis
 	samtools view ${SAMPLE_NAME}.bam -f 4 -b > ${SAMPLE_NAME}.unmapped.bam
 	SP_parallel_end
 
-	SP_run select_unique_hit_reads \
-		INPUT=${SAMPLE_NAME}.mapped \
-		UNIQ=${SAMPLE_NAME}.mapped.uniq \
-		REST=${SAMPLE_NAME}.mapped.non_uniq
+	SP_run select_unique_hit_reads INPUT=${SAMPLE_NAME}.mapped
 	#[command require="${SAMPLE_NAME}.mapped.uniq.bam"]
 	#[command require="${SAMPLE_NAME}.mapped.non_uniq.bam"]
 	rm -f ${SAMPLE_NAME}.mapped.bam
 
-	SP_run sort_bam \
-		INPUT=${SAMPLE_NAME}.mapped.uniq \
-		OUTPUT=${SAMPLE_NAME}.mapped.uniq.sorted
+	SP_run sort_bam INPUT=${SAMPLE_NAME}.mapped.uniq
 	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.bam"]
 	rm -f ${SAMPLE_NAME}.mapped.uniq.bam
 
-	SP_run mark_duplicate_reads \
-		INPUT=${SAMPLE_NAME}.mapped.uniq.sorted \
-		OUTPUT=${SAMPLE_NAME}.mapped.uniq.sorted.mkdup
+	SP_run mark_duplicate_reads INPUT=${SAMPLE_NAME}.mapped.uniq.sorted
 	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam"]
 	rm -f ${SAMPLE_NAME}.mapped.uniq.sorted.bam{,.bai}
 

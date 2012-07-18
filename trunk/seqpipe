@@ -412,7 +412,7 @@ sub print_usage
 {
 	print STDOUT '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.2.2 ($Rev$)
+Version: 0.2.3 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: ' . basename($0) . ' [options] [VAR=VALUE ...] <procedure> [NAME=VALUE ...]
@@ -1043,7 +1043,7 @@ if (not $test_mode) {
 close LOG_FILE;
 
 if (not $test_mode) {
-	open LOG_FILE, ">>" . LOG_DIR . "/$uniq_id.cmd";
+	open LOG_FILE, ">>" . LOG_DIR . "/$uniq_id.cmds";
 	foreach my $text (@pipe_structure) {
 		print LOG_FILE "$text\n";
 	}
