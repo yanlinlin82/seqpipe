@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#[seqpipe version="0.2.3 ($Id$)"]
+#[seqpipe version="0.2.4 ($Id$)"]
 #
 . common.inc
 

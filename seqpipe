@@ -412,7 +412,7 @@ sub print_usage
 {
 	print STDOUT '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.2.3 ($Rev$)
+Version: 0.2.4 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: ' . basename($0) . ' [options] [VAR=VALUE ...] <procedure> [NAME=VALUE ...]
@@ -646,14 +646,6 @@ sub run_procedure
 		}
 	}
 
-	# Save outputs for procedure (variables may be changed after running procedure.).
-	my @procedure_outputs = @{$procedure{outputs}};
-	foreach my $filename (@procedure_outputs) {
-		while ($filename =~ /\${(\w+)}/) {
-			my $option_name = $1;
-			$filename =~ s/\${$option_name}/$variables{$option_name}/g;
-		}
-	}
 	my $need_rerun = 0;
 	if (not $is_test_mode) {
 		$need_rerun = check_requires_inputs_outputs($procedure_name, \%variables,
@@ -871,17 +863,6 @@ sub run_procedure
 				push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 			}
 			last if exists $exit_on_error{$procedure{type}} and $return_value != 0;
-		}
-	}
-	
-	if (exists $exit_on_error{$procedure{type}} and $return_value != 0) {
-		foreach my $output_file (@procedure_outputs) {
-			if (-e $output_file) {
-				if ($verbose) {
-					print LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id) removes bad output file '$output_file'!\n";
-				}
-				unlink $output_file;
-			}
 		}
 	}
 	
