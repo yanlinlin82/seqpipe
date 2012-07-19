@@ -21,11 +21,12 @@ MAX_RECORDS_IN_RAM=1875000               # For enhance performance of picard
 PICARD_OPTS="MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM}"
 
 # GATK options
-GATK_ROOT=/rd/build/gatk                 # Path of GATK tools
-GATK_KEY=${GATK_ROOT}/gatk_cbi.key       # Key file for offline using GATK
+GATK_ROOT=/rd/build/gatk                                # Path of GATK tools
+GATK_KEY=${GATK_ROOT}/gatk_cbi.key                      # Key file for offline using GATK
 GATK_BUNDLE_ROOT=/rd/data/public/gatk_bundle/1.5/b37
-DBSNP_VCF=${GATK_BUNDLE_ROOT}/dbsnp_135.b37.vcf
-                                         # Path of dbSNP VCF file
+GATK_VCF_DBSNP=${GATK_BUNDLE_ROOT}/dbsnp_135.b37.vcf           # Path of GATK dbSNP VCF file
+GATK_VCF_HAPMAP=${GATK_BUNDLE_ROOT}/hapmap_3.3.b37.sites.vcf   # Path of GATK HapMap VCF file
+GATK_VCF_OMNI=${GATK_BUNDLE_ROOT}/1000G_omni2.5.b37.sites.vcf  # Path of GATK 1000G OMNI VCF file
 GATK_OPTS="-et NO_ET -K ${GATK_KEY}"
 
 ###########################################################################
@@ -354,7 +355,7 @@ function picard_set_read_group
 }
 
 #[procedure require="${REFERENCE}"]
-#[procedure require="${DBSNP_VCF}"]
+#[procedure require="${GATK_VCF_DBSNP}"]
 #[procedure input="${INPUT}.bam"]
 #[procedure output="${INPUT}.realign.fixmate.bam"]
 function gatk_indel_realign
@@ -369,7 +370,7 @@ function gatk_indel_realign
 		-R ${REFERENCE} \
 		-I ${INPUT}.bam \
 		-o ${INPUT}.intervals \
-		-known ${DBSNP_VCF} \
+		-known ${GATK_VCF_DBSNP} \
 		--num_threads ${THREAD_NUM}
 
 	#[command require="${REFERENCE}"]
@@ -405,13 +406,13 @@ function gatk_indel_realign
 }
 
 #[procedure require="${REFERENCE}"]
-#[procedure require="${DBSNP_VCF}"]
+#[procedure require="${GATK_VCF_DBSNP}"]
 #[procedure input="${INPUT}.bam"]
 #[procedure output="${INPUT}.recal.bam"]
 function gatk_recalibrate
 {
 	#[command require="${REFERENCE}"]
-	#[command require="${DBSNP_VCF}"]
+	#[command require="${GATK_VCF_DBSNP}"]
 	#[command input="${INPUT}.bam"]
 	#[command output="${INPUT}.recal"]
 	java ${JAVA_OPTS} \
@@ -419,7 +420,7 @@ function gatk_recalibrate
 		-T CountCovariates \
 		-R ${REFERENCE} \
 		-I ${INPUT}.bam \
-		-knownSites ${DBSNP_VCF} \
+		-knownSites ${GATK_VCF_DBSNP} \
 		-cov ReadGroupCovariate \
 		-cov QualityScoreCovariate \
 		-cov CycleCovariate \
@@ -444,7 +445,7 @@ function gatk_recalibrate
 }
 
 #[procedure require="${REFERENCE}"]
-#[procedure require="${DBSNP_VCF}"]
+#[procedure require="${GATK_VCF_DBSNP}"]
 #[procedure input="${INPUT}.bam"]
 #[procedure output="${OUTPUT}.vcf"]
 function gatk_genotype
@@ -453,7 +454,7 @@ function gatk_genotype
 	SP_set STAND_EMIT_CONF=10  # GATK UnifiedGenotyper -stand_emit_conf
 
 	#[command require="${REFERENCE}"]
-	#[command require="${DBSNP_VCF}"]
+	#[command require="${GATK_VCF_DBSNP}"]
 	#[command input="${INPUT}.bam"]
 	#[command output="${OUTPUT}.vcf"]
 	java ${JAVA_OPTS} \
@@ -463,7 +464,7 @@ function gatk_genotype
 		-I ${INPUT}.bam \
 		-glm BOTH \
 		--min_base_quality_score 20 \
-		--dbsnp ${DBSNP_VCF} \
+		--dbsnp ${GATK_VCF_DBSNP} \
 		-stand_call_conf ${STAND_CALL_CONF} \
 		-stand_emit_conf ${STAND_EMIT_CONF} \
 		-o ${OUTPUT}.vcf \
@@ -551,21 +552,21 @@ function gatk_filter_variants
 }
 
 #[procedure require="${REFERENCE}"]
-#[procedure require="${DBSNP_VCF}"]
+#[procedure require="${GATK_VCF_DBSNP}"]
 #[procedure input="${INPUT}.bam"]
 #[procedure output="${OUTPUT}.gatk.vcf"]
 function gatk_call_variants
 {
 	SP_run gatk_indel_realign \
-		REFERENCE=${REFERENCE} DBSNP_VCF=${DBSNP_VCF} \
+		REFERENCE=${REFERENCE} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
 		INPUT=${INPUT}
 
 	SP_run gatk_recalibrate \
-		REFERENCE=${REFERENCE} DBSNP_VCF=${DBSNP_VCF} \
+		REFERENCE=${REFERENCE} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
 		INPUT=${INPUT}.realign.fixmate
 
 	SP_run gatk_genotype \
-		REFERENCE=${REFERENCE} DBSNP_VCF=${DBSNP_VCF} \
+		REFERENCE=${REFERENCE} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
 		INPUT=${INPUT}.realign.fixmate.recal \
 		OUTPUT=${OUTPUT}
 
