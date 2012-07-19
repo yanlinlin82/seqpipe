@@ -543,12 +543,12 @@ sub run_command
 		
 		my $start_time = time;
 		if (not $is_test_mode and exists $need_record{$procedure_type}) {
-			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id): $command\n";
-			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) starts at " . time_string($start_time) . "\n";
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id): $command\n";
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) starts at " . time_string($start_time) . "\n";
 		}
 		
 		if (not open BASH, "| /bin/bash") {
-			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) starts failed!\n";
+			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) starts failed!\n";
 			$return_value = -1;
 			$start_failed = 1;
 		} else {
@@ -556,12 +556,12 @@ sub run_command
 			close BASH;
 		
 			if ($? == -1) {
-				print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) starts failed!\n";
+				print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) starts failed!\n";
 				close LOG_FILE;
 				$return_value = -1;
 				$start_failed = 1;
 			} elsif ($? & 127) {
-				printf LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) starts failed! Child died with signal %d (%s coredump)\n",
+				printf LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) starts failed! Child died with signal %d (%s coredump)\n",
 					($? & 127), ($? & 128) ? 'with' : 'without';
 				close LOG_FILE;
 				$return_value = -1;
@@ -571,7 +571,7 @@ sub run_command
 
 				if (not $is_test_mode and exists $need_record{$procedure_type}) {
 					my $end_time = time;
-					printf LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) ends at %s (elapsed: %s)\n",
+					printf LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) ends at %s (elapsed: %s)\n",
 						time_string($end_time), time_elapse_string($start_time, $end_time);
 				}
 			}
@@ -582,12 +582,12 @@ sub run_command
 		foreach my $output_file (@{$outputs_ref}) {
 			if (-e $output_file) {
 				if ($verbose) {
-					print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) removes bad output file '$output_file'!\n";
+					print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) removes bad output file '$output_file'!\n";
 				}
 				unlink $output_file;
 			}
 		}
-		print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id:$record_id) returns $return_value\n" if not $start_failed;
+		print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) returns $return_value\n" if not $start_failed;
 	}
 	return ( $return_value, \@log_files, \@pipe_structure );
 }
@@ -878,7 +878,7 @@ sub run_procedure
 		foreach my $output_file (@procedure_outputs) {
 			if (-e $output_file) {
 				if ($verbose) {
-					print LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id:$record_id) removes bad output file '$output_file'!\n";
+					print LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id) removes bad output file '$output_file'!\n";
 				}
 				unlink $output_file;
 			}
