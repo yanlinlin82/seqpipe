@@ -664,6 +664,7 @@ function pindel_call_structure_variants
 #[procedure output="${SAMPLE_NAME}.samtools.vcf"]
 #[procedure output="${SAMPLE_NAME}.gatk.vcf"]
 #[procedure output="${SAMPLE_NAME}.pindel.vcf"]
+#[procedure output="${SAMPLE_NAME}.summary.txt"]
 function DNAseq_analysis
 {
 	SP_set RGID="${RGID}"
@@ -699,17 +700,10 @@ function DNAseq_analysis
 	SP_parallel_end
 
 	SP_run select_unique_hit_reads INPUT=${SAMPLE_NAME}.mapped
-	#[command require="${SAMPLE_NAME}.mapped.uniq.bam"]
-	#[command require="${SAMPLE_NAME}.mapped.non_uniq.bam"]
-	rm -f ${SAMPLE_NAME}.mapped.bam
 
 	SP_run sort_bam INPUT=${SAMPLE_NAME}.mapped.uniq
-	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.bam"]
-	rm -f ${SAMPLE_NAME}.mapped.uniq.bam
 
 	SP_run mark_duplicate_reads INPUT=${SAMPLE_NAME}.mapped.uniq.sorted
-	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam"]
-	rm -f ${SAMPLE_NAME}.mapped.uniq.sorted.bam{,.bai}
 
 	SP_run samtools_call_variants \
 		REFERENCE=${REFERENCE} \
@@ -733,4 +727,24 @@ function DNAseq_analysis
 		INSERT_SIZE=${INSERT_SIZE} \
 		INPUT=${SAMPLE_NAME}.sorted \
 		OUTPUT=${SAMPLE_NAME}
+
+##### Report Summary Counts #####
+	( \
+		echo -n 'Total reads  : '; unzip -p ${FASTQ_1}.fastqc.zip '*/fastqc_data.txt' | grep 'Total Sequences' | cut -f2 | awk '{print $1+$1}'; \
+		echo -n 'Mapped reads : '; samtools view -c ${SAMPLE_NAME}.mapped.bam; \
+		echo -n 'Unique reads : '; samtools view -c ${SAMPLE_NAME}.mapped.uniq.bam; \
+		echo -n 'Non-Duplicate: '; samtools flagstat ${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam | head -n2 | awk '{print $1}' | paste - - | awk '{print $1-$2}'; \
+		echo -n 'Variants (gatk)    :'; cat ${SAMPLE_NAME}.gatk.vcf | grep -v ^# | wc -l; \
+		echo -n 'Variants (samtools):'; cat ${SAMPLE_NAME}.samtools.vcf | grep -v ^# | wc -l; \
+		echo -n 'Variants (pindel)  :'; cat ${SAMPLE_NAME}.pindel.vcf | grep -v ^# | wc -l; \
+	) > ${SAMPLE_NAME}.summary.txt
+
+##### Remove Intermediate Files #####
+	#[command require="${SAMPLE_NAME}.mapped.uniq.bam"]
+	#[command require="${SAMPLE_NAME}.mapped.non_uniq.bam"]
+	rm -f ${SAMPLE_NAME}.mapped.bam
+	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.bam"]
+	rm -f ${SAMPLE_NAME}.mapped.uniq.bam
+	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam"]
+	rm -f ${SAMPLE_NAME}.mapped.uniq.sorted.bam{,.bai}
 }
