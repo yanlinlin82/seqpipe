@@ -383,9 +383,6 @@ function gatk_indel_realign
 		-I ${INPUT}.bam \
 		-targetIntervals ${INPUT}.intervals \
 		-o ${INPUT}.realign.bam
-
-	#[command require="${INPUT}.realign.bam"]
-	rm -vf ${INPUT}.intervals
 	
 	#[command input="${INPUT}.realign.bam"]
 	#[command output="${INPUT}.realign.fixmate.bam"]
@@ -400,6 +397,9 @@ function gatk_indel_realign
 
 	#[command require="${INPUT}.realign.fixmate.bai"]
 	mv -v ${INPUT}.realign.fixmate.bai ${INPUT}.realign.fixmate.bam.bai
+
+	#[command require="${INPUT}.realign.bam"]
+	rm -vf ${INPUT}.intervals
 
 	#[command require="${INPUT}.realign.fixmate.bam"]
 	rm -vf ${INPUT}.realign.bam
@@ -450,8 +450,9 @@ function gatk_recalibrate
 #[procedure output="${OUTPUT}.vcf"]
 function gatk_genotype
 {
-	SP_set STAND_CALL_CONF=30  # GATK UnifiedGenotyper -stand_call_conf
-	SP_set STAND_EMIT_CONF=10  # GATK UnifiedGenotyper -stand_emit_conf
+	SP_set STAND_CALL_CONF=30 if_no_arg ARG="${STAND_CALL_CONF}"
+	SP_set STAND_EMIT_CONF=10 if_no_arg ARG="${STAND_EMIT_CONF}"
+	SP_set MIN_BASE_QUALITY_SCORE=20 if_no_arg ARG="${MIN_BASE_QUALITY_SCORE}"
 
 	#[command require="${REFERENCE}"]
 	#[command require="${GATK_VCF_DBSNP}"]
@@ -463,7 +464,7 @@ function gatk_genotype
 		-R ${REFERENCE} \
 		-I ${INPUT}.bam \
 		-glm BOTH \
-		--min_base_quality_score 20 \
+		--min_base_quality_score ${MIN_BASE_QUALITY_SCORE} \
 		--dbsnp ${GATK_VCF_DBSNP} \
 		-stand_call_conf ${STAND_CALL_CONF} \
 		-stand_emit_conf ${STAND_EMIT_CONF} \
