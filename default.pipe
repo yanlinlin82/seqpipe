@@ -402,7 +402,7 @@ function gatk_indel_realign
 	rm -vf ${INPUT}.intervals
 
 	#[command require="${INPUT}.realign.fixmate.bam"]
-	rm -vf ${INPUT}.realign.bam
+	rm -vf ${INPUT}.realign.ba{m,i}
 }
 
 #[procedure require="${REFERENCE}"]
