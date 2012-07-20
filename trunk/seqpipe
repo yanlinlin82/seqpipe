@@ -243,9 +243,7 @@ sub load_module
 		while ($line = <$file_handle>) {
 			chomp $line;
 
-			if ($line =~ /^\#\[primitive\]\s*$/) {
-				$type = 'primitive';
-			} elsif ($line =~ /^\.\s+(\S*)\s*$/) {
+			if ($line =~ /^\.\s+(\S*)\s*$/) {
 				local *FILE;
 				open FILE, $dir . "/" . $1 or die "Warning: Can not open module file '$1'!\n";
 				unshift @file_handles, *FILE;
@@ -272,14 +270,6 @@ sub load_module
 				}
 			} elsif ($line =~ /^\s*function\s+/) {
 				die "Error: Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
-
-				if ($type eq 'primitive') {
-					while ($line = <$file_handle>) {
-						last if $line =~ '^}\s*$';
-					}
-					$type = '';
-					next;
-				}
 
 				# Treat functions without type declearation as a 'stage'.
 				$type = 'stage' if $type eq '';
@@ -411,7 +401,7 @@ sub print_usage
 {
 	print STDOUT '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.2.4 ($Rev$)
+Version: 0.2.5 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: ' . basename($0) . ' [options] [VAR=VALUE ...] <procedure> [NAME=VALUE ...]

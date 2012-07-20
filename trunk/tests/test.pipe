@@ -1,4 +1,10 @@
 #!/bin/bash
+#
+# This is a simple bash script, in which the function could be loaded
+#   as procedure in SeqPipe seamlessly.
+#
+# Run command like this:
+#   $ seqpipe -m test.pipe test
 
 function test
 {
