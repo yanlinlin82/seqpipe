@@ -27,6 +27,7 @@ my $list_mode = 0;
 my $list_all_mode = 0;
 my $test_mode = 0;
 my $enable_duplicate = 0;
+my $execute_command = '';
 
 # All procedures are loaded at startup.
 my %procedures;
@@ -47,7 +48,7 @@ $exiting = 0;
 my @module_files = ( (dirname abs_path $0) . '/default.pipe' );
 
 # Command line entered by user.
-my $command_line = join(' ', ($0, @ARGV));
+my $command_line = bash_line_encode($0, @ARGV);
 my $uniq_id;
 
 my ($sec, $min, $hour, $mday, $mon, $year) = localtime time;
@@ -105,17 +106,15 @@ sub time_elapse_string
 sub bash_line_encode {
 	my @argv = @_;
 	foreach my $arg (@argv) {
-		$arg =~ s/\\/\\\\/g;
-		$arg =~ s/\'/\\\'/g;
-		$arg =~ s/\"/\\\"/g;
+		$arg =~ s/\'/\'\\\'\'/g;
 		if ($arg =~ /[\s|><]/) {
 			if ($arg =~ /^(\w+)=(.*)$/) {
-				$arg = "$1=\"$2\"";
+				$arg = "$1='$2'";
 			} else {
-				$arg = '"' . $arg . '"';
+				$arg = "'" . $arg . "'";
 			}
 		} elsif ($arg =~ /^(\w+)=$/) {
-			$arg = "$1=\"\"";
+			$arg = "$1=\'\'";
 		}
 	}
 	return join(' ', @argv);
@@ -427,6 +426,7 @@ Options:
    -l / --list       List current available procedures.
    -L / --list-all   List current global variables and available procedures.
    -t / --test       Test mode, only print the commands rather than execute them.
+   -e <cmd>          Direct run a command as a stage-type procedure.
 ';
 }
 
@@ -908,6 +908,16 @@ if ($#ARGV < 0) {
 			if ($module_files[0] eq (dirname abs_path $0) . '/default.pipe') {
 				shift @module_files;
 			}
+		} elsif ($arg eq '-e') {
+			if ($#ARGV < 0) {
+				print "Error: missing argument for option '$arg'!\n";
+				exit 1;
+			}
+			if ($execute_command ne '') {
+				print "Error: duplicated '-e' option!\n";
+				exit 1;
+			}
+			$execute_command = shift @ARGV;
 		} elsif ($arg =~ '^-') {
 			print "Error: Unknown option '$arg'!\n";
 			exit 1;
@@ -930,6 +940,11 @@ if ($#ARGV < 0) {
 	}
 }
 
+if ($procedure_name ne '' and $execute_command ne '') {
+	print "Error: can not use both '-e' and '<procedure_name>'!\n";
+	exit 1;
+}
+
 foreach my $module_file (@module_files) {
 	load_module $module_file;
 }
@@ -945,6 +960,35 @@ if ($list_mode) {
 	list_procedures;
 	exit 1;
 }
+
+if ($execute_command ne '') {
+	$procedure_name = "seqpipe_execute_$$";
+	my @requires = ();
+	my @inputs = ();
+	my @outputs = ();
+	my @command_requires = ();
+	my @command_inputs = ();
+	my @command_outputs = ();
+	my %command = ( command => $execute_command, requies => \@command_requires, inputs => \@command_inputs, outputs => \@command_outputs );
+	my @commands = ( \%command );
+	my %defined_variables = ();
+	my %eval_variables = ();
+	my %used_variables = ();
+	while ($execute_command =~ /\${(\w+)}/g) {
+		$used_variables{$1} = '';
+	}
+	$procedures{$procedure_name} = {
+		type              => 'stage',
+		requires          => \@requires,
+		inputs            => \@inputs,
+		outputs           => \@outputs,
+		commands          => \@commands,
+		defined_variables => \%defined_variables,
+		eval_variables    => \%eval_variables,
+		used_variables    => \%used_variables
+	};
+}
+
 if ($procedure_name eq '' or $help_mode) {
 	if ($procedure_name eq '') {
 		print STDERR "Error: No procedure name provided!\n" if not $help_mode;
