@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#[seqpipe version="0.2.4 ($Id$)"]
+#[seqpipe version="0.2.5 ($Id$)"]
 #
 . common.inc
 
@@ -9,7 +9,7 @@
 
 #[global]
 TMP_DIR=/rd/tmp                         # Temporary directory
-JAVA_MAX_MEM_SIZE=8G                    # For Java's -Xmx option
+JAVA_MAX_MEM_SIZE=256M                  # For Java's -Xmx option
 JAVA_GC_THREAD_NUM=2                    # For Java's -XX:ParallelGCThreads option
 JAVA_OPTS="-Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} -Djava.io.tmpdir=${TMP_DIR}"
 
@@ -17,7 +17,7 @@ THREAD_NUM=1                            # For multiple-thread running
 
 # Picard options
 PICARD_ROOT=/rd/build/picard-tools       # Path of picard tools
-MAX_RECORDS_IN_RAM=1875000               # For enhance performance of picard
+MAX_RECORDS_IN_RAM=500000                # For enhance performance of picard
 PICARD_OPTS="MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM}"
 
 # GATK options
@@ -40,6 +40,8 @@ function sysinfo
 	echo -n '   Memory   : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
 	echo -n '   Date     : '; date '+%Y-%m-%d %H:%M:%S'
 	echo -n '   Pwd      : '; pwd
+	echo -n '   Bash     : '; bash --version | head -n1
+	echo -n '   GCC      : '; gcc --version | head -n1
 
 	echo    'SeqPipe version:'
 	echo -n '   Tools    : '; ${SEQPIPE_ROOT}/${SEQPIPE} | grep Version | cut -d' ' -f2-
