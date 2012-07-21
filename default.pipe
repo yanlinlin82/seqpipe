@@ -63,7 +63,7 @@ function sysinfo
 function fastqc_check
 {
 	fastqc --noextract --nogroup -o $(dirname ${OUTPUT}.fastqc.zip) ${INPUT_FASTQ}
-	mv -v $(dirname ${OUTPUT}.fastqc.zip)/$(basename ${INPUT_FASTQ} | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}.fastqc.zip
+	mv -vf $(dirname ${OUTPUT}.fastqc.zip)/$(basename ${INPUT_FASTQ} | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}.fastqc.zip
 }
 
 #[procedure input="${REFERENCE}"]
@@ -202,7 +202,7 @@ function merge_bam
 		OUTPUT=${OUTPUT}.bam
 
 	#[command require="${OUTPUT}.bai"]
-	mv -v ${OUTPUT}.bai ${OUTPUT}.bam.bai
+	mv -vf ${OUTPUT}.bai ${OUTPUT}.bam.bai
 }
 
 #[procedure input="${INPUT}.bam"]
@@ -224,7 +224,7 @@ function sort_bam
 		OUTPUT=${INPUT}.sorted.bam
 
 	#[command require="${INPUT}.sorted.bai"]
-	mv -v ${INPUT}.sorted.bai ${INPUT}.sorted.bam.bai
+	mv -vf ${INPUT}.sorted.bai ${INPUT}.sorted.bam.bai
 }
 
 #[procedure require="${REFERENCE}"]
@@ -246,7 +246,7 @@ function reorder_bam
 		REFERENCE=${REFERENCE}
 
 	# Rename index file if sorted
-	[ -f ${INPUT}.reordered.bai ] && mv -v ${INPUT}.reordered.bai ${INPUT}.reordered.bam.bai
+	[ -f ${INPUT}.reordered.bai ] && mv -vf ${INPUT}.reordered.bai ${INPUT}.reordered.bam.bai
 }
 
 #[procedure input="${INPUT}.bam"]
@@ -288,7 +288,7 @@ function mark_duplicate_reads
 		REMOVE_DUPLICATES=false
 
 	#[command require="${INPUT}.mkdup.bai"]
-	mv -v ${INPUT}.mkdup.bai ${INPUT}.mkdup.bam.bai
+	mv -vf ${INPUT}.mkdup.bai ${INPUT}.mkdup.bam.bai
 }
 
 #[procedure input="${INPUT}.bam"]
@@ -352,7 +352,7 @@ function picard_set_read_group
 
 	# Rename index file if sorted
 	if [ -f ${INPUT}.rg.bai ]; then \
-		mv -v ${INPUT}.rg.bai ${INPUT}.rg.bam.bai; \
+		mv -vf ${INPUT}.rg.bai ${INPUT}.rg.bam.bai; \
 	fi
 }
 
@@ -398,7 +398,7 @@ function gatk_indel_realign
 		OUTPUT=${INPUT}.realign.fixmate.bam
 
 	#[command require="${INPUT}.realign.fixmate.bai"]
-	mv -v ${INPUT}.realign.fixmate.bai ${INPUT}.realign.fixmate.bam.bai
+	mv -vf ${INPUT}.realign.fixmate.bai ${INPUT}.realign.fixmate.bam.bai
 
 	#[command require="${INPUT}.realign.bam"]
 	rm -vf ${INPUT}.intervals
@@ -442,8 +442,11 @@ function gatk_recalibrate
 		-recalFile ${INPUT}.recal \
 		-o ${INPUT}.recal.bam
 
+	#[command require="${INPUT}.recal.bai"]
+	mv -vf ${INPUT}.recal.bai ${INPUT}.recal.bam.bai
+
 	#[command require="${INPUT}.recal.bam"]
-	rm -f ${INPUT}.recal
+	rm -vf ${INPUT}.recal
 }
 
 #[procedure require="${REFERENCE}"]
@@ -578,7 +581,7 @@ function gatk_call_variants
 		INPUT=${OUTPUT}
 
 	#[command require="${OUTPUT}.filtered.vcf"]
-	mv -v ${OUTPUT}.filtered.vcf ${OUTPUT}.gatk.vcf
+	mv -vf ${OUTPUT}.filtered.vcf ${OUTPUT}.gatk.vcf
 }
 
 #[procedure type="evaluator"]
@@ -746,9 +749,9 @@ function DNAseq_analysis
 ##### Remove Intermediate Files #####
 	#[command require="${SAMPLE_NAME}.mapped.uniq.bam"]
 	#[command require="${SAMPLE_NAME}.mapped.non_uniq.bam"]
-	rm -f ${SAMPLE_NAME}.mapped.bam
+	rm -vf ${SAMPLE_NAME}.mapped.bam
 	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.bam"]
-	rm -f ${SAMPLE_NAME}.mapped.uniq.bam
+	rm -vf ${SAMPLE_NAME}.mapped.uniq.bam
 	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam"]
-	rm -f ${SAMPLE_NAME}.mapped.uniq.sorted.bam{,.bai}
+	rm -vf ${SAMPLE_NAME}.mapped.uniq.sorted.bam{,.bai}
 }
