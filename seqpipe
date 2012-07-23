@@ -26,6 +26,7 @@ my $verbose = 0;
 my $list_mode = 0;
 my $list_all_mode = 0;
 my $test_mode = 0;
+my $display_raw_code = 0;
 my $enable_duplicate = 0;
 my $execute_command = '';
 
@@ -451,7 +452,7 @@ sub print_usage
 {
 	print STDOUT '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.2.6 ($Rev$)
+Version: 0.2.7 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: ' . basename($0) . ' [options] [VAR=VALUE ...] <procedure> [NAME=VALUE ...]
@@ -466,6 +467,7 @@ Options:
    -l / --list       List current available procedures.
    -L / --list-all   List current global variables and available procedures.
    -t / --test       Test mode, only print the commands rather than execute them.
+   -T                Print the raw procedure declaration.
    -e <cmd>          Direct run a command as a stage-type procedure.
 ';
 }
@@ -940,6 +942,8 @@ if ($#ARGV < 0) {
 			$list_all_mode = 1;
 		} elsif ($arg eq '-t' or $arg eq '--test') {
 			$test_mode = 1;
+		} elsif ($arg eq '-T') {
+			$display_raw_code = 1;
 		} elsif ($arg eq '-m') {
 			if ($#ARGV < 0) {
 				print "Error: missing argument for option '$arg'!\n";
@@ -1000,6 +1004,64 @@ foreach my $name (keys %user_set_variables) {
 
 if ($list_mode) {
 	list_procedures;
+	exit 1;
+}
+
+if ($display_raw_code) {
+	if ($procedure_name eq '') {
+		print "Error: <procedure_name> is required for '-T'!\n";
+		exit 1;
+	}
+	my %procedure = %{$procedures{$procedure_name}};
+
+	print "#[procedure type=\"$procedure{type}\"]\n";
+
+	foreach my $require (@{$procedure{requires}}) {
+		print "#[procedure require=\"$require\"]\n";
+	}
+	foreach my $input (@{$procedure{inputs}}) {
+		print "#[procedure input=\"$input\"]\n";
+	}
+	foreach my $output (@{$procedure{outputs}}) {
+		print "#[procedure output=\"$output\"]\n";
+	}
+
+	print "function $procedure_name\n";
+	print "{\n";
+
+	my $empty_line = 1;
+	my $require_empty_line = 0;
+	foreach my $command_ref (@{$procedure{commands}}) {
+		my %command = %{$command_ref};
+
+		if ($command{command} eq 'SP_parallel_begin') {
+			$require_empty_line = 1;
+		}
+		if ($require_empty_line and not $empty_line) {
+			print "\n";
+			$empty_line = 1;
+		}
+		$require_empty_line = 0;
+
+		foreach my $require (@{$command{requires}}) {
+			print "\t#[command require=\"$require\"]\n";
+		}
+		foreach my $input (@{$command{inputs}}) {
+			print "\t#[command input=\"$input\"]\n";
+		}
+		foreach my $output (@{$command{outputs}}) {
+			print "\t#[command output=\"$output\"]\n";
+		}
+		
+		print "\t$command{command}\n";
+		$empty_line = 0;
+
+		if ($command{command} eq 'SP_parallel_end') {
+			$require_empty_line = 1;
+		}
+	}
+
+	print "}\n";
 	exit 1;
 }
 
