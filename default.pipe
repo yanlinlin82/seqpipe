@@ -1,33 +1,13 @@
 #!/bin/bash
 #
-#[seqpipe version="0.2.5 ($Id$)"]
+#[seqpipe version="0.2.6 ($Id$)"]
 #
+
+# Load some useful checkers
 . common.inc
 
-###########################################################################
-# This part defines global variables (options).
-
-#[global]
-TMP_DIR=/rd/tmp                         # Temporary directory
-JAVA_MAX_MEM_SIZE=256M                  # For Java's -Xmx option
-JAVA_GC_THREAD_NUM=2                    # For Java's -XX:ParallelGCThreads option
-JAVA_OPTS="-Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} -Djava.io.tmpdir=${TMP_DIR}"
-
-THREAD_NUM=1                            # For multiple-thread running
-
-# Picard options
-PICARD_ROOT=/rd/build/picard-tools       # Path of picard tools
-MAX_RECORDS_IN_RAM=500000                # For enhance performance of picard
-PICARD_OPTS="MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM}"
-
-# GATK options
-GATK_ROOT=/rd/build/gatk                                # Path of GATK tools
-GATK_KEY=${GATK_ROOT}/gatk_cbi.key                      # Key file for offline using GATK
-GATK_BUNDLE_ROOT=/rd/data/public/gatk_bundle/1.5/b37
-GATK_VCF_DBSNP=${GATK_BUNDLE_ROOT}/dbsnp_135.b37.vcf           # Path of GATK dbSNP VCF file
-GATK_VCF_HAPMAP=${GATK_BUNDLE_ROOT}/hapmap_3.3.b37.sites.vcf   # Path of GATK HapMap VCF file
-GATK_VCF_OMNI=${GATK_BUNDLE_ROOT}/1000G_omni2.5.b37.sites.vcf  # Path of GATK 1000G OMNI VCF file
-GATK_OPTS="-et NO_ET -K ${GATK_KEY}"
+# Load global parameters
+. config.inc
 
 ###########################################################################
 
@@ -584,26 +564,14 @@ function gatk_call_variants
 	mv -vf ${OUTPUT}.filtered.vcf ${OUTPUT}.gatk.vcf
 }
 
-#[procedure type="evaluator"]
-function eval_reference_name
-{
-	echo ${REFERENCE} | sed 's/\.\(fa\|fasta\)$//g'
-}
-
-#[procedure type="evaluator"]
-function eval_reference_date
-{
-	stat ${REFERENCE} | grep Modify | awk '{print $2}' | sed 's/-//g'
-}
-
 #[procedure require="${REFERENCE}"]
 #[procedure input="${INPUT}.bam"]
 #[procedure require="${INPUT}.bam.bai"]
 #[procedure output="${OUTPUT}.pindel.vcf"]
 function pindel_call_structure_variants
 {
-	SP_eval REFERENCE_NAME eval_reference_name REFERENCE=${REFERENCE}
-	SP_eval REFERENCE_DATE eval_reference_date REFERENCE=${REFERENCE}
+	SP_eval REFERENCE_NAME get_file_name FILE=${REFERENCE}
+	SP_eval REFERENCE_DATE get_file_date FILE=${REFERENCE}
 
 ##### Call Structure Variants #####
 	#[command require="${REFERENCE}"]

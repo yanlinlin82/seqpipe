@@ -14,6 +14,20 @@ function if_no_arg
 	test -z "${ARG}"
 }
 
+#[procedure type="evaluator"]
+function get_file_name
+{
+	basename ${FILE} | sed 's,\.[^.]*$,,'
+}
+
+#[procedure type="evaluator"]
+function get_file_date
+{
+	stat ${FILE} | grep Modify | awk '{print $2}' | sed 's,-,,g'
+}
+
+###########################################################################
+
 #[procedure type="checker"]
 #[procedure input="${INPUT_FASTA}"]
 function if_fasta_is_long_genome

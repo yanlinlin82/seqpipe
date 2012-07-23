@@ -55,6 +55,56 @@ my ($sec, $min, $hour, $mday, $mon, $year) = localtime time;
 $uniq_id = sprintf("%02d%02d%02d.%d", $year % 100, $mon + 1, $mday, $$);
 
 ############################################################
+
+sub initialize_config
+{
+	my $seqpipe_root = (dirname abs_path $0);
+	if (not -e $seqpipe_root . "/config.inc") {
+		system("cp $seqpipe_root/config.inc.tpl $seqpipe_root/config.inc");
+	} else {
+		my %variables = ();
+		my @variable_list = ();
+		open FILE, $seqpipe_root . "/config.inc.tpl" or return;
+		while (my $line = <FILE>) {
+			chomp $line;
+			if ($line =~ /^\s*(\w+)=(.*)$/) {
+				my ($name, $value) = ($1, $2);
+				$variables{$name} = $value;
+				push @variable_list, $name;
+			}
+		}
+		close FILE;
+
+		my @lines = ();
+		open FILE, $seqpipe_root . "/config.inc" or return;
+		while (my $line = <FILE>) {
+			chomp $line;
+			if ($line =~ /^\s*(\w+)=(.*)$/) {
+				my ($name, $value) = ($1, $2);
+				if (exists $variables{$name}) {
+					delete $variables{$name};
+				} else {
+					$line =~ s/=(.*)/=$value/;
+				}
+			}
+			push @lines, $line;
+		}
+		close FILE;
+		foreach my $name (@variable_list) {
+			if (exists $variables{$name}) {
+				push @lines, "$name=$variables{$name}";
+			}
+		}
+
+		open FILE, ">" . $seqpipe_root . "/config.inc" or return;
+		foreach my $line (@lines) {
+			print FILE "$line\n";
+		}
+		close FILE;
+	}
+}
+
+############################################################
 # Catch signals for KILL, Ctrl+C, etc.
 
 sub kill_signal_handler
@@ -401,7 +451,7 @@ sub print_usage
 {
 	print STDOUT '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.2.5 ($Rev$)
+Version: 0.2.6 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: ' . basename($0) . ' [options] [VAR=VALUE ...] <procedure> [NAME=VALUE ...]
@@ -866,6 +916,8 @@ sub run_procedure
 
 ############################################################
 # Main program start from here.
+
+initialize_config;
 
 my @argv = ();
 my $procedure_name = '';

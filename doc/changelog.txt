@@ -1,3 +1,6 @@
+2012-07-23  v0.2.6 (r89)
+* Declare global variables in config.inc file.
+
 2012-07-21  v0.2.5 (r86)
 * Support inline mode (-e).
 
