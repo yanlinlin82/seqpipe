@@ -216,7 +216,7 @@ sub check_command_syntax
 		return if $argv[0] eq 'SP_eval';
 		return if $argv[0] eq 'SP_parallel_begin';
 		return if $argv[0] eq 'SP_parallel_end';
-		print LOG_FILE "Error: Invalid primitive line! $command\n";
+		die "Error: Invalid primitive line! $command\n";
 	}
 }
 
