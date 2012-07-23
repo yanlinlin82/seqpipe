@@ -1,3 +1,6 @@
+2012-07-23  v0.2.7 (r91)
+* Support '-T' to show raw pipeline declaration.
+
 2012-07-23  v0.2.6 (r89)
 * Declare global variables in config.inc file.
 
