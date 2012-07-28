@@ -1009,7 +1009,11 @@ if ($list_mode) {
 
 if ($display_raw_code) {
 	if ($procedure_name eq '') {
-		print "Error: <procedure_name> is required for '-T'!\n";
+		print STDERR "Error: <procedure_name> is required for '-T'!\n";
+		exit 1;
+	}
+	if (not exists $procedures{$procedure_name}) {
+		print STDERR "Error: Unknown procedure '$procedure_name'! Use '-l' option to list available procedures.\n";
 		exit 1;
 	}
 	my %procedure = %{$procedures{$procedure_name}};
@@ -1101,7 +1105,7 @@ if ($procedure_name eq '' or $help_mode) {
 		exit 1;
 	}
 	if (not exists $procedures{$procedure_name}) {
-		print STDOUT "Error: Unknown procedure '$procedure_name'! Use '-l' option to list available procedures.\n";
+		print STDERR "Error: Unknown procedure '$procedure_name'! Use '-l' option to list available procedures.\n";
 		exit 1;
 	}
 
