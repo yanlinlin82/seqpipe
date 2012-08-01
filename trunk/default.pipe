@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#[seqpipe version="0.2.6 ($Id$)"]
+#[seqpipe version="0.2.8 ($Id$)"]
 #
 
 # Load some useful checkers
@@ -14,25 +14,25 @@
 #[procedure type="sysinfo"]
 function sysinfo
 {
-	echo    'System information:'
-	echo -n '   System   : '; uname -a
-	echo -n '   CPU      : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
-	echo -n '   Memory   : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
-	echo -n '   Date     : '; date '+%Y-%m-%d %H:%M:%S'
-	echo -n '   Pwd      : '; pwd
-	echo -n '   Bash     : '; bash --version | head -n1
-	echo -n '   GCC      : '; gcc --version | head -n1
-
-	echo    'SeqPipe version:'
-	echo -n '   Tools    : '; ${SEQPIPE_ROOT}/${SEQPIPE} | grep Version | cut -d' ' -f2-
-	echo -n '   Pipeline : '; egrep '^#\[seqpipe version' ${SEQPIPE_ROOT}/default.pipe | cut -d'"' -f2
-
-	echo    'Program versions:'
-	echo -n '   bwa      : '; bwa |& grep Version | cut -d' ' -f2
-	echo -n '   samtools : '; samtools |& grep Version | cut -d' ' -f2-
-	echo -n '   bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
-	echo -n '   picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
-	echo -n '   gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
+	echo    'System information:'; \
+	echo -n '   System   : '; uname -a; \
+	echo -n '   CPU      : '; lscpu | grep '^CPU(s):' | awk '{print $2}'; \
+	echo -n '   Memory   : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'; \
+	echo -n '   Date     : '; date '+%Y-%m-%d %H:%M:%S'; \
+	echo -n '   Pwd      : '; pwd; \
+	echo -n '   Bash     : '; bash --version | head -n1; \
+	echo -n '   GCC      : '; gcc --version | head -n1; \
+	\
+	echo    'SeqPipe version:'; \
+	echo -n '   Tools    : '; ${SEQPIPE_ROOT}/${SEQPIPE} | grep Version | cut -d' ' -f2-; \
+	echo -n '   Pipeline : '; egrep '^#\[seqpipe version' ${SEQPIPE_ROOT}/default.pipe | cut -d'"' -f2; \
+	\
+	echo    'Program versions:'; \
+	echo -n '   bwa      : '; bwa |& grep Version | cut -d' ' -f2; \
+	echo -n '   samtools : '; samtools |& grep Version | cut -d' ' -f2-; \
+	echo -n '   bcftools : '; bcftools |& grep Version | cut -d' ' -f2-; \
+	echo -n '   picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2; \
+	echo -n '   gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2; \
 	echo -n '   pindel   : '; pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
 }
 
