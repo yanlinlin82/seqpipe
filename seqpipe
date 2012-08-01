@@ -29,6 +29,7 @@ my $test_mode = 0;
 my $display_raw_code = 0;
 my $enable_duplicate = 0;
 my $execute_command = '';
+my $shell = '/bin/bash';
 
 # All procedures are loaded at startup.
 my %procedures;
@@ -452,7 +453,7 @@ sub print_usage
 {
 	print STDOUT '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.2.7 ($Rev$)
+Version: 0.2.8 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: ' . basename($0) . ' [options] [VAR=VALUE ...] <procedure> [NAME=VALUE ...]
@@ -469,6 +470,7 @@ Options:
    -t / --test       Test mode, only print the commands rather than execute them.
    -T                Print the raw procedure declaration.
    -e <cmd>          Direct run a command as a stage-type procedure.
+   -s <shell>        Send commands to another shell (such as "qsub"), default: ' . $shell . '
 ';
 }
 
@@ -589,7 +591,7 @@ sub run_command
 			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) starts at " . time_string($start_time) . "\n";
 		}
 		
-		if (not open BASH, "| /bin/bash") {
+		if (not open BASH, "| $shell") {
 			print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) starts failed!\n";
 			$return_value = -1;
 			$start_failed = 1;
@@ -964,6 +966,12 @@ if ($#ARGV < 0) {
 				exit 1;
 			}
 			$execute_command = shift @ARGV;
+		} elsif ($arg eq '-s') {
+			if ($#ARGV < 0) {
+				print "Error: missing argument for option '$arg'!\n";
+				exit 1;
+			}
+			$shell = shift @ARGV;
 		} elsif ($arg =~ '^-') {
 			print "Error: Unknown option '$arg'!\n";
 			exit 1;
