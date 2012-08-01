@@ -6,7 +6,7 @@ use File::stat;
 use Cwd 'abs_path';
 
 # Check Perl ithread support.
-my $can_use_threads = eval 'use threads; use threads::shared; 1' or eval 'use forks; 1';
+my $can_use_threads = eval 'use forks; use threads; use threads::shared; 1';
 if (not $can_use_threads) {
 	print STDERR "Warning: Your Perl does not support threads! Parallel mode is disabled.\n";
 }
