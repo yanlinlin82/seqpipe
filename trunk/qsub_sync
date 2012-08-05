@@ -1,2 +1,2 @@
 #!/bin/bash
-qsub -d $(pwd) | while read jobid; do while qstat $jobid >/dev/null 2>/dev/null; do sleep 1; done; done
+qsub -d $(pwd) $* | while read jobid; do while qstat $jobid >/dev/null 2>/dev/null; do sleep 1; done; done
