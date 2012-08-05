@@ -1,13 +1,17 @@
 #!/bin/bash
 
-if [ -n "$1" ]; then
-	if [ ! -p $1 -a -n "$(file $1 | cut -d':' -f2 | grep bzip2)" ]; then
-		bzcat $1
-	elif [ ! -p $1 -a -n "$(file $1 | cut -d':' -f2 | grep gzip)" ]; then
-		zcat $1
+function uxcat {
+	if [ -n "$1" ]; then
+		if [ ! -p $1 -a -n "$(file $1 | cut -d':' -f2 | grep bzip2)" ]; then
+			bzcat $1
+		elif [ ! -p $1 -a -n "$(file $1 | cut -d':' -f2 | grep gzip)" ]; then
+			zcat $1
+		else
+			cat $1
+		fi
 	else
-		cat $1
+		cat
 	fi
-else
-	cat
-fi
+}
+
+for f in $@; do uxcat $f; done
