@@ -543,9 +543,12 @@ function gatk_filter_variants
 #[procedure output="${OUTPUT}.gatk.vcf"]
 function gatk_call_variants
 {
+	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+
 	SP_run gatk_indel_realign \
 		REFERENCE=${REFERENCE} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
-		INPUT=${INPUT}
+		INPUT=${INPUT} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY}
 
 	SP_run gatk_recalibrate \
 		REFERENCE=${REFERENCE} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
