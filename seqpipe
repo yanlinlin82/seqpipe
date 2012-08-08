@@ -1180,7 +1180,7 @@ if ($test_mode) {
 
 	open LOG_FILE, "| tee -ai " . LOG_DIR . "/$uniq_id.log";
 
-	printf LOG_FILE "[SeqPipe] Top Command($uniq_id): $command_line\n";
+	print LOG_FILE "[SeqPipe] Top Command($uniq_id): $command_line\n";
 
 	foreach my $sysinfo_procedure_name (keys %procedures) {
 		if ($procedures{$sysinfo_procedure_name}{type} eq 'sysinfo') {
@@ -1198,9 +1198,9 @@ my $return_value = run_procedure($procedure_name, \@argv, $test_mode, \@log_file
 
 if (not $test_mode) {
 	if ($return_value == 0) {
-		printf LOG_FILE "[SeqPipe] Pipeline($uniq_id) finished successfully!\n";
+		print LOG_FILE "[SeqPipe] Pipeline($uniq_id) finished successfully!\n";
 	} else {
-		printf LOG_FILE "[SeqPipe] Pipeline($uniq_id) finished abnormally with exit value: $return_value!\n";
+		print LOG_FILE "[SeqPipe] Pipeline($uniq_id) finished abnormally with exit value: $return_value!\n";
 	}
 }
 close LOG_FILE;
