@@ -22,6 +22,7 @@ function sysinfo
 	echo -n '   Pwd      : '; pwd; \
 	echo -n '   Bash     : '; bash --version | head -n1; \
 	echo -n '   GCC      : '; gcc --version | head -n1; \
+	echo -n '   Java     : '; java -version |& tr '\n' ';' | sed 's/;$/\n/' | sed 's/;/; /g'; \
 	\
 	echo    'SeqPipe version:'; \
 	echo -n '   Tools    : '; ${SEQPIPE_ROOT}/${SEQPIPE} | grep Version | cut -d' ' -f2-; \
@@ -269,6 +270,30 @@ function mark_duplicate_reads
 
 	#[command require="${INPUT}.mkdup.bai"]
 	mv -vf ${INPUT}.mkdup.bai ${INPUT}.mkdup.bam.bai
+}
+
+#[procedure input="${INPUT}.bam"]
+#[procedure output="${INPUT}.rmdup.bam"]
+function remove_duplicate_reads
+{
+	SP_set ASSUME_SORTED="false" if_no_arg ARG="${ASSUME_SORTED}"
+	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+
+	#[command input="${INPUT}.bam"]
+	#[command output="${INPUT}.rmdup.bam"]
+	#[command output="${INPUT}.rmdup.metrics"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=false \
+		INPUT=${INPUT}.bam \
+		OUTPUT=${INPUT}.rmdup.bam \
+		METRICS_FILE=${INPUT}.rmdup.metrics \
+		REMOVE_DUPLICATES=true
+
+	#[command require="${INPUT}.rmdup.bai"]
+	mv -vf ${INPUT}.rmdup.bai ${INPUT}.rmdup.bam.bai
 }
 
 #[procedure input="${INPUT}.bam"]
