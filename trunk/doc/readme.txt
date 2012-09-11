@@ -17,7 +17,7 @@ Table of Content
 
 ---------------------------------------------------------------------------
 
-1. Goal & Philosiphy
+1. Goal & Philosophy
 
    SeqPipe is designed for establishment of bioinformatics sequencing data
 analysis pipeline. Some of the features list as follows:
