@@ -287,18 +287,22 @@ sub add_workflow_attribute
 
 	foreach my $output (keys %command_final_outputs) {
 		my %items = ();
-		foreach my $file (keys $requires_of{$output}) {
-			if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
-				$requires_ref->{$file} = 1;
-			} else {
-				$items{$file} = 1;
+		if ($requires_of{$output}) {
+			foreach my $file (keys $requires_of{$output}) {
+				if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
+					$requires_ref->{$file} = 1;
+				} else {
+					$items{$file} = 1;
+				}
 			}
 		}
-		foreach my $file (keys $inputs_of{$output}) {
-			if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
-				$inputs_ref->{$file} = 1;
-			} else {
-				$items{$file} = 1;
+		if ($inputs_of{$output}) {
+			foreach my $file (keys $inputs_of{$output}) {
+				if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
+					$inputs_ref->{$file} = 1;
+				} else {
+					$items{$file} = 1;
+				}
 			}
 		}
 		add_workflow_attribute(\%items, $requires_of_ref, $inputs_of_ref, $requires_ref, $inputs_ref);
@@ -524,7 +528,7 @@ sub print_usage
 {
 	print STDOUT '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.2.8 ($Rev$)
+Version: 0.3.0 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]

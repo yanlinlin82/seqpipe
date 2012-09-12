@@ -39,111 +39,90 @@ function sysinfo
 
 ###########################################################################
 
-#[procedure input="${INPUT_FASTQ}"]
-#[procedure output="${OUTPUT}.fastqc.zip"]
 function fastqc_check
 {
-	fastqc --noextract --nogroup -o $(dirname ${OUTPUT}.fastqc.zip) ${INPUT_FASTQ}
-	mv -vf $(dirname ${OUTPUT}.fastqc.zip)/$(basename ${INPUT_FASTQ} | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}.fastqc.zip
+	#[command input="${INPUT_FASTQ}"]
+	#[command output.final="${OUTPUT}.fastqc.zip"]
+	fastqc --noextract --nogroup -o $(dirname ${OUTPUT}.fastqc.zip) ${INPUT_FASTQ} && \
+		mv -vf $(dirname ${OUTPUT}.fastqc.zip)/$(basename ${INPUT_FASTQ} \
+			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}.fastqc.zip
 }
 
-#[procedure input="${REFERENCE}"]
-#[procedure output="${REFERENCE}.bwt"]
 function bwa_build_index
 {
 	SP_set ALGORITHM="is"
 	SP_set ALGORITHM="bwtsw" if_fasta_is_long_genome INPUT_FASTA="${REFERENCE}"
 
+	#[command input="${REFERENCE}" output="${REFERENCE}.bwt"]
 	bwa index -a ${ALGORITHM} ${REFERENCE}
 }
 
-#[procedure require="${REFERENCE}"]
-#[procedure input="${FASTQ_1}"]
-#[procedure input="${FASTQ_2}"]
-#[procedure output="${OUTPUT}.bam"]
 function bwa_read_mapping
 {
 	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${FASTQ_1}"
-	SP_set BWA_SAMPE_OPTS="${BWA_SAMPE_OPTS}"
+	SP_set BWA_SAMPE_OPTS=""
 	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
 	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
-	SP_set RGID="1" if_no_arg ARG="${RGID}"
-	SP_set SAMPLE_NAME="${RGID}" if_no_arg ARG="${SAMPLE_NAME}"
-	SP_set RGLB="${RGID}" if_no_arg ARG="${RGLB}"
-	SP_set RGPL="illumina" if_no_arg ARG="${RGPL}"
-	SP_set RGCN="BGI" if_no_arg ARG="${RGCN}"
+	SP_set RGID="1"
+	SP_set SAMPLE_NAME="${RGID}"
+	SP_set RGLB="${RGID}"
+	SP_set RGPL="illumina"
+	SP_set RGCN="BGI"
 
 	# This will be skipped if the index files exist.
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
 
 	SP_parallel_begin
 	
-	#[command require="${REFERENCE}"]
-	#[command input="${FASTQ_1}"]
-	#[command output="${FASTQ_1}.sai"]
+	#[command require="${REFERENCE}" input="${FASTQ_1}" output.temp="${FASTQ_1}.sai"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REFERENCE} ${FASTQ_1} -f ${FASTQ_1}.sai ${BWA_ALN_OPTS}
 	
-	#[command require="${REFERENCE}"]
-	#[command input="${FASTQ_2}"]
-	#[command output="${FASTQ_2}.sai"]
+	#[command require="${REFERENCE}" input="${FASTQ_2}" output.temp="${FASTQ_2}.sai"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REFERENCE} ${FASTQ_2} -f ${FASTQ_2}.sai ${BWA_ALN_OPTS}
 	
 	SP_parallel_end
 
 	#[command require="${REFERENCE}"]
-	#[command input="${FASTQ_1}"]
-	#[command input="${FASTQ_2}"]
-	#[command input="${FASTQ_1}.sai"]
-	#[command input="${FASTQ_2}.sai"]
-	#[command output="${OUTPUT}.bam"]
+	#[command input="${FASTQ_1}" input="${FASTQ_1}.sai"]
+	#[command input="${FASTQ_2}" input="${FASTQ_2}.sai"]
+	#[command output.final="${OUTPUT}.bam"]
 	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
 		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
 		${FASTQ_1}.sai ${FASTQ_2}.sai ${FASTQ_1} ${FASTQ_2} ${BWA_SAMPE_OPTS} \
 		| samtools view -Sb - \
 		> ${OUTPUT}.bam
-
-	#[command require="${OUTPUT}.bam"]
-	rm -vf ${FASTQ_1}.sai ${FASTQ_2}.sai
 }
 
-#[procedure require="${REFERENCE}"]
-#[procedure input="${INPUT_FASTQ}"]
-#[procedure output="${OUTPUT}.bam"]
 function bwa_read_mapping_se
 {
 	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${INPUT_FASTQ}"
 	SP_set BWA_SAMSE_OPTS="${BWA_SAMSE_OPTS}"
 	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
 	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
-	SP_set RGID="1" if_no_arg ARG="${RGID}"
-	SP_set SAMPLE_NAME="${RGID}" if_no_arg ARG="${SAMPLE_NAME}"
-	SP_set RGLB="${RGID}" if_no_arg ARG="${RGLB}"
-	SP_set RGPL="illumina" if_no_arg ARG="${RGPL}"
-	SP_set RGCN="BGI" if_no_arg ARG="${RGCN}"
+	SP_set RGID="1"
+	SP_set SAMPLE_NAME="${RGID}"
+	SP_set RGLB="${RGID}"
+	SP_set RGPL="illumina"
+	SP_set RGCN="BGI"
 
 	# This will be skipped if the index files exist.
 	SP_run bwa_build_index REFERENCE="${REFERENCE}"
 
 	#[command require="${REFERENCE}"]
-	#[command input="${INPUT_FASTQ}"]
-	#[command output="${INPUT_FASTQ}.sai"]
+	#[command input="${INPUT_FASTQ}" output.temp="${INPUT_FASTQ}.sai"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REFERENCE} ${INPUT_FASTQ} -f ${INPUT_FASTQ}.sai ${BWA_ALN_OPTS}
 
 	#[command require="${REFERENCE}"]
-	#[command input="${INPUT_FASTQ}"]
-	#[command input="${INPUT_FASTQ}.sai"]
-	#[command output="${OUTPUT}.bam"]
+	#[command input="${INPUT_FASTQ}" input="${INPUT_FASTQ}.sai"]
+	#[command output.final="${OUTPUT}.bam"]
 	bwa samse \
 		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
 		${REFERENCE} ${INPUT_FASTQ}.sai ${INPUT_FASTQ} ${BWA_SAMSE_OPTS} \
 		| samtools view -Sb - \
 		> ${OUTPUT}.bam
-
-	#[command require="${OUTPUT}.bam"]
-	rm -vf ${INPUT_FASTQ}.sai
 }
 
 #[procedure input="${INPUT_1}.bam"]
@@ -151,7 +130,7 @@ function bwa_read_mapping_se
 #[procedure output="${OUTPUT}.bam"]
 function merge_bam
 {
-	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set VALIDATION_STRINGENCY="STRICT"
 	SP_set INPUT_3="${INPUT_3}"
 	SP_set INPUT_4="${INPUT_4}"
 	SP_set INPUT_5="${INPUT_5}"
@@ -190,7 +169,7 @@ function merge_bam
 #[procedure output="${INPUT}.sorted.bam"]
 function sort_bam
 {
-	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set VALIDATION_STRINGENCY="STRICT"
 
 	#[command input="${INPUT}.bam"]
 	#[command output="${INPUT}.sorted.bam"]
@@ -213,7 +192,7 @@ function sort_bam
 #[procedure output="${INPUT}.reordered.bam"]
 function reorder_bam
 {
-	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set VALIDATION_STRINGENCY="STRICT"
 
 	#[command input="${INPUT}.bam"]
 	#[command output="${INPUT}.reordered.bam"]
@@ -252,8 +231,8 @@ function select_unique_hit_reads
 #[procedure output="${INPUT}.mkdup.bam"]
 function mark_duplicate_reads
 {
-	SP_set ASSUME_SORTED="false" if_no_arg ARG="${ASSUME_SORTED}"
-	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set ASSUME_SORTED="false"
+	SP_set VALIDATION_STRINGENCY="STRICT"
 
 	#[command input="${INPUT}.bam"]
 	#[command output="${INPUT}.mkdup.bam"]
@@ -276,8 +255,8 @@ function mark_duplicate_reads
 #[procedure output="${INPUT}.rmdup.bam"]
 function remove_duplicate_reads
 {
-	SP_set ASSUME_SORTED="false" if_no_arg ARG="${ASSUME_SORTED}"
-	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set ASSUME_SORTED="false"
+	SP_set VALIDATION_STRINGENCY="STRICT"
 
 	#[command input="${INPUT}.bam"]
 	#[command output="${INPUT}.rmdup.bam"]
@@ -330,13 +309,13 @@ function picard_set_read_group
 	# SEQ_CENTER_NAME : Read Group sequencing center name  Default value: null. 
 	# DESCRIPTION     : Read Group description  Default value: null. 
 
-	SP_set READ_GROUP_ID="1" if_no_arg ARG="${READ_GROUP_ID}"
-	SP_set PLATFORM="illumina" if_no_arg ARG="${PLATFORM}"
-	SP_set PLATFORM_UNIT="flowcell.lane" if_no_arg ARG="${PLATFORM_UNIT}"
-	SP_set SEQ_CENTER_NAME="BGI" if_no_arg ARG="${SEQ_CENTER_NAME}"
+	SP_set READ_GROUP_ID="1"
+	SP_set PLATFORM="illumina"
+	SP_set PLATFORM_UNIT="flowcell.lane"
+	SP_set SEQ_CENTER_NAME="BGI"
 	SP_set DESCRIPTION="${DESCRIPTION}"
 	SP_set PICARD_RG_OPTS="${PICARD_RG_OPTS} RGDS=\"${DESCRIPTION}\"" if_has_arg ARG="${DESCRIPTION}"
-	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set VALIDATION_STRINGENCY="STRICT"
 
 	#[command input="${INPUT}.bam"]
 	#[command output="${INPUT}.rg.bam"]
@@ -367,7 +346,7 @@ function picard_set_read_group
 #[procedure output="${INPUT}.realign.fixmate.bam"]
 function gatk_indel_realign
 {
-	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set VALIDATION_STRINGENCY="STRICT"
 
 	#[command require="${REFERENCE}"]
 	#[command input="${INPUT}.bam"]
@@ -460,9 +439,9 @@ function gatk_recalibrate
 #[procedure output="${OUTPUT}.vcf"]
 function gatk_genotype
 {
-	SP_set STAND_CALL_CONF=30 if_no_arg ARG="${STAND_CALL_CONF}"
-	SP_set STAND_EMIT_CONF=10 if_no_arg ARG="${STAND_EMIT_CONF}"
-	SP_set MIN_BASE_QUALITY_SCORE=20 if_no_arg ARG="${MIN_BASE_QUALITY_SCORE}"
+	SP_set STAND_CALL_CONF=30
+	SP_set STAND_EMIT_CONF=10
+	SP_set MIN_BASE_QUALITY_SCORE=20
 
 	#[command require="${REFERENCE}"]
 	#[command require="${GATK_VCF_DBSNP}"]
@@ -568,7 +547,7 @@ function gatk_filter_variants
 #[procedure output="${OUTPUT}.gatk.vcf"]
 function gatk_call_variants
 {
-	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set VALIDATION_STRINGENCY="STRICT"
 
 	SP_run gatk_indel_realign \
 		REFERENCE=${REFERENCE} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
