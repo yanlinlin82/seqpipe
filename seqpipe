@@ -40,7 +40,6 @@ my %procedures;
 
 # Global variables (which are defined outside procedures in .pipe files).
 my %global_variables = ( SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dirname abs_path $0) );
-my %user_set_variables = ();
 
 # Count how many commands have been run so far.
 my $run_counter :shared;
@@ -505,9 +504,7 @@ sub load_module
 				}
 				while ($option_value =~ /\${(\w+)}/g) {
 					my $name = $1;
-					if (exists $user_set_variables{$name}) {
-						$option_value =~ s/\${$name}/$user_set_variables{$name}/g;
-					} elsif (exists $global_variables{$name}) {
+					if (exists $global_variables{$name}) {
 						$option_value =~ s/\${$name}/$global_variables{$name}/g;
 					} else {
 						$option_value =~ s/\${$name}//g;
@@ -530,7 +527,7 @@ SeqPipe: a SEQuencing data analsysis PIPEline framework
 Version: 0.2.8 ($Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
-Usage: ' . basename($0) . ' [options] [VAR=VALUE ...] <procedure> [NAME=VALUE ...]
+Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
 
 Options:
    -h / --help       Show this help or require parameters for a procedure.
@@ -541,7 +538,6 @@ Options:
    -d                Enable duplcated global variables and procedures (overwrited as the latters).
    -D                Disable loading "default.pipe".
    -l / --list       List current available procedures.
-   -L / --list-all   List current global variables and available procedures.
    -t / --test       Test mode, only print the commands rather than execute them.
    -T                Print the raw procedure declaration.
    -e <cmd>          Direct run a command as a stage-type procedure.
@@ -551,12 +547,6 @@ Options:
 
 sub list_procedures
 {
-	if ($list_all_mode) {
-		print STDOUT "\nCurrent global variables:\n";
-		foreach my $var (sort keys %global_variables) {
-			print STDOUT "   $var=$global_variables{$var}\n";
-		}
-	}
 	foreach my $type ("stage", "pipeline") {
 		print STDOUT "\nCurrent available procedures ($type):\n";
 		foreach my $name (sort keys %procedures) {
@@ -751,6 +741,7 @@ sub run_procedure
 			$variables{$arg} = $global_variables{$arg};
 		}
 	}
+	my %option_from_cmd = ();
 	foreach my $arg (@{$argv_ref}) {
 		if ($arg =~ /^(\w+)=(.*)$/) {
 			my $option_name = $1;
@@ -759,6 +750,7 @@ sub run_procedure
 				$option_value = $1;
 			}
 			$variables{$option_name} = $option_value;
+			$option_from_cmd{$option_name} = $option_value;
 		} else {
 			print LOG_FILE "ERROR: Invalid procedure option '$arg'! It should be the format of 'NAME=VALUE'!\n";
 			return -1;
@@ -766,7 +758,7 @@ sub run_procedure
 	}
 	foreach my $arg (keys %{$procedure{defined_variables}}) {
 		if (not exists $variables{$arg}) {
-			$variables{$arg} = "";
+			$variables{$arg} = $procedure{defined_variables}->{$arg};
 		}
 	}
 	foreach my $arg (keys %{$procedure{eval_variables}}) {
@@ -811,6 +803,7 @@ sub run_procedure
 	
 	my $start_time = time;
 	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
+		print LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id): " . bash_line_encode("SP_run", $procedure_name, @{$argv_ref}) . "\n";
 		print LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id) '$procedure_name' starts at " . time_string($start_time) . "\n";
 	}
 
@@ -869,7 +862,6 @@ sub run_procedure
 		}
 
 		if ($command =~ /^SP_set/ or $command =~ /^SP_eval/) {
-			print STDOUT "#$command\n" if ($is_test_mode and $verbose);
 
 			my @procedure_options = bash_line_decode($command);
 			my $cmd = shift @procedure_options;
@@ -895,7 +887,10 @@ sub run_procedure
 					return -1;
 				}
 			}
-			
+
+			next if exists $option_from_cmd{$option_name};
+			print STDOUT "#$command\n" if ($is_test_mode and $verbose);
+
 			if (scalar @procedure_options > 0) {
 				my $procedure_name = shift @procedure_options;
 				my @log_files = ();
@@ -1080,11 +1075,7 @@ if ($#ARGV < 0) {
 			exit 1;
 		} else {
 			if ($arg =~ /^(\w+)=(.*)$/) {
-				if ($procedure_name eq '') {
-					$user_set_variables{$1} = $2;
-				} else {
-					push @argv, $arg;
-				}
+				push @argv, $arg;
 			} else {
 				if ($procedure_name eq '') {
 					$procedure_name = $arg;
@@ -1108,9 +1099,6 @@ foreach my $module_file (@module_files) {
 if ($verbose) {
 	printf STDERR "All %d module file(s) loaded, including %d procedure(s).\n",
 		scalar @module_files, scalar keys %procedures;
-}
-foreach my $name (keys %user_set_variables) {
-	$global_variables{$name} = $user_set_variables{$name};
 }
 
 if ($list_mode) {
