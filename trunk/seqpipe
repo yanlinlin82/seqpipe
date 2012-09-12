@@ -30,6 +30,7 @@ my $list_mode = 0;
 my $list_all_mode = 0;
 my $test_mode = 0;
 my $display_raw_code = 0;
+my $keep_intermediates = 0;
 my $enable_duplicate = 0;
 my $execute_command = '';
 my $shell = '/bin/bash';
@@ -232,9 +233,9 @@ sub append_command
 
 	return if ($command =~ /^\s*#/);
 
-	my @requires = @{$requires_ref};
-	my @inputs = @{$inputs_ref};
-	my @outputs = @{$outputs_ref};
+	my @requires = keys %{$requires_ref};
+	my @inputs = keys %{$inputs_ref};
+	my @outputs = keys %{$outputs_ref};
 
 	check_command_syntax($command);
 
@@ -278,6 +279,33 @@ sub append_command
 	}
 }
 
+sub add_workflow_attribute
+{
+	my ($command_final_outputs_ref, $requires_of_ref, $inputs_of_ref, $requires_ref, $inputs_ref) = @_;
+	my %command_final_outputs = %{$command_final_outputs_ref};
+	my %requires_of = %{$requires_of_ref};
+	my %inputs_of = %{$inputs_of_ref};
+
+	foreach my $output (keys %command_final_outputs) {
+		my %items = ();
+		foreach my $file (keys $requires_of{$output}) {
+			if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
+				$requires_ref->{$file} = 1;
+			} else {
+				$items{$file} = 1;
+			}
+		}
+		foreach my $file (keys $inputs_of{$output}) {
+			if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
+				$inputs_ref->{$file} = 1;
+			} else {
+				$items{$file} = 1;
+			}
+		}
+		add_workflow_attribute(\%items, $requires_of_ref, $inputs_of_ref, $requires_ref, $inputs_ref);
+	}
+}
+
 sub load_module
 {
 	my ($module_file) = @_;
@@ -290,9 +318,12 @@ sub load_module
 	unshift @file_handles, *MODULE_FILE;
 
 	my $type = '';
-	my @requires = ();
-	my @inputs = ();
-	my @outputs = ();
+	my %requires = ();
+	my %inputs = ();
+	my %outputs = ();
+	my %temps = ();
+	my %requires_of = ();
+	my %inputs_of = ();
 	while (scalar @file_handles > 0) {
 		my $file_handle = $file_handles[0];
 		while ($line = <$file_handle>) {
@@ -307,7 +338,7 @@ sub load_module
 				if ($line !~ /^#\[procedure(\s+(type|require|input|output)="(.*?)")+\s*\]$/) {
 					die "ERROR: Bad format of procedure attribute declaration!";
 				}
-				while ($line =~ /\s+(type|input|output|require)="(.*?)"/g) {
+				while ($line =~ /\s+(type|require|input|output)="(.*?)"/g) {
 					if ($1 eq 'type') {
 						die "ERROR: Duplicated procedure type declaration!" if $type ne '';
 						$type = $2;
@@ -315,11 +346,14 @@ sub load_module
 							die "ERROR: Unknown type of procedure: '$type'!";
 						}
 					} elsif ($1 eq "require") {
-						push @requires, $2;
+						die "ERROR: Duplicated require attribute!" if exists $requires{$2};
+						$requires{$2} = 1;
 					} elsif ($1 eq "input") {
-						push @inputs, $2;
+						die "ERROR: Duplicated input attribute!" if exists $inputs{$2};
+						$inputs{$2} = 1;
 					} elsif ($1 eq "output") {
-						push @outputs, $2;
+						die "ERROR: Duplicated output attribute!" if exists $outputs{$2};
+						$outputs{$2} = 1;
 					}
 					next;
 				}
@@ -348,9 +382,10 @@ sub load_module
 					die "ERROR: Invalid procedure declaration! Line '{' expected!";
 				}
 				my $last_line = '';
-				my @command_requires = ();
-				my @command_inputs = ();
-				my @command_outputs = ();
+				my %command_requires = ();
+				my %command_inputs = ();
+				my %command_outputs = ();
+				my %command_final_outputs = ();
 				while ($line = <$file_handle>) {
 					chomp $line;
 					if ($line =~ /^}\s*$/) {
@@ -371,30 +406,60 @@ sub load_module
 
 					if ($line =~ s/\\$//) {
 						$last_line = $line;
-					} elsif ($line =~ /^#\[command\s+(require|input|output)=.*\]$/) {
-						while ($line =~ /\s+(require|input|output)="(.*?)"/g) {
+					} elsif ($line =~ /^#\[command\s+(require|input|output(|.temp|.final))=.*\]$/) {
+						while ($line =~ /\s+(require|input|output(|.temp|.final))="(.*?)"/g) {
 							if ($1 eq "require") {
-								push @command_requires, $2;
+								die "ERROR: Duplicated require attribute!" if exists $command_requires{$3};
+								$command_requires{$3} = 1;
 							} elsif ($1 eq "input") {
-								push @command_inputs, $2;
+								die "ERROR: Duplicated input attribute!" if exists $command_inputs{$3};
+								$command_inputs{$3} = 1;
 							} elsif ($1 eq "output") {
-								push @command_outputs, $2;
+								die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
+								$command_outputs{$3} = 1;
+							} elsif ($1 eq "output.temp") {
+								die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
+								$command_outputs{$3} = 1;
+								$temps{$3} = 1;
+							} elsif ($1 eq "output.final") {
+								die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
+								$command_outputs{$3} = 1;
+								$command_final_outputs{$3} = 1;
+								$outputs{$3} = 1;
 							}
 						}
 					} elsif ($line !~ /^\s*$/) {
 						append_command \@commands,
 							\%defined_variables, \%eval_variables, \%used_variables, $line,
-							\@command_requires, \@command_inputs, \@command_outputs;
-						@command_requires = ();
-						@command_inputs = ();
-						@command_outputs = ();
+							\%command_requires, \%command_inputs, \%command_outputs;
+
+						foreach my $output (keys %command_outputs, keys %command_final_outputs) {
+							if (%command_requires) {
+								$requires_of{$output} = {} if not exists $requires_of{$output};
+								foreach my $require (keys %command_requires) {
+									$requires_of{$output}->{$require} = 1;
+								}
+							}
+							if (%command_inputs) {
+								$inputs_of{$output} = {} if not exists $inputs_of{$output};
+								foreach my $input (keys %command_inputs) {
+									$inputs_of{$output}->{$input} = 1;
+								}
+							}
+						}
+						if (%command_final_outputs) {
+							add_workflow_attribute \%command_final_outputs, \%requires_of, \%inputs_of, \%requires, \%inputs;
+						}
+						%command_requires = ();
+						%command_inputs = ();
+						%command_outputs = ();
 					}
 				}
 				if ($line !~ /^}\s*$/) {
 					die "ERROR: Invalid procedure declaration! Line '}' expected!";
 				}
 
-				foreach my $variable (@requires, @inputs, @outputs) {
+				foreach my $variable (keys %requires, keys %inputs, keys %outputs) {
 					while ($variable =~ /\${(\w+)}/g) {
 						my $variable_name = $1;
 						if (not exists $used_variables{$variable_name}) {
@@ -403,14 +468,17 @@ sub load_module
 					}
 				}
 
-				my @procedure_requires = @requires;
-				my @procedure_inputs = @inputs;
-				my @procedure_outputs = @outputs;
+				my @procedure_requires = keys %requires;
+				my @procedure_inputs = keys %inputs;
+				my @procedure_outputs = keys %outputs;
+				my @procedure_temps = keys %temps;
+
 				$procedures{$procedure_name} = {
 					type              => $type,
 					requires          => \@procedure_requires,
 					inputs            => \@procedure_inputs,
 					outputs           => \@procedure_outputs,
+					temps             => \@procedure_temps,
 					commands          => \@commands,
 					defined_variables => \%defined_variables,
 					eval_variables    => \%eval_variables,
@@ -418,9 +486,12 @@ sub load_module
 				};
 
 				$type = '';
-				@requires = ();
-				@inputs = ();
-				@outputs = ();
+				%requires = ();
+				%inputs = ();
+				%outputs = ();
+				%temps = ();
+				%requires_of = ();
+				%inputs_of = ();
 			} elsif ($line =~ /^\s*(\w+)=(.*)$/) {
 				my $option_name = $1;
 				my $option_value = $2;
@@ -466,6 +537,7 @@ Options:
    -H                Show detail help for a procedure (including optional parameters).
    -v / --verbose    Show verbose message.
    -m <file>         Load procedure module file, this option can be used many times.
+   -k                Keep intermediate files.
    -d                Enable duplcated global variables and procedures (overwrited as the latters).
    -D                Disable loading "default.pipe".
    -l / --list       List current available procedures.
@@ -638,6 +710,21 @@ sub run_command
 		print LOG_FILE "[SeqPipe] [$call_depth] Command($uniq_id.$record_id) returns $return_value\n" if not $start_failed;
 	}
 	return ( $return_value, \@log_files, \@pipe_structure );
+}
+
+sub eval_string
+{
+	my ($string, $variables_ref) = @_;
+
+	while ($string =~ /\${(\w+)}/) {
+		my $var_name = $1;
+		if (exists $variables_ref->{$var_name}) {
+			$string =~ s/\${$var_name}/$variables_ref->{$var_name}/g;
+		} else {
+			$string =~ s/\${$var_name}//g;
+		}
+	}
+	return $string;
 }
 
 sub run_procedure
@@ -913,7 +1000,17 @@ sub run_procedure
 			last if exists $exit_on_error{$procedure{type}} and $return_value != 0;
 		}
 	}
-	
+
+	if (not $keep_intermediates) {
+		foreach my $item (@{$procedure{temps}}) {
+			my $file = eval_string($item, \%variables);
+			if (-e $file) {
+				printf LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id) '$procedure_name' remove intemediate file '%s'\n", $file;
+				unlink $file;
+			}
+		}
+	}
+
 	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
 		my $end_time = time;
 		printf LOG_FILE "[SeqPipe] [$call_depth] Procedure($uniq_id.$record_id) '$procedure_name' ends at %s (elapsed: %s)\n",
@@ -939,6 +1036,8 @@ if ($#ARGV < 0) {
 			$help_detail_mode = 1 if ($arg eq '-H');
 		} elsif ($arg eq '-v' or $arg eq '--verbose') {
 			$verbose = 1;
+		} elsif ($arg eq '-k') {
+			$keep_intermediates = 1;
 		} elsif ($arg eq '-d') {
 			$enable_duplicate = 1;
 		} elsif ($arg eq '-l' or $arg eq '--list') {
