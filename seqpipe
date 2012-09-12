@@ -288,7 +288,7 @@ sub add_workflow_attribute
 	foreach my $output (keys %command_final_outputs) {
 		my %items = ();
 		if ($requires_of{$output}) {
-			foreach my $file (keys $requires_of{$output}) {
+			foreach my $file (keys %{$requires_of{$output}}) {
 				if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
 					$requires_ref->{$file} = 1;
 				} else {
@@ -297,7 +297,7 @@ sub add_workflow_attribute
 			}
 		}
 		if ($inputs_of{$output}) {
-			foreach my $file (keys $inputs_of{$output}) {
+			foreach my $file (keys %{$inputs_of{$output}}) {
 				if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
 					$inputs_ref->{$file} = 1;
 				} else {
