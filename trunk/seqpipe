@@ -754,6 +754,11 @@ sub run_procedure
 				$option_value = $1;
 			}
 			$variables{$option_name} = $option_value;
+			
+			if (exists $option_from_cmd{$option_name}) {
+				print LOG_FILE "ERROR: Duplicated option '$option_name' when run_procedure '$procedure_name'!\n";
+				return -1;
+			}
 			$option_from_cmd{$option_name} = $option_value;
 		} else {
 			print LOG_FILE "ERROR: Invalid procedure option '$arg'! It should be the format of 'NAME=VALUE'!\n";
@@ -1029,6 +1034,7 @@ my $procedure_name = '';
 if ($#ARGV < 0) {
 	$help_mode = 1;
 } else {
+	my %option_from_cmd = ();
 	while (my $arg = shift @ARGV) {
 		if ($arg eq '-h' or $arg eq '--help' or $arg eq '-H') {
 			$help_mode = 1;
@@ -1079,6 +1085,8 @@ if ($#ARGV < 0) {
 			exit 1;
 		} else {
 			if ($arg =~ /^(\w+)=(.*)$/) {
+				die "ERROR: duplicated option '$1'!\n" if exists $option_from_cmd{$1};
+				$option_from_cmd{$1} = 1;
 				push @argv, $arg;
 			} else {
 				if ($procedure_name eq '') {
