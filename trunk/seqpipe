@@ -34,6 +34,7 @@ my $keep_intermediates = 0;
 my $enable_duplicate = 0;
 my $execute_command = '';
 my $shell = '/bin/bash';
+my $strict_mode = 0;
 
 # All procedures are loaded at startup.
 my %procedures;
@@ -546,6 +547,7 @@ Options:
    -T                Print the raw procedure declaration.
    -e <cmd>          Direct run a command as a stage-type procedure.
    -s <shell>        Send commands to another shell (such as "qsub"), default: ' . $shell . '
+   -S                Strict mode, which will check every command' . "'" . ' return value in pipe.
 ';
 }
 
@@ -640,10 +642,13 @@ sub run_command
 		} elsif ($procedure_type eq 'checker') {
 			$command_with_log = "($command) >/dev/null 2>/dev/null";
 		} else {
-			$command_with_log = '(' . $command
-				. '; for _RES in ${PIPESTATUS[*]}; do if [ $_RES -ne 0 ]; then exit $_RES; fi; done) '
-				. ">>" . LOG_DIR . "/$uniq_id.$record_id.$procedure_name.log "
-				. "2>>" . LOG_DIR . "/$uniq_id.$record_id.$procedure_name.err";
+			if ($strict_mode) {
+				$command_with_log = '(' . $command . '; for _RES in ${PIPESTATUS[*]}; do if [ $_RES -ne 0 ]; then exit $_RES; fi; done)';
+			} else {
+				$command_with_log = '(' . $command . ')';
+			}
+			$command_with_log .= " >>" . LOG_DIR . "/$uniq_id.$record_id.$procedure_name.log ";
+			$command_with_log .= "2>>" . LOG_DIR . "/$uniq_id.$record_id.$procedure_name.err";
 
 			push @log_files, LOG_DIR . "/$uniq_id.$record_id.$procedure_name.log";
 			my $depth_text = '';
@@ -1064,6 +1069,8 @@ if ($#ARGV < 0) {
 			if ($module_files[0] eq (dirname abs_path $0) . '/default.pipe') {
 				shift @module_files;
 			}
+		} elsif ($arg eq '-S') {
+			$strict_mode = 1;
 		} elsif ($arg eq '-e') {
 			if ($#ARGV < 0) {
 				print "ERROR: missing argument for option '$arg'!\n";
