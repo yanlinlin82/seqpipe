@@ -1,3 +1,6 @@
+2012-09-13  v0.3.1 (r110)
+* Support '-S' to enable strict mode (check every command's return value).
+
 2012-09-12  v0.3.0 (r107)
 * Auto calculate requires/inputs/outputs from its commands.
 * Overwrite variables by options from command line.
