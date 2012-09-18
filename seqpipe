@@ -788,7 +788,11 @@ sub run_procedure
 	}
 	foreach my $arg (keys %{$procedure{defined_variables}}) {
 		if (not exists $variables{$arg}) {
-			$variables{$arg} = $procedure{defined_variables}->{$arg};
+			if ($procedure{defined_variables}->{$arg} eq "(null)" or $procedure{defined_variables}->{$arg} eq "(runtime-evaluate)") {
+				$variables{$arg} = "";
+			} else {
+				$variables{$arg} = $procedure{defined_variables}->{$arg};
+			}
 		}
 	}
 	foreach my $arg (keys %{$procedure{eval_variables}}) {
