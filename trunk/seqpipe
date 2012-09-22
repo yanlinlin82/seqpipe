@@ -60,20 +60,21 @@ my $uniq_id;
 my ($sec, $min, $hour, $mday, $mon, $year) = localtime time;
 $uniq_id = sprintf("%02d%02d%02d.%d", $year % 100, $mon + 1, $mday, $$);
 
-my $semaphore = Thread::Semaphore->new();
+my $semaphore = 0;
+$semaphore = Thread::Semaphore->new() if $can_use_threads;
 
 sub safe_print
 {
-	$semaphore->down();
+	$semaphore->down() if $can_use_threads;
 	print LOG_FILE @_;
-	$semaphore->up();
+	$semaphore->up() if $can_use_threads;
 }
 
 sub safe_printf
 {
-	$semaphore->down();
+	$semaphore->down() if $can_use_threads;
 	printf LOG_FILE @_;
-	$semaphore->up();
+	$semaphore->up() if $can_use_threads;
 }
 
 ############################################################
