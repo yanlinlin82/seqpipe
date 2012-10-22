@@ -1,3 +1,6 @@
+2012-10-23  v0.3.2 (r115)
+* Store log files in separated sub-directories for each seqpipe run.
+
 2012-09-13  v0.3.1 (r111)
 * Support '-S' to enable strict mode (check every command's return value).
 
