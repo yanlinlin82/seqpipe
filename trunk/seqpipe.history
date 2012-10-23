@@ -7,7 +7,7 @@ if [ -z "$1" ]; then
 	cat <<EOF
 
 Histroy Manipulator for SeqPipe (a SEQuencing data analsysis PIPEline framework)
-Version: 0.0.1 ($Rev$)
+Version: 0.0.1 (\$Rev$)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: $0 <command> [<options>]
