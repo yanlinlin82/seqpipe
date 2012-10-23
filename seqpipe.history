@@ -1,5 +1,8 @@
 #!/bin/bash
 
+SEQPIPE_DIR=.seqpipe
+SEQPIPE_LOG=${SEQPIPE_DIR}/history.log
+
 if [ -z "$1" ]; then
 	cat <<EOF
 
@@ -13,36 +16,60 @@ Support commands:
    list
    show <id>
    remove <id>
+   upgrade
 
 EOF
 	exit 1
 fi
 
-if [ "$1" == "list" ]; then
-	less .seqpipe/history.log
-elif [ "$1" == "show" ]; then
-	if [ -z "$2" ]; then
+if [ ! -d ${SEQPIPE_DIR} -o ! -f ${SEQPIPE_LOG} ]; then
+	echo "ERROR: Can not find history of seqpipe here!"
+	exit 1
+fi
+
+COMMAND="$1"
+
+if [ "${COMMAND}" == "list" ]; then
+	less ${SEQPIPE_LOG}
+elif [ "${COMMAND}" == "show" ]; then
+	ID=$2
+	if [ -z "${ID}" ]; then
 		echo "Usage: $0 show <id>"
 		exit 1
 	fi
-	cat .seqpipe/history.log | awk '$1=="'$2'"'
-elif [ "$1" == "rm" -o "$1" == "remove" ]; then
-	if [ -z "$2" ]; then
-		echo "Usage: $0 rm <id>"
+	cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"'
+elif [ "${COMMAND}" == "remove" ]; then
+	ID=$2
+	if [ -z "${ID}" ]; then
+		echo "Usage: $0 remove (rm) <id>"
 		exit 1
 	fi
-	if [ -z "$(cat .seqpipe/history.log | awk '$1=="'$2'"')" ]; then
-		echo "ERROR: Can not find SeqPipe run for '$2'!"
+	if [ -z "$(cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"')" ]; then
+		echo "ERROR: Can not find SeqPipe run for '${ID}'!"
 		exit 1
 	fi
-	N=$(grep -n "$2" .seqpipe/history.log | cut -d: -f1)
+	N=$(grep -n "${ID}" ${SEQPIPE_LOG} | cut -d: -f1)
 	echo -n "Are you sure to remove seqpipe run '$2' (y/n)? "
 	read C
 	if [ "$(echo $C | cut -c1)" == "y" -o "$(echo $C | cut -c1)" == "Y" ]; then
-		sed -i "${N}d" .seqpipe/history.log \
-			&& rm -rf .seqpipe/$2/ \
-			&& echo "SeqPipe run '$2' has been removed successfully!"
+		sed -i "${N}d" ${SEQPIPE_LOG} \
+			&& rm -rf ${SEQPIPE_LOG}/${ID}/ \
+			&& echo "SeqPipe run '${ID}' has been removed successfully!"
 	fi
+elif [ "$1" == "upgrade" ]; then
+	ls -F ${SEQPIPE_DIR} | grep -v '/' | egrep '^[0-9]+\.[0-9]+\..*$' | while read NAME; do
+		DIR="$(echo "${NAME}" | cut -d'.' -f1-2)"
+		FILE="$(echo "${NAME}" | cut -d'.' -f3-)"
+		[ -d ${SEQPIPE_DIR}/${DIR} ] || mkdir -pv ${SEQPIPE_DIR}/${DIR}
+		if [ -f ${SEQPIPE_DIR}/${DIR}/${FILE} ]; then
+			echo "ERROR: File '${SEQPIPE_DIR}/${DIR}/${FILE}' has already existed!"
+			exit 1
+		fi
+		mv -iv ${SEQPIPE_DIR}/${NAME} ${SEQPIPE_DIR}/${DIR}/${FILE}
+	done
+else
+	echo "ERROR: Invalid command '${COMMAND}'!"
+	exit 1
 fi
 
 exit 0
