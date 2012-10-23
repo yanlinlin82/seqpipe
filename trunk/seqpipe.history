@@ -22,7 +22,7 @@ EOF
 	exit 1
 fi
 
-if [ ! -d ${SEQPIPE_DIR} -o ! -f ${SEQPIPE_LOG} ]; then
+if [ ! -f ${SEQPIPE_LOG} ]; then
 	echo "ERROR: Can not find history of seqpipe here!"
 	exit 1
 fi
@@ -44,16 +44,16 @@ elif [ "${COMMAND}" == "remove" ]; then
 		echo "Usage: $0 remove (rm) <id>"
 		exit 1
 	fi
-	if [ -z "$(cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"')" ]; then
+	if [ -z "$(cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"')" -a ! -d ${SEQPIPE_DIR}/${ID}/ ]; then
 		echo "ERROR: Can not find SeqPipe run for '${ID}'!"
 		exit 1
 	fi
-	N=$(grep -n "${ID}" ${SEQPIPE_LOG} | cut -d: -f1)
 	echo -n "Are you sure to remove seqpipe run '$2' (y/n)? "
 	read C
 	if [ "$(echo $C | cut -c1)" == "y" -o "$(echo $C | cut -c1)" == "Y" ]; then
-		sed -i "${N}d" ${SEQPIPE_LOG} \
-			&& rm -rf ${SEQPIPE_LOG}/${ID}/ \
+		N=$(grep -n "${ID}" ${SEQPIPE_LOG} | cut -d: -f1)
+		([ -z "${N}" ] || sed -i "${N}d" ${SEQPIPE_LOG}) \
+			&& rm -rf ${SEQPIPE_DIR}/${ID}/ \
 			&& echo "SeqPipe run '${ID}' has been removed successfully!"
 	fi
 elif [ "$1" == "upgrade" ]; then
