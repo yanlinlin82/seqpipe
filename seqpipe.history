@@ -1,0 +1,48 @@
+#!/bin/bash
+
+if [ -z "$1" ]; then
+	cat <<EOF
+
+Histroy Manipulator for SeqPipe (a SEQuencing data analsysis PIPEline framework)
+Version: 0.0.1 ($Rev$)
+Copyright: 2012, Centre for Bioinformatics, Peking University, China
+
+Usage: $0 <command> [<options>]
+
+Support commands:
+   list
+   show <id>
+   remove <id>
+
+EOF
+	exit 1
+fi
+
+if [ "$1" == "list" ]; then
+	less .seqpipe/history.log
+elif [ "$1" == "show" ]; then
+	if [ -z "$2" ]; then
+		echo "Usage: $0 show <id>"
+		exit 1
+	fi
+	cat .seqpipe/history.log | awk '$1=="'$2'"'
+elif [ "$1" == "rm" -o "$1" == "remove" ]; then
+	if [ -z "$2" ]; then
+		echo "Usage: $0 rm <id>"
+		exit 1
+	fi
+	if [ -z "$(cat .seqpipe/history.log | awk '$1=="'$2'"')" ]; then
+		echo "ERROR: Can not find SeqPipe run for '$2'!"
+		exit 1
+	fi
+	N=$(grep -n "$2" .seqpipe/history.log | cut -d: -f1)
+	echo -n "Are you sure to remove seqpipe run '$2' (y/n)? "
+	read C
+	if [ "$(echo $C | cut -c1)" == "y" -o "$(echo $C | cut -c1)" == "Y" ]; then
+		sed -i "${N}d" .seqpipe/history.log \
+			&& rm -rf .seqpipe/$2/ \
+			&& echo "SeqPipe run '$2' has been removed successfully!"
+	fi
+fi
+
+exit 0
