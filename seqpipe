@@ -5,10 +5,8 @@ use File::Basename;
 use File::stat;
 use Cwd 'abs_path';
 
-# Try 'forks' package first; if failed, use ithread directly.
-eval 'use forks';
-
 # Check Perl ithread support.
+eval 'use forks'; # Try 'forks' package first; if failed, use ithread directly.
 my $can_use_threads = eval 'use threads; use Thread::Semaphore; use threads::shared; 1';
 if (not $can_use_threads) {
 	print STDERR "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
@@ -627,6 +625,70 @@ sub list_procedures
 	print STDOUT "\n";
 }
 
+sub display_procedure_raw_code
+{
+	my ($procedure_name) = @_;
+
+	if ($procedure_name eq '') {
+		print STDERR "ERROR: <procedure_name> is required for '-T'!\n";
+		return;
+	}
+	if (not exists $procedures{$procedure_name}) {
+		print STDERR "ERROR: Unknown procedure '$procedure_name'! Use '-l' option to list available procedures.\n";
+		return;
+	}
+	my %procedure = %{$procedures{$procedure_name}};
+
+	print "#[procedure type=\"$procedure{type}\"]\n";
+
+	foreach my $require (@{$procedure{requires}}) {
+		print "#[procedure require=\"$require\"]\n";
+	}
+	foreach my $input (@{$procedure{inputs}}) {
+		print "#[procedure input=\"$input\"]\n";
+	}
+	foreach my $output (@{$procedure{outputs}}) {
+		print "#[procedure output=\"$output\"]\n";
+	}
+
+	print "function $procedure_name\n";
+	print "{\n";
+
+	my $empty_line = 1;
+	my $require_empty_line = 0;
+	foreach my $command_ref (@{$procedure{commands}}) {
+		my %command = %{$command_ref};
+
+		if ($command{command} eq 'SP_parallel_begin') {
+			$require_empty_line = 1;
+		}
+		if ($require_empty_line and not $empty_line) {
+			print "\n";
+			$empty_line = 1;
+		}
+		$require_empty_line = 0;
+
+		foreach my $require (@{$command{requires}}) {
+			print "\t#[command require=\"$require\"]\n";
+		}
+		foreach my $input (@{$command{inputs}}) {
+			print "\t#[command input=\"$input\"]\n";
+		}
+		foreach my $output (@{$command{outputs}}) {
+			print "\t#[command output=\"$output\"]\n";
+		}
+		
+		print "\t$command{command}\n";
+		$empty_line = 0;
+
+		if ($command{command} eq 'SP_parallel_end') {
+			$require_empty_line = 1;
+		}
+	}
+
+	print "}\n";
+}
+
 sub check_requires_inputs_outputs
 {
 	my ($procedure_name, $variables_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
@@ -1102,11 +1164,11 @@ initialize_config;
 
 my @argv = ();
 my $procedure_name = '';
+my %option_from_cmd = ();
 
 if ($#ARGV < 0) {
 	$help_mode = 1;
 } else {
-	my %option_from_cmd = ();
 	while (my $arg = shift @ARGV) {
 		if ($arg eq '-h' or $arg eq '--help' or $arg eq '-H') {
 			$help_mode = 1;
@@ -1195,64 +1257,7 @@ if ($list_mode) {
 }
 
 if ($display_raw_code) {
-	if ($procedure_name eq '') {
-		print STDERR "ERROR: <procedure_name> is required for '-T'!\n";
-		exit 1;
-	}
-	if (not exists $procedures{$procedure_name}) {
-		print STDERR "ERROR: Unknown procedure '$procedure_name'! Use '-l' option to list available procedures.\n";
-		exit 1;
-	}
-	my %procedure = %{$procedures{$procedure_name}};
-
-	print "#[procedure type=\"$procedure{type}\"]\n";
-
-	foreach my $require (@{$procedure{requires}}) {
-		print "#[procedure require=\"$require\"]\n";
-	}
-	foreach my $input (@{$procedure{inputs}}) {
-		print "#[procedure input=\"$input\"]\n";
-	}
-	foreach my $output (@{$procedure{outputs}}) {
-		print "#[procedure output=\"$output\"]\n";
-	}
-
-	print "function $procedure_name\n";
-	print "{\n";
-
-	my $empty_line = 1;
-	my $require_empty_line = 0;
-	foreach my $command_ref (@{$procedure{commands}}) {
-		my %command = %{$command_ref};
-
-		if ($command{command} eq 'SP_parallel_begin') {
-			$require_empty_line = 1;
-		}
-		if ($require_empty_line and not $empty_line) {
-			print "\n";
-			$empty_line = 1;
-		}
-		$require_empty_line = 0;
-
-		foreach my $require (@{$command{requires}}) {
-			print "\t#[command require=\"$require\"]\n";
-		}
-		foreach my $input (@{$command{inputs}}) {
-			print "\t#[command input=\"$input\"]\n";
-		}
-		foreach my $output (@{$command{outputs}}) {
-			print "\t#[command output=\"$output\"]\n";
-		}
-		
-		print "\t$command{command}\n";
-		$empty_line = 0;
-
-		if ($command{command} eq 'SP_parallel_end') {
-			$require_empty_line = 1;
-		}
-	}
-
-	print "}\n";
+	display_procedure_raw_code $procedure_name;
 	exit 1;
 }
 
@@ -1300,6 +1305,28 @@ if ($procedure_name eq '') {
 	print STDERR "ERROR: No procedure name provided!\n" if not $help_mode;
 	print_usage;
 	exit 1;
+}
+
+my $used_var_ref = \%{$procedures{$procedure_name}{used_variables}};
+my $defined_var_ref = \%{$procedures{$procedure_name}{defined_variables}};
+my $eval_var_ref = \%{$procedures{$procedure_name}{eval_variables}};
+foreach my $variable_name (sort keys %{$used_var_ref}) {
+	my $default_value = $used_var_ref->{$variable_name};
+	if (exists $global_variables{$variable_name} and $global_variables{$variable_name} ne "") {
+		$default_value = $global_variables{$variable_name};
+	}
+	if (exists $defined_var_ref->{$variable_name}) {
+		$default_value = $defined_var_ref->{$variable_name};
+	}
+	if (exists $eval_var_ref->{$variable_name}) {
+		$default_value = '(runtime-evaluate)';
+	}
+	if ($default_value eq "" and not exists $defined_var_ref->{$variable_name}) {
+		if (not exists $option_from_cmd{$variable_name}) {
+			printf STDERR "ERROR: Option '$variable_name' is required for procedure '$procedure_name'!\n";
+			exit 1;
+		}
+	}
 }
 
 system "mkdir", "-p", LOG_DIR . "/$uniq_id" unless -d LOG_DIR . "/$uniq_id";
