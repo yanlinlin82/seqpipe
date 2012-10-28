@@ -610,9 +610,6 @@ sub show_parameters
 	my @requires = @{$procedures{$procedure_name}{requires}};
 	my @inputs = @{$procedures{$procedure_name}{inputs}};
 	my @outputs = @{$procedures{$procedure_name}{outputs}};
-	print scalar @requires, "\n";
-	print scalar @inputs, "\n";
-	print scalar @outputs, "\n";
 	print STDOUT join("\n   ", ("Require file(s):", @requires)) . "\n" if scalar @requires > 0;
 	print STDOUT join("\n   ", ("Input file(s):",   @inputs))   . "\n" if scalar @inputs > 0;
 	print STDOUT join("\n   ", ("Output file(s):",  @outputs))  . "\n" if scalar @outputs > 0;
