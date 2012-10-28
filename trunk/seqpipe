@@ -412,6 +412,9 @@ sub load_module
 				my %command_final_outputs = ();
 				while ($line = <$file_handle>) {
 					chomp $line;
+
+					next if $line =~ /^\s*#/; # Skip comment line
+
 					if ($line =~ /^}\s*$/) {
 						if ($last_line ne '') {
 							die "ERROR: Invalid procedure declaration! Last command line not finished!";
