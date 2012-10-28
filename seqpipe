@@ -509,7 +509,8 @@ sub load_module
 					commands          => \@commands,
 					defined_variables => \%defined_variables,
 					eval_variables    => \%eval_variables,
-					used_variables    => \%used_variables
+					used_variables    => \%used_variables,
+					module_file       => abs_path($module_file)
 				};
 
 				$type = '';
@@ -1240,7 +1241,8 @@ if ($execute_command ne '') {
 		commands          => \@commands,
 		defined_variables => \%defined_variables,
 		eval_variables    => \%eval_variables,
-		used_variables    => \%used_variables
+		used_variables    => \%used_variables,
+		module_file       => ''
 	};
 }
 
@@ -1319,14 +1321,17 @@ if ($test_mode) {
 
 	open LOG_FILE, "| tee -ai " . LOG_DIR . "/$uniq_id/log";
 
-	safe_print "[SeqPipe] Top Command($uniq_id): $command_line\n";
+	safe_print "[SeqPipe] Bash Command($uniq_id): $command_line\n";
 
 	foreach my $sysinfo_procedure_name (keys %procedures) {
 		if ($procedures{$sysinfo_procedure_name}{type} eq 'sysinfo') {
-			my @args = ();
-			my @log_files = ();
-			my @pipe_struct = ();
-			run_procedure $sysinfo_procedure_name, \@args, 0, \@log_files, 0, \@pipe_struct;
+			if ($sysinfo_procedure_name eq 'sysinfo' or $procedures{$sysinfo_procedure_name}{module_file} eq $procedures{$procedure_name}{module_file}) {
+				safe_print "[SeqPipe] Generate sysinfo log of '$sysinfo_procedure_name'\n";
+				my @args = ();
+				my @log_files = ();
+				my @pipe_struct = ();
+				run_procedure $sysinfo_procedure_name, \@args, 0, \@log_files, 0, \@pipe_struct;
+			}
 		}
 	}
 }
