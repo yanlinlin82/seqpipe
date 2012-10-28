@@ -606,7 +606,6 @@ sub show_parameters
 		last if not $help_detail_mode;
 	}
 
-	print $procedure_name, "\n";
 	my @requires = @{$procedures{$procedure_name}{requires}};
 	my @inputs = @{$procedures{$procedure_name}{inputs}};
 	my @outputs = @{$procedures{$procedure_name}{outputs}};
