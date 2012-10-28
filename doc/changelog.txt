@@ -1,3 +1,9 @@
+2012-10-24  v0.3.3 (r127)
+* Support history manipulating (by script seqpipe.history).
+* Fix bug in processing comment sign ('#') in command lines merging.
+* Check required options before procedure running.
+* Load all module files in seqpipe directory by default.
+
 2012-10-23  v0.3.2 (r115)
 * Store log files in separated sub-directories for each seqpipe run.
 
