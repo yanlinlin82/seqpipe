@@ -38,7 +38,7 @@ function bwa_build_index
 	SP_set ALGORITHM="is"
 	SP_set ALGORITHM="bwtsw" if_fasta_is_long_genome INPUT_FASTA="${REFERENCE}"
 
-	#[command input="${REFERENCE}" output="${REFERENCE}.bwt"]
+	#[command input="${REFERENCE}" output.final="${REFERENCE}.bwt"]
 	bwa index -a ${ALGORITHM} ${REFERENCE}
 }
 
