@@ -51,10 +51,11 @@ my $exiting :shared;
 $exiting = 0;
 
 # Module file list for loading at startup.
-my @module_files = ( (dirname abs_path $0) . '/default.pipe' );
+my @module_files = ();
+my $disable_loading_default_modules = 0;
 
 # Command line entered by user.
-my $command_line = bash_line_encode($0, @ARGV);
+my $command_line = bash_line_encode(abs_path($0), @ARGV);
 my $uniq_id;
 
 my ($sec, $min, $hour, $mday, $mon, $year) = localtime time;
@@ -83,7 +84,9 @@ sub initialize_config
 {
 	my $seqpipe_root = (dirname abs_path $0);
 	if (not -e $seqpipe_root . "/config.inc") {
-		system("cp $seqpipe_root/config.inc.tpl $seqpipe_root/config.inc");
+		if (-e $seqpipe_root . "/config.inc.tpl") {
+			system("cp $seqpipe_root/config.inc.tpl $seqpipe_root/config.inc");
+		}
 	} else {
 		my %variables = ();
 		my @variable_list = ();
@@ -558,7 +561,7 @@ Options:
    -m <file>         Load procedure module file, this option can be used many times.
    -k                Keep intermediate files.
    -d                Enable duplcated global variables and procedures (overwrited as the latters).
-   -D                Disable loading "default.pipe".
+   -D                Disable loading default pipeline modules.
    -l / --list       List current available procedures.
    -t / --test       Test mode, only print the commands rather than execute them.
    -T                Print the raw procedure declaration.
@@ -1087,9 +1090,7 @@ if ($#ARGV < 0) {
 			}
 			push(@module_files, shift @ARGV);
 		} elsif ($arg eq '-D') {
-			if ($module_files[0] eq (dirname abs_path $0) . '/default.pipe') {
-				shift @module_files;
-			}
+			$disable_loading_default_modules = 1;
 		} elsif ($arg eq '-S') {
 			$strict_mode = 1;
 		} elsif ($arg eq '-e') {
@@ -1133,9 +1134,13 @@ if ($procedure_name ne '' and $execute_command ne '') {
 	exit 1;
 }
 
+if (not $disable_loading_default_modules) {
+	@module_files = (glob((dirname abs_path $0) . '/*.pipe'), @module_files);
+}
 foreach my $module_file (@module_files) {
 	load_module $module_file;
 }
+
 if ($verbose) {
 	printf STDERR "All %d module file(s) loaded, including %d procedure(s).\n",
 		scalar @module_files, scalar keys %procedures;
