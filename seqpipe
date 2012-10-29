@@ -328,6 +328,126 @@ sub add_workflow_attribute
 	}
 }
 
+sub parse_function_code
+{
+	my ($procedure_name, $type, $module_file, $code_lines_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
+	my @code_lines = @{$code_lines_ref};
+	my %requires = %{$requires_ref};
+	my %inputs = %{$inputs_ref};
+	my %outputs = %{$outputs_ref};
+
+	my @commands = ();
+	my %defined_variables = ();
+	my %eval_variables = ();
+	my %used_variables = ();
+	my %requires_of = ();
+	my %inputs_of = ();
+
+	my $line = '';
+	my $last_line = '';
+	my %temps = ();
+	my %command_requires = ();
+	my %command_inputs = ();
+	my %command_outputs = ();
+	my %command_final_outputs = ();
+	while (scalar @code_lines > 0) {
+		$line = shift @code_lines;
+
+		# Skip comment line
+		next if $line =~ /^\s*#/ and $line !~ /^\s*#\[command.*\]\s*$/;
+
+		if ($last_line eq '') {
+			$line =~ s/^\s+//g;
+		} else {
+			my $b1 = $last_line =~ s/\s+$//g;
+			my $b2 = $line =~ s/^\s+//g;
+			$line = $last_line . (($b1 or $b2) ? ' ' : '') . $line;
+			$last_line = '';
+		}
+
+		if ($line =~ s/\\$//) {
+			$last_line = $line;
+		} elsif ($line =~ /^#\[command\s+(require|input|output(|.temp|.final))=.*\]$/) {
+			while ($line =~ /\s+(require|input|output(|.temp|.final))="(.*?)"/g) {
+				if ($1 eq "require") {
+					die "ERROR: Duplicated require attribute!" if exists $command_requires{$3};
+					$command_requires{$3} = 1;
+				} elsif ($1 eq "input") {
+					die "ERROR: Duplicated input attribute!" if exists $command_inputs{$3};
+					$command_inputs{$3} = 1;
+				} elsif ($1 eq "output") {
+					die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
+					$command_outputs{$3} = 1;
+				} elsif ($1 eq "output.temp") {
+					die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
+					$command_outputs{$3} = 1;
+					$temps{$3} = 1;
+				} elsif ($1 eq "output.final") {
+					die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
+					$command_outputs{$3} = 1;
+					$command_final_outputs{$3} = 1;
+					$outputs{$3} = 1;
+				}
+			}
+		} elsif ($line !~ /^\s*$/) {
+			append_command \@commands,
+				\%defined_variables, \%eval_variables, \%used_variables, $line,
+				\%command_requires, \%command_inputs, \%command_outputs;
+
+			foreach my $output (keys %command_outputs, keys %command_final_outputs) {
+				if (%command_requires) {
+					$requires_of{$output} = {} if not exists $requires_of{$output};
+					foreach my $require (keys %command_requires) {
+						$requires_of{$output}->{$require} = 1;
+					}
+				}
+				if (%command_inputs) {
+					$inputs_of{$output} = {} if not exists $inputs_of{$output};
+					foreach my $input (keys %command_inputs) {
+						$inputs_of{$output}->{$input} = 1;
+					}
+				}
+			}
+			if (%command_final_outputs) {
+				add_workflow_attribute \%command_final_outputs, \%requires_of, \%inputs_of, \%requires, \%inputs;
+			}
+			%command_requires = ();
+			%command_inputs = ();
+			%command_outputs = ();
+		}
+	}
+	if ($last_line ne '') {
+		die "ERROR: Invalid procedure declaration! Last command line not finished!";
+	}
+
+	foreach my $variable (keys %requires, keys %inputs, keys %outputs) {
+		while ($variable =~ /\${(\w+)}/g) {
+			my $variable_name = $1;
+			if (not exists $used_variables{$variable_name}) {
+				$used_variables{$variable_name} = '';
+			}
+		}
+	}
+
+	my @procedure_requires = keys %requires;
+	my @procedure_inputs = keys %inputs;
+	my @procedure_outputs = keys %outputs;
+	my @procedure_temps = keys %temps;
+
+	$procedures{$procedure_name} = {
+		type              => $type,
+		requires          => \@procedure_requires,
+		inputs            => \@procedure_inputs,
+		outputs           => \@procedure_outputs,
+		temps             => \@procedure_temps,
+		commands          => \@commands,
+		defined_variables => \%defined_variables,
+		eval_variables    => \%eval_variables,
+		used_variables    => \%used_variables,
+		module_file       => abs_path($module_file)
+	};
+}
+
 sub load_module
 {
 	my ($module_file) = @_;
@@ -343,9 +463,6 @@ sub load_module
 	my %requires = ();
 	my %inputs = ();
 	my %outputs = ();
-	my %temps = ();
-	my %requires_of = ();
-	my %inputs_of = ();
 	while (scalar @file_handles > 0) {
 		my $file_handle = $file_handles[0];
 		while ($line = <$file_handle>) {
@@ -386,11 +503,6 @@ sub load_module
 				$type = 'stage' if $type eq '';
 
 				my $procedure_name = $1;
-				my @commands = ();
-				my %defined_variables = ();
-				my %eval_variables = ();
-				my %used_variables = ();
-
 				if (exists $procedures{$procedure_name}) {
 					print STDERR "WARNING: Redeclaration of procedure '$procedure_name'\n"
 						if $verbose or not $enable_duplicate;
@@ -403,122 +515,23 @@ sub load_module
 				if ($line !~ /^{\s*$/) {
 					die "ERROR: Invalid procedure declaration! Line '{' expected!";
 				}
-				my $last_line = '';
-				my %command_requires = ();
-				my %command_inputs = ();
-				my %command_outputs = ();
-				my %command_final_outputs = ();
+
+				my @code_lines = ();
 				while ($line = <$file_handle>) {
 					chomp $line;
-
-					# Skip comment line
-					next if $line =~ /^\s*#/ and $line !~ /^\s*#\[command.*\]\s*$/;
-
-					if ($line =~ /^}\s*$/) {
-						if ($last_line ne '') {
-							die "ERROR: Invalid procedure declaration! Last command line not finished!";
-						}
-						last;
-					}
-
-					if ($last_line eq '') {
-						$line =~ s/^\s+//g;
-					} else {
-						my $b1 = $last_line =~ s/\s+$//g;
-						my $b2 = $line =~ s/^\s+//g;
-						$line = $last_line . (($b1 or $b2) ? ' ' : '') . $line;
-						$last_line = '';
-					}
-
-					if ($line =~ s/\\$//) {
-						$last_line = $line;
-					} elsif ($line =~ /^#\[command\s+(require|input|output(|.temp|.final))=.*\]$/) {
-						while ($line =~ /\s+(require|input|output(|.temp|.final))="(.*?)"/g) {
-							if ($1 eq "require") {
-								die "ERROR: Duplicated require attribute!" if exists $command_requires{$3};
-								$command_requires{$3} = 1;
-							} elsif ($1 eq "input") {
-								die "ERROR: Duplicated input attribute!" if exists $command_inputs{$3};
-								$command_inputs{$3} = 1;
-							} elsif ($1 eq "output") {
-								die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
-								$command_outputs{$3} = 1;
-							} elsif ($1 eq "output.temp") {
-								die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
-								$command_outputs{$3} = 1;
-								$temps{$3} = 1;
-							} elsif ($1 eq "output.final") {
-								die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
-								$command_outputs{$3} = 1;
-								$command_final_outputs{$3} = 1;
-								$outputs{$3} = 1;
-							}
-						}
-					} elsif ($line !~ /^\s*$/) {
-						append_command \@commands,
-							\%defined_variables, \%eval_variables, \%used_variables, $line,
-							\%command_requires, \%command_inputs, \%command_outputs;
-
-						foreach my $output (keys %command_outputs, keys %command_final_outputs) {
-							if (%command_requires) {
-								$requires_of{$output} = {} if not exists $requires_of{$output};
-								foreach my $require (keys %command_requires) {
-									$requires_of{$output}->{$require} = 1;
-								}
-							}
-							if (%command_inputs) {
-								$inputs_of{$output} = {} if not exists $inputs_of{$output};
-								foreach my $input (keys %command_inputs) {
-									$inputs_of{$output}->{$input} = 1;
-								}
-							}
-						}
-						if (%command_final_outputs) {
-							add_workflow_attribute \%command_final_outputs, \%requires_of, \%inputs_of, \%requires, \%inputs;
-						}
-						%command_requires = ();
-						%command_inputs = ();
-						%command_outputs = ();
-					}
+					last if $line =~ /^}\s*$/;
+					push @code_lines, $line;
 				}
 				if ($line !~ /^}\s*$/) {
 					die "ERROR: Invalid procedure declaration! Line '}' expected!";
 				}
 
-				foreach my $variable (keys %requires, keys %inputs, keys %outputs) {
-					while ($variable =~ /\${(\w+)}/g) {
-						my $variable_name = $1;
-						if (not exists $used_variables{$variable_name}) {
-							$used_variables{$variable_name} = '';
-						}
-					}
-				}
-
-				my @procedure_requires = keys %requires;
-				my @procedure_inputs = keys %inputs;
-				my @procedure_outputs = keys %outputs;
-				my @procedure_temps = keys %temps;
-
-				$procedures{$procedure_name} = {
-					type              => $type,
-					requires          => \@procedure_requires,
-					inputs            => \@procedure_inputs,
-					outputs           => \@procedure_outputs,
-					temps             => \@procedure_temps,
-					commands          => \@commands,
-					defined_variables => \%defined_variables,
-					eval_variables    => \%eval_variables,
-					used_variables    => \%used_variables,
-					module_file       => abs_path($module_file)
-				};
-
+				parse_function_code $procedure_name, $type, $module_file, \@code_lines, \%requires, \%inputs, \%outputs;
 				$type = '';
 				%requires = ();
 				%inputs = ();
 				%outputs = ();
-				%temps = ();
-				%requires_of = ();
-				%inputs_of = ();
+
 			} elsif ($line =~ /^\s*(\w+)=(.*)$/) {
 				my $option_name = $1;
 				my $option_value = $2;
@@ -1262,32 +1275,14 @@ if ($display_raw_code) {
 }
 
 if ($execute_command ne '') {
+	my @code_lines = split(/\n/, $execute_command);
 	$procedure_name = "seqpipe_execute_$$";
-	my @requires = ();
-	my @inputs = ();
-	my @outputs = ();
-	my @command_requires = ();
-	my @command_inputs = ();
-	my @command_outputs = ();
-	my %command = ( command => $execute_command, requies => \@command_requires, inputs => \@command_inputs, outputs => \@command_outputs );
-	my @commands = ( \%command );
-	my %defined_variables = ();
-	my %eval_variables = ();
-	my %used_variables = ();
-	while ($execute_command =~ /\${(\w+)}/g) {
-		$used_variables{$1} = '';
-	}
-	$procedures{$procedure_name} = {
-		type              => 'stage',
-		requires          => \@requires,
-		inputs            => \@inputs,
-		outputs           => \@outputs,
-		commands          => \@commands,
-		defined_variables => \%defined_variables,
-		eval_variables    => \%eval_variables,
-		used_variables    => \%used_variables,
-		module_file       => ''
-	};
+	my $type = 'stage';
+	my $module_file = '';
+	my %requires = ();
+	my %inputs = ();
+	my %outputs = ();
+	parse_function_code $procedure_name, $type, $module_file, \@code_lines, \%requires, \%inputs, \%outputs;
 }
 
 if ($procedure_name ne '' and not exists $procedures{$procedure_name}) {
