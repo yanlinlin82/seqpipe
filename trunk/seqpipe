@@ -62,6 +62,8 @@ $uniq_id = sprintf("%02d%02d%02d.%d", $year % 100, $mon + 1, $mday, $$);
 my $semaphore = 0;
 $semaphore = Thread::Semaphore->new() if $can_use_threads;
 
+############################################################
+
 sub safe_print
 {
 	$semaphore->down() if $can_use_threads;
@@ -74,6 +76,16 @@ sub safe_printf
 	$semaphore->down() if $can_use_threads;
 	printf LOG_FILE @_;
 	$semaphore->up() if $can_use_threads;
+}
+
+############################################################
+
+sub is_in_array
+{
+	my $value = shift @_;
+	my %hash;
+	@hash{@_} = 1;
+	return exists $hash{$value};
 }
 
 ############################################################
@@ -251,11 +263,9 @@ sub append_command
 
 	return if ($command =~ /^\s*#/);
 
-	my @requires = keys %{$requires_ref};
-	my @inputs = keys %{$inputs_ref};
-	my @outputs = keys %{$outputs_ref};
-	my %temp_outputs = %{$temp_outputs_ref};
-	my %final_outputs = %{$final_outputs_ref};
+	my @requires = @{$requires_ref};
+	my @inputs = @{$inputs_ref};
+	my @outputs = @{$outputs_ref};
 
 	check_command_syntax($command);
 
@@ -291,8 +301,8 @@ sub append_command
 		requires => \@requires,
 		inputs => \@inputs,
 		outputs => \@outputs,
-		temp_outputs => \%temp_outputs,
-		final_outputs => \%final_outputs );
+		temp_outputs => $temp_outputs_ref,
+		final_outputs => $final_outputs_ref );
 	push(@{$commands_ref}, \%command_struct);
 
 	foreach my $item ($command, @requires, @inputs, @outputs) {
@@ -308,18 +318,18 @@ sub append_command
 sub add_workflow_attribute
 {
 	my ($command_final_outputs_ref, $requires_of_ref, $inputs_of_ref, $requires_ref, $inputs_ref) = @_;
-	my %command_final_outputs = %{$command_final_outputs_ref};
+	my @command_final_outputs = @{$command_final_outputs_ref};
 	my %requires_of = %{$requires_of_ref};
 	my %inputs_of = %{$inputs_of_ref};
 
-	foreach my $output (keys %command_final_outputs) {
-		my %items = ();
+	foreach my $output (@command_final_outputs) {
+		my @items = ();
 		if ($requires_of{$output}) {
 			foreach my $file (keys %{$requires_of{$output}}) {
 				if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
 					$requires_ref->{$file} = 1;
 				} else {
-					$items{$file} = 1;
+					push @items, $file;
 				}
 			}
 		}
@@ -328,11 +338,11 @@ sub add_workflow_attribute
 				if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
 					$inputs_ref->{$file} = 1;
 				} else {
-					$items{$file} = 1;
+					push @items, $file;
 				}
 			}
 		}
-		add_workflow_attribute(\%items, $requires_of_ref, $inputs_of_ref, $requires_ref, $inputs_ref);
+		add_workflow_attribute(\@items, $requires_of_ref, $inputs_of_ref, $requires_ref, $inputs_ref);
 	}
 }
 
@@ -343,6 +353,7 @@ sub parse_function_code
 	my %requires = %{$requires_ref};
 	my %inputs = %{$inputs_ref};
 	my %outputs = %{$outputs_ref};
+	my %temp_outputs = ();
 
 	my @commands = ();
 	my %defined_variables = ();
@@ -353,11 +364,11 @@ sub parse_function_code
 
 	my $line = '';
 	my $last_line = '';
-	my %command_requires = ();
-	my %command_inputs = ();
-	my %command_outputs = ();
-	my %command_temp_outputs = ();
-	my %command_final_outputs = ();
+	my @command_requires = ();
+	my @command_inputs = ();
+	my @command_outputs = ();
+	my @command_temp_outputs = ();
+	my @command_final_outputs = ();
 	while (scalar @code_lines > 0) {
 		$line = shift @code_lines;
 
@@ -378,53 +389,56 @@ sub parse_function_code
 		} elsif ($line =~ /^#\[command\s+(require|input|output(|.temp|.final))=.*\]$/) {
 			while ($line =~ /\s+(require|input|output(|.temp|.final))="(.*?)"/g) {
 				if ($1 eq "require") {
-					die "ERROR: Duplicated require attribute!" if exists $command_requires{$3};
-					$command_requires{$3} = 1;
+					die "ERROR: Duplicated require attribute!" if is_in_array($3, @command_requires);
+					push @command_requires, $3;
 				} elsif ($1 eq "input") {
-					die "ERROR: Duplicated input attribute!" if exists $command_inputs{$3};
-					$command_inputs{$3} = 1;
+					die "ERROR: Duplicated input attribute!" if is_in_array($3, @command_inputs);
+					push @command_inputs, $3;
 				} elsif ($1 eq "output") {
-					die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
-					$command_outputs{$3} = 1;
+					die "ERROR: Duplicated output attribute!" if is_in_array($3, @command_outputs);
+					push @command_outputs, $3;
 				} elsif ($1 eq "output.temp") {
-					die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
-					$command_outputs{$3} = 1;
-					$command_temp_outputs{$3} = 1;
+					die "ERROR: Duplicated output attribute!" if is_in_array($3, @command_outputs);
+					push @command_outputs, $3;
+					push @command_temp_outputs, $3;
 				} elsif ($1 eq "output.final") {
-					die "ERROR: Duplicated output attribute!" if exists $command_outputs{$3};
-					$command_outputs{$3} = 1;
-					$command_final_outputs{$3} = 1;
+					die "ERROR: Duplicated output attribute!" if is_in_array($3, @command_outputs);
+					push @command_outputs, $3;
+					push @command_final_outputs, $3;
 					$outputs{$3} = 1;
 				}
 			}
 		} elsif ($line !~ /^\s*$/) {
 			append_command \@commands,
 				\%defined_variables, \%eval_variables, \%used_variables, $line,
-				\%command_requires, \%command_inputs, \%command_outputs,
-				\%command_temp_outputs, \%command_final_outputs;
+				\@command_requires, \@command_inputs, \@command_outputs,
+				\@command_temp_outputs, \@command_final_outputs;
 
-			foreach my $output (keys %command_outputs, keys %command_final_outputs) {
-				if (%command_requires) {
+			foreach my $output (@command_outputs, @command_final_outputs) {
+				if (@command_requires) {
 					$requires_of{$output} = {} if not exists $requires_of{$output};
-					foreach my $require (keys %command_requires) {
+					foreach my $require (@command_requires) {
 						$requires_of{$output}->{$require} = 1;
 					}
 				}
-				if (%command_inputs) {
+				if (@command_inputs) {
 					$inputs_of{$output} = {} if not exists $inputs_of{$output};
-					foreach my $input (keys %command_inputs) {
+					foreach my $input (@command_inputs) {
 						$inputs_of{$output}->{$input} = 1;
 					}
 				}
 			}
-			if (%command_final_outputs) {
-				add_workflow_attribute \%command_final_outputs, \%requires_of, \%inputs_of, \%requires, \%inputs;
+			if (@command_final_outputs) {
+				add_workflow_attribute \@command_final_outputs, \%requires_of, \%inputs_of, \%requires, \%inputs;
 			}
-			%command_requires = ();
-			%command_inputs = ();
-			%command_outputs = ();
-			%command_temp_outputs = ();
-			%command_final_outputs = ();
+			foreach my $output (@command_temp_outputs) {
+				$temp_outputs{$output} = 1;
+			}
+			@command_requires = ();
+			@command_inputs = ();
+			@command_outputs = ();
+			@command_temp_outputs = ();
+			@command_final_outputs = ();
 		}
 	}
 	if ($last_line ne '') {
@@ -443,7 +457,7 @@ sub parse_function_code
 	my @procedure_requires = keys %requires;
 	my @procedure_inputs = keys %inputs;
 	my @procedure_outputs = keys %outputs;
-	my @procedure_temps = keys %command_temp_outputs;
+	my @procedure_temps = keys %temp_outputs;
 
 	$procedures{$procedure_name} = {
 		type              => $type,
@@ -694,14 +708,14 @@ sub display_procedure_raw_code
 				print "\t#[command input=\"$input\"]\n";
 			}
 			foreach my $output (@{$command{outputs}}) {
-				if (not exists $command{temp_outputs}{$output} and not exists $command{final_outputs}{$output}) {
+				if (not is_in_array($output, @{$command{temp_outputs}}) and not is_in_array($output, @{$command{final_outputs}})) {
 					print "\t#[command output=\"$output\"]\n";
 				}
 			}
-			foreach my $temp_output (keys %{$command{temp_outputs}}) {
+			foreach my $temp_output (@{$command{temp_outputs}}) {
 				print "\t#[command output.temp=\"$temp_output\"]\n";
 			}
-			foreach my $final_output (keys %{$command{final_outputs}}) {
+			foreach my $final_output (@{$command{final_outputs}}) {
 				print "\t#[command output.final=\"$final_output\"]\n";
 			}
 		}		
