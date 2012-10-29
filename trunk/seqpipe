@@ -259,15 +259,6 @@ sub append_command
 
 	check_command_syntax($command);
 
-	my %command_struct = (
-		command => $command,
-		requires => \@requires,
-		inputs => \@inputs,
-		outputs => \@outputs,
-		temp_outputs => \%temp_outputs,
-		final_outputs => \%final_outputs );
-	push(@{$commands_ref}, \%command_struct);
-
 	if ($command =~ /^SP_set/) {
 		my @args = bash_line_decode($command);
 		die 'ERROR: Invalid option for SP_set!' if ($args[0] ne 'SP_set' or $args[1] !~ /^(\w+)=(.*?)$/);
@@ -289,7 +280,20 @@ sub append_command
 		if (not exists $eval_variables_ref->{$args[1]}) {
 			$eval_variables_ref->{$args[1]} = '';
 		}
+	} elsif ($command eq 'SP_parallel_begin') {
+		$command = '{{';
+	} elsif ($command eq 'SP_parallel_end') {
+		$command = '}}';
 	}
+
+	my %command_struct = (
+		command => $command,
+		requires => \@requires,
+		inputs => \@inputs,
+		outputs => \@outputs,
+		temp_outputs => \%temp_outputs,
+		final_outputs => \%final_outputs );
+	push(@{$commands_ref}, \%command_struct);
 
 	foreach my $item ($command, @requires, @inputs, @outputs) {
 		while ($item =~ /\${(\w+)}/g) {
@@ -419,6 +423,8 @@ sub parse_function_code
 			%command_requires = ();
 			%command_inputs = ();
 			%command_outputs = ();
+			%command_temp_outputs = ();
+			%command_final_outputs = ();
 		}
 	}
 	if ($last_line ne '') {
@@ -672,38 +678,35 @@ sub display_procedure_raw_code
 	print "function $procedure_name\n";
 	print "{\n";
 
-	my $command_line_count = 1;
+	my $block_start = 1;
 	foreach my $command_ref (@{$procedure{commands}}) {
 		my %command = %{$command_ref};
 
-		print "\n" if $command_line_count > 1 and $command{command} !~ '^(SP_|{{|}})';
-		$command_line_count++;
-
-		foreach my $require (@{$command{requires}}) {
-			print "\t#[command require=\"$require\"]\n";
-		}
-		foreach my $input (@{$command{inputs}}) {
-			print "\t#[command input=\"$input\"]\n";
-		}
-		foreach my $output (@{$command{outputs}}) {
-			if (not exists $command{temp_outputs}{$output} and not exists $command{final_outputs}{$output}) {
-				print "\t#[command output=\"$output\"]\n";
+		if ($command{command} eq '{{' or scalar @{$command{requires}} > 0 or scalar @{$command{inputs}} > 0 or scalar @{$command{outputs}} > 0) {
+			if (not $block_start and $command{command} !~ '^(SP_set|}})') {
+				print "\n";
 			}
-		}
-		foreach my $temp_output (keys %{$command{temp_outputs}}) {
-			print "\t#[command output.temp=\"$temp_output\"]\n";
-		}
-		foreach my $final_output (keys %{$command{final_outputs}}) {
-			print "\t#[command output.final=\"$final_output\"]\n";
-		}
-		
-		if ($command{command} eq 'SP_parallel_begin') {
-			print "\t{{\n";
-		} elsif ($command{command} eq 'SP_parallel_end') {
-			print "\t}}\n";
-		} else {
-			print "\t$command{command}\n";
-		}
+
+			foreach my $require (@{$command{requires}}) {
+				print "\t#[command require=\"$require\"]\n";
+			}
+			foreach my $input (@{$command{inputs}}) {
+				print "\t#[command input=\"$input\"]\n";
+			}
+			foreach my $output (@{$command{outputs}}) {
+				if (not exists $command{temp_outputs}{$output} and not exists $command{final_outputs}{$output}) {
+					print "\t#[command output=\"$output\"]\n";
+				}
+			}
+			foreach my $temp_output (keys %{$command{temp_outputs}}) {
+				print "\t#[command output.temp=\"$temp_output\"]\n";
+			}
+			foreach my $final_output (keys %{$command{final_outputs}}) {
+				print "\t#[command output.final=\"$final_output\"]\n";
+			}
+		}		
+		print "\t$command{command}\n";
+		$block_start = ($command{command} eq '{{');
 	}
 
 	print "}\n";
@@ -1089,7 +1092,7 @@ sub run_procedure
 				shift @procedure_options;
 				my $procedure_name = shift @procedure_options;
 				run_procedure($procedure_name, \@procedure_options, $is_test_mode, $log_files_ref, $call_depth + 1, $pipe_structure_ref);
-			} elsif ($command eq 'SP_parallel_begin' or $command eq 'SP_parallel_end' or $command eq '{{' or $command eq '}}') {
+			} elsif ($command eq '{{' or $command eq '}}') {
 				print STDOUT "#$command\n" if $verbose;
 			} else {
 				if ($verbose or $procedure{type} eq 'stage' or $procedure{type} eq 'pipeline') {
@@ -1098,7 +1101,7 @@ sub run_procedure
 				}
 			}
 		} else {
-			if ($command eq 'SP_parallel_begin' or $command eq '{{') {
+			if ($command eq '{{') {
 				if ($in_parallel) {
 					print STDERR "ERROR: Already in parallel mode, duplicated '$command'!";
 					return -1;
@@ -1107,7 +1110,7 @@ sub run_procedure
 				push @{$pipe_structure_ref}, $depth_text . ">>>>>";
 				next;
 			}
-			if ($command eq 'SP_parallel_end' or $command eq '}}') {
+			if ($command eq '}}') {
 				if (not $in_parallel) {
 					print STDERR "ERROR: Not in parallel mode, unexpected '$command'!";
 					return -1;
