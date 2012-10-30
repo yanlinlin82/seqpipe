@@ -5,11 +5,14 @@ use File::Basename;
 use File::stat;
 use Cwd 'abs_path';
 
-# Check Perl ithread support.
-eval 'use forks'; # Try 'forks' package first; if failed, use ithread directly.
-my $can_use_threads = eval 'use threads; use Thread::Semaphore; use threads::shared; 1';
+# Check perl multi-thread supporting
+my $can_use_threads = eval 'use forks; use forks::shared; 1';
 if (not $can_use_threads) {
-	print STDERR "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
+	$can_use_threads = eval 'use threads; use threads::shared; 1';
+	if (not $can_use_threads) {
+		print STDERR "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
+		$can_use_threads = 0;
+	}
 }
 
 # All logs are saved into this directory.
@@ -59,23 +62,21 @@ my $uniq_id;
 my ($sec, $min, $hour, $mday, $mon, $year) = localtime time;
 $uniq_id = sprintf("%02d%02d%02d.%d", $year % 100, $mon + 1, $mday, $$);
 
-my $semaphore = 0;
-$semaphore = Thread::Semaphore->new() if $can_use_threads;
+# Semaphor for writing log file.
+my $semaphore :shared;
 
 ############################################################
 
 sub safe_print
 {
-	$semaphore->down() if $can_use_threads;
+	lock($semaphore) if $can_use_threads;
 	print LOG_FILE @_;
-	$semaphore->up() if $can_use_threads;
 }
 
 sub safe_printf
 {
-	$semaphore->down() if $can_use_threads;
+	lock($semaphore) if $can_use_threads;
 	printf LOG_FILE @_;
-	$semaphore->up() if $can_use_threads;
 }
 
 ############################################################
@@ -145,6 +146,7 @@ sub initialize_config
 
 sub kill_signal_handler
 {
+	lock($exiting) if $can_use_threads;
 	$exiting = 1;
 	print STDERR "ERROR: Catch KILL signal!\n";
 }
@@ -789,7 +791,10 @@ sub run_command
 	my @pipe_structure = ();
 	my $start_failed = 0;
 
-	return ( -1, \@log_files, \@pipe_structure ) if $exiting;
+	{
+		lock($exiting) if $can_use_threads;
+		return ( -1, \@log_files, \@pipe_structure ) if $exiting;
+	}
 
 	if ($command =~ /^SP_run\s+(\w+)/) {
 		my @procedure_options = bash_line_decode($command);
@@ -893,7 +898,10 @@ sub run_procedure
 	my ($procedure_name, $argv_ref, $is_test_mode, $log_files_ref, $call_depth, $pipe_structure_ref) = @_;
 	my $return_value = 0;
 
-	return -1 if $exiting;
+	{
+		lock($exiting) if $can_use_threads;
+		return -1 if $exiting;
+	}
 
 	if (not exists $procedures{$procedure_name}) {
 		safe_print "ERROR: Unknown procedure '$procedure_name'! Use 'seqpipe -l' to list available procedures.\n";
@@ -968,7 +976,7 @@ sub run_procedure
 	my $depth_text = '';
 	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
 		{
-			lock($run_counter);
+			lock($run_counter) if $can_use_threads;
 			$run_counter += 1;
 			$record_id = $run_counter;
 		}
@@ -1146,7 +1154,7 @@ sub run_procedure
 			my $record_id = 0;
 			if (exists $need_record{$procedure{type}} and $command !~ /^SP_run/) {
 				{
-					lock($run_counter);
+					lock($run_counter) if $can_use_threads;
 					$run_counter += 1;
 					$record_id = $run_counter;
 				}
