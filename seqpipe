@@ -260,7 +260,7 @@ sub check_command_syntax
 
 sub append_command
 {
-	my ($commands_ref, $defined_variables_ref, $eval_variables_ref, $used_variables_ref, $command,
+	my ($commands_ref, $type, $defined_variables_ref, $eval_variables_ref, $used_variables_ref, $command,
 		$requires_ref, $inputs_ref, $outputs_ref, $temp_outputs_ref, $final_outputs_ref) = @_;
 
 	return if ($command =~ /^\s*#/);
@@ -298,14 +298,29 @@ sub append_command
 		$command = '}}';
 	}
 
-	my %command_struct = (
-		command => $command,
-		requires => \@requires,
-		inputs => \@inputs,
-		outputs => \@outputs,
-		temp_outputs => $temp_outputs_ref,
-		final_outputs => $final_outputs_ref );
-	push(@{$commands_ref}, \%command_struct);
+	my $merge_commands = 0;
+	if ($type ne 'pipeline' and $type ne 'stage') {
+		if (scalar(@requires) == 0 and scalar(@inputs) == 0 and scalar(@outputs) == 0) {
+			if (scalar(@{$commands_ref}) > 0) {
+				my $cmd_ref = ${$commands_ref}[-1];
+				if (scalar(@{$cmd_ref->{requires}}) == 0 and scalar(@{$cmd_ref->{inputs}}) == 0 and scalar(@{$cmd_ref->{outputs}}) == 0) {
+					$merge_commands = 1;
+				}
+			}
+		}
+	}
+
+	if ($merge_commands) {
+		${$commands_ref}[-1]->{command} .= "\n" . $command;
+	} else {
+		push(@{$commands_ref}, {
+				command => $command,
+				requires => \@requires,
+				inputs => \@inputs,
+				outputs => \@outputs,
+				temp_outputs => $temp_outputs_ref,
+				final_outputs => $final_outputs_ref });
+	}
 
 	foreach my $item ($command, @requires, @inputs, @outputs) {
 		while ($item =~ /\${(\w+)}/g) {
@@ -411,7 +426,7 @@ sub parse_function_code
 				}
 			}
 		} elsif ($line !~ /^\s*$/) {
-			append_command \@commands,
+			append_command \@commands, $type,
 				\%defined_variables, \%eval_variables, \%used_variables, $line,
 				\@command_requires, \@command_inputs, \@command_outputs,
 				\@command_temp_outputs, \@command_final_outputs;
