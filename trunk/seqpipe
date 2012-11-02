@@ -4,6 +4,7 @@ use warnings;
 use File::Basename;
 use File::stat;
 use Cwd 'abs_path';
+use Fcntl qw(:flock SEEK_END);
 
 # Check perl multi-thread supporting
 my $can_use_threads = eval 'use forks; use forks::shared; 1';
@@ -60,21 +61,20 @@ my $disable_loading_default_modules = 0;
 # Command line entered by user.
 my $command_line = bash_line_encode(abs_path($0), @ARGV);
 
-# Semaphor for writing log file.
-my $semaphore :shared;
-
 ############################################################
 
 sub safe_print
 {
-	lock($semaphore) if $can_use_threads;
+	flock LOG_FILE, LOCK_EX;
 	print LOG_FILE @_;
+	flock LOG_FILE, LOCK_UN;
 }
 
 sub safe_printf
 {
-	lock($semaphore) if $can_use_threads;
+	flock LOG_FILE, LOCK_EX;
 	printf LOG_FILE @_;
+	flock LOG_FILE, LOCK_UN;
 }
 
 ############################################################
@@ -144,7 +144,7 @@ sub initialize_config
 
 sub kill_signal_handler
 {
-	lock($exiting) if $can_use_threads;
+	lock($exiting);
 	$exiting = 1;
 	print STDERR "ERROR: Catch KILL signal!\n";
 }
@@ -805,7 +805,7 @@ sub run_command
 	my $start_failed = 0;
 
 	{
-		lock($exiting) if $can_use_threads;
+		lock($exiting);
 		return ( -1, \@log_files, \@pipe_structure ) if $exiting;
 	}
 
@@ -910,7 +910,7 @@ sub run_procedure
 	my $return_value = 0;
 
 	{
-		lock($exiting) if $can_use_threads;
+		lock($exiting);
 		return -1 if $exiting;
 	}
 
@@ -987,7 +987,7 @@ sub run_procedure
 	my $depth_text = '';
 	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
 		{
-			lock($run_counter) if $can_use_threads;
+			lock($run_counter);
 			$run_counter += 1;
 			$record_id = $run_counter;
 		}
@@ -1164,7 +1164,7 @@ sub run_procedure
 			my $record_id = 0;
 			if (exists $need_record{$procedure{type}} and $command !~ /^SP_run/) {
 				{
-					lock($run_counter) if $can_use_threads;
+					lock($run_counter);
 					$run_counter += 1;
 					$record_id = $run_counter;
 				}
