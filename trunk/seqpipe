@@ -33,7 +33,6 @@ my %exit_on_error = ( 'pipeline' => 1, 'stage' => 1 );
 
 # Command line parsing results.
 my $help_mode = 0;
-my $help_detail_mode = 0;
 my $verbose = 0;
 my $list_mode = 0;
 my $list_all_mode = 0;
@@ -617,7 +616,6 @@ Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
 
 Options:
    -h / --help       Show this help or require parameters for a procedure.
-   -H                Show detail help for a procedure (including optional parameters).
    -v / --verbose    Show verbose message.
    -m <file>         Load procedure module file, this option can be used many times.
    -k                Keep intermediate files.
@@ -638,7 +636,7 @@ sub show_parameters
 	my ($procedure_name) = @_;
 	return if $procedure_name eq '';
 
-	print STDOUT "Parameters for procedure '$procedure_name':\n";
+	print STDOUT "\nParameters for procedure '$procedure_name':\n";
 	my $used_var_ref = \%{$procedures{$procedure_name}{used_variables}};
 	my $defined_var_ref = \%{$procedures{$procedure_name}{defined_variables}};
 	my $eval_var_ref = \%{$procedures{$procedure_name}{eval_variables}};
@@ -659,15 +657,16 @@ sub show_parameters
 				printf STDOUT "   %-30s %s\n", $variable_name, ($is_required ? "Required" : "Def: " . $default_value);
 			}
 		}
-		last if not $help_detail_mode;
 	}
 
 	my @requires = @{$procedures{$procedure_name}{requires}};
 	my @inputs = @{$procedures{$procedure_name}{inputs}};
 	my @outputs = @{$procedures{$procedure_name}{outputs}};
-	print STDOUT join("\n   ", ("Require file(s):", @requires)) . "\n" if scalar @requires > 0;
-	print STDOUT join("\n   ", ("Input file(s):",   @inputs))   . "\n" if scalar @inputs > 0;
-	print STDOUT join("\n   ", ("Output file(s):",  @outputs))  . "\n" if scalar @outputs > 0;
+	print STDOUT join("\n   ", ("\nRequire file(s):", @requires)) . "\n" if scalar @requires > 0;
+	print STDOUT join("\n   ", ("\nInput file(s):",   @inputs))   . "\n" if scalar @inputs > 0;
+	print STDOUT join("\n   ", ("\nOutput file(s):",  @outputs))  . "\n" if scalar @outputs > 0;
+
+	print STDOUT "\n";
 }
 
 sub list_procedures
@@ -1230,9 +1229,8 @@ if ($#ARGV < 0) {
 	$help_mode = 1;
 } else {
 	while (my $arg = shift @ARGV) {
-		if ($arg eq '-h' or $arg eq '--help' or $arg eq '-H') {
+		if ($arg eq '-h' or $arg eq '--help') {
 			$help_mode = 1;
-			$help_detail_mode = 1 if ($arg eq '-H');
 		} elsif ($arg eq '-v' or $arg eq '--verbose') {
 			$verbose = 1;
 		} elsif ($arg eq '-k') {
@@ -1338,7 +1336,6 @@ if ($procedure_name ne '' and not exists $procedures{$procedure_name}) {
 }
 
 if ($help_mode) {
-	print_usage;
 	show_parameters $procedure_name;
 	exit 1;
 }
