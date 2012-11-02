@@ -1,2 +1,20 @@
 #!/bin/bash
-qsub -d $(pwd) $* | while read jobid; do while qstat $jobid >/dev/null 2>/dev/null; do sleep 1; done; done
+
+RET=0
+JOB_ID=$(qsub -d $(pwd) -k n)
+
+function kill_job
+{
+	qdel ${JOB_ID}
+	exit 1
+}
+trap kill_job INT
+trap kill_job ABRT
+trap kill_job QUIT
+trap kill_job TERM
+
+while qstat ${JOB_ID} >/dev/null 2>/dev/null; do
+	sleep 5;
+done
+rm -f STDIN.{e,o}$(echo ${JOB_ID} | cut -d. -f1)
+exit ${RET}
