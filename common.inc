@@ -41,7 +41,7 @@ function if_fasta_is_long_genome
 function if_fastq_is_base_33
 {
 	# Pick up first ten reads's quality to see if it contains number.
-	test -n "$(${SEQPIPE_ROOT}/uncompress_cat ${INPUT_FASTQ} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+	test -n "$(${SEQPIPE_ROOT}/uxcat ${INPUT_FASTQ} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
 }
 
 #[procedure type="checker"]
@@ -49,7 +49,7 @@ function if_fastq_is_base_33
 function if_fastq_is_not_base_33
 {
 	# Pick up first ten reads's quality to see if it contains number.
-	test -z "$(${SEQPIPE_ROOT}/uncompress_cat ${INPUT_FASTQ} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+	test -z "$(${SEQPIPE_ROOT}/uxcat ${INPUT_FASTQ} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
 }
 
 ###########################################################################
