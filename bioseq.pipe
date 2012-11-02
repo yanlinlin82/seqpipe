@@ -25,13 +25,17 @@ function bioseq_tools_version
 
 ###########################################################################
 
-function fastqc_check
+function fastqc
 {
-	#[command input="${INPUT_FASTQ}"]
-	#[command output.final="${OUTPUT}.fastqc.zip"]
-	fastqc --noextract --nogroup -o $(dirname ${OUTPUT}.fastqc.zip) ${INPUT_FASTQ} && \
-		mv -vf $(dirname ${OUTPUT}.fastqc.zip)/$(basename ${INPUT_FASTQ} \
-			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}.fastqc.zip
+	SP_set INPUT_DIR="."
+	SP_set OUTPUT_DIR="."
+	SP_set EXT_NAME=".fq.gz"
+
+	#[command input="${INPUT_DIR}/${NAME}${EXT_NAME}"]
+	#[command output.final="${OUTPUT_DIR}/${NAME}.fastqc.zip"]
+	fastqc --noextract --nogroup -o ${OUTPUT_DIR}/ ${INPUT_DIR}/${NAME}${EXT_NAME} && \
+		mv -vf ${OUTPUT_DIR}/$(basename ${NAME}${EXT_NAME} \
+			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT_DIR}/${NAME}.fastqc.zip
 }
 
 function bwa_build_index
