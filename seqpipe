@@ -13,6 +13,8 @@ if (not $can_use_threads) {
 	if (not $can_use_threads) {
 		print STDERR "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
 		$can_use_threads = 0;
+	} else {
+		print STDERR "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
 	}
 }
 
