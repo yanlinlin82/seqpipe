@@ -4,18 +4,21 @@ use warnings;
 use File::Basename;
 use File::stat;
 use Cwd 'abs_path';
-use Fcntl qw(:flock SEEK_END);
+use Fcntl qw(:flock);
 
 # Check perl multi-thread supporting
-my $can_use_threads = eval 'use forks; use forks::shared; 1';
-if (not $can_use_threads) {
-	$can_use_threads = eval 'use threads; use threads::shared; 1';
-	if (not $can_use_threads) {
-		print STDERR "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
-		$can_use_threads = 0;
-	} else {
-		print STDERR "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
-	}
+my $can_use_threads = 0;
+if (eval 'use forks; 1') {
+	use forks;
+	use forks::shared;
+	$can_use_threads = 1;
+} elsif (eval 'use threads; 1') {
+	use threads;
+	use threads::shared;
+	$can_use_threads = 1;
+	print STDERR "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
+} else {
+	print STDERR "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
 }
 
 # All logs are saved into this directory.
