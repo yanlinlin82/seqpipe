@@ -14,6 +14,7 @@
 #[procedure type="sysinfo"]
 function bioseq_tools_version
 {
+	echo -n 'FastQC   : '; fastqc --version | cut -d' ' -f2
 	echo -n 'bwa      : '; bwa |& grep Version | cut -d' ' -f2
 	echo -n 'samtools : '; samtools |& grep Version | cut -d' ' -f2-
 	echo -n 'bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
