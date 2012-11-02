@@ -9,12 +9,12 @@ use Fcntl qw(:flock);
 # Check perl multi-thread supporting
 my $can_use_threads = 0;
 if (eval 'use forks; 1') {
-	use forks;
-	use forks::shared;
+	require forks;
+	require forks::shared;
 	$can_use_threads = 1;
 } elsif (eval 'use threads; 1') {
-	use threads;
-	use threads::shared;
+	require threads;
+	require threads::shared;
 	$can_use_threads = 1;
 	print STDERR "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
 } else {
