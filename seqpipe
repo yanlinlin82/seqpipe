@@ -237,16 +237,11 @@ sub bash_line_decode {
 	return @argv;
 }
 
-sub append_command
+sub parse_cmd
 {
-	my ($commands_ref, $type, $defined_variables_ref, $eval_variables_ref, $used_variables_ref, $command,
-		$requires_ref, $inputs_ref, $outputs_ref, $temp_outputs_ref, $final_outputs_ref) = @_;
+	my ($command, $type, $commands_ref, $cmd_info_ref, $var_info_ref) = @_;
 
 	return if ($command =~ /^\s*#/);
-
-	my @requires = @{$requires_ref};
-	my @inputs = @{$inputs_ref};
-	my @outputs = @{$outputs_ref};
 
 	if ($command =~ /^SP_/) {
 		my @argv = bash_line_decode($command);
@@ -258,104 +253,88 @@ sub append_command
 	if ($command =~ /^SP_set/) {
 		my @args = bash_line_decode($command);
 		die 'ERROR: Invalid option for SP_set!' if ($args[0] ne 'SP_set' or $args[1] !~ /^(\w+)=(.*?)$/);
-		if (not exists $defined_variables_ref->{$1}) {
-			if (not defined $args[2] or ($args[2] eq 'if_no_arg' and defined $args[3] and $args[3] eq 'ARG=${' . $1 . '}')) {
-				if ($2 eq '${' . $1 . '}') {
-					$defined_variables_ref->{$1} = "(null)";
-				} else {
-					$defined_variables_ref->{$1} = $2;
-				}
+		if (not exists $var_info_ref->{defined}{$1}) {
+			if (scalar @args > 2) {
+				$var_info_ref->{defined}{$1} = '(null)';
 			} else {
-				$defined_variables_ref->{$1} = "(runtime-evaluate)";
+				$var_info_ref->{defined}{$1} = $2;
 			}
 		}
 	} elsif ($command =~ /^SP_eval/) {
 		my @args = bash_line_decode($command);
 		die 'ERROR: Invalid option for SP_eval!' if ($args[0] ne 'SP_eval' or $args[1] !~ /^(\w+)$/);
 		die "ERROR: Unknown procedure '$args[2]' for SP_eval!" unless (exists $procedures{$args[2]});
-		if (not exists $eval_variables_ref->{$args[1]}) {
-			$eval_variables_ref->{$args[1]} = '';
+		if (not exists $var_info_ref->{eval}{$1}) {
+			$var_info_ref->{eval}{$1} = '';
 		}
-	} elsif ($command eq 'SP_parallel_begin') {
-		$command = '{{';
-	} elsif ($command eq 'SP_parallel_end') {
-		$command = '}}';
 	}
 
-	foreach my $item ($command, @requires, @inputs, @outputs) {
+	foreach my $item ($command, keys %{$cmd_info_ref->{requires}}, keys %{$cmd_info_ref->{inputs}}, keys %{$cmd_info_ref->{outputs}}) {
 		while ($item =~ /\${(\w+)}/g) {
-			my $variable_name = $1;
-			if (not exists $used_variables_ref->{$variable_name}) {
-				$used_variables_ref->{$variable_name} = '';
+			if (not exists $var_info_ref->{used}{$1}) {
+				$var_info_ref->{used}{$1} = '';
 			}
 		}
 	}
 
-	return { command => $command, requires => \@requires, inputs => \@inputs, outputs => \@outputs, temp_outputs => $temp_outputs_ref, final_outputs => $final_outputs_ref };
+	return { command => $command,
+		requires => $cmd_info_ref->{requires},
+		inputs => $cmd_info_ref->{inputs},
+		outputs => $cmd_info_ref->{outputs},
+		temp_outputs => $cmd_info_ref->{temp_outputs},
+		final_outputs => $cmd_info_ref->{final_outputs} };
 }
 
 sub add_workflow_attribute
 {
-	my ($command_final_outputs_ref, $requires_of_ref, $inputs_of_ref, $requires_ref, $inputs_ref) = @_;
-	my @command_final_outputs = @{$command_final_outputs_ref};
-	my %requires_of = %{$requires_of_ref};
-	my %inputs_of = %{$inputs_of_ref};
+	my ($final_outputs_ref, $proc_info_ref) = @_;
 
-	foreach my $output (@command_final_outputs) {
-		my @items = ();
-		if ($requires_of{$output}) {
-			foreach my $file (keys %{$requires_of{$output}}) {
-				if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
-					$requires_ref->{$file} = 1;
+	foreach my $output (keys %{$final_outputs_ref}) {
+		my %items = ();
+		if ($proc_info_ref->{requires_of}{$output}) {
+			foreach my $file (@{$proc_info_ref->{requires_of}{$output}}) {
+				if (not exists $proc_info_ref->{requires_of}{$file} and not exists $proc_info_ref->{inputs_of}{$file}) {
+					$proc_info_ref->{requires}{$file} = 1;
 				} else {
-					push @items, $file;
+					$items{$file} = 1;
 				}
 			}
 		}
-		if ($inputs_of{$output}) {
-			foreach my $file (keys %{$inputs_of{$output}}) {
-				if (not exists $requires_of{$file} and not exists $inputs_of{$file}) {
-					$inputs_ref->{$file} = 1;
+		if ($proc_info_ref->{inputs_of}{$output}) {
+			foreach my $file (@{$proc_info_ref->{inputs_of}{$output}}) {
+				if (not exists $proc_info_ref->{requires_of}{$file} and not exists $proc_info_ref->{inputs_of}{$file}) {
+					$proc_info_ref->{inputs}{$file} = 1;
 				} else {
-					push @items, $file;
+					$items{$file} = 1;
 				}
 			}
 		}
-		add_workflow_attribute(\@items, $requires_of_ref, $inputs_of_ref, $requires_ref, $inputs_ref);
+		add_workflow_attribute(\%items, $proc_info_ref);
 	}
 }
 
 sub cmd_nodep
 {
 	my ($cmd_ref) = @_;
-	return 0 if scalar @{$cmd_ref->{requires}} > 0;
-	return 0 if scalar @{$cmd_ref->{inputs}} > 0;
-	return 0 if scalar @{$cmd_ref->{outputs}} > 0;
+	return 0 if %{$cmd_ref->{requires}};
+	return 0 if %{$cmd_ref->{inputs}};
+	return 0 if %{$cmd_ref->{outputs}};
 	return 1;
+}
+
+sub create_cmd_info
+{
+	return ( requires => {}, inputs => {}, outputs => {}, temp_outputs => {}, final_outputs => {} );
 }
 
 sub parse_block
 {
-	my ($blocking, $type, $module_file, $lines_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
-	my %requires = %{$requires_ref};
-	my %inputs = %{$inputs_ref};
-	my %outputs = %{$outputs_ref};
-	my %temp_outputs = ();
-
-	my @commands = ();
-	my %defined_variables = ();
-	my %eval_variables = ();
-	my %used_variables = ();
-	my %requires_of = ();
-	my %inputs_of = ();
+	my ($blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref) = @_;
 
 	my $line = '';
 	my $last_line = '';
-	my @command_requires = ();
-	my @command_inputs = ();
-	my @command_outputs = ();
-	my @command_temp_outputs = ();
-	my @command_final_outputs = ();
+	my @commands = ();
+	my %cmd_info = create_cmd_info();
 
 	while (1) {
 		if (scalar @{$lines_ref} <= 0) {
@@ -375,9 +354,9 @@ sub parse_block
 		} elsif ($line =~ /^\s*(\{|\{\{|SP_parallel_begin)\s*(|#.*)$/) {
 			my $sub_blocking = $1;
 			$sub_blocking = '{{' if $sub_blocking eq 'SP_parallel_begin';
-			push @blocks, parse_block($sub_blocking, $type, $module_file, $lines_ref, $requires_ref, $inputs_ref, $outputs_ref);
+			push @blocks, parse_block($sub_blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
 			my $block_index = scalar @blocks - 1;
-			push @commands, { command => '', block => $block_index, requires => [], inputs => [], outputs => [] };
+			push @commands, { command => '', block => $block_index, requires => {}, inputs => {}, outputs => {} };
 			next;
 		}
 
@@ -398,30 +377,26 @@ sub parse_block
 		} elsif ($line =~ /^#\[command\s+(require|input|output(|.temp|.final))=.*\]$/) {
 			while ($line =~ /\s+(require|input|output(|.temp|.final))="(.*?)"/g) {
 				if ($1 eq "require") {
-					die "ERROR: Duplicated require attribute!" if is_in_array($3, @command_requires);
-					push @command_requires, $3;
+					die "ERROR: Duplicated require attribute!" if exists $cmd_info{requires}{$3};
+					$cmd_info{requires}{$3} = 1;
 				} elsif ($1 eq "input") {
-					die "ERROR: Duplicated input attribute!" if is_in_array($3, @command_inputs);
-					push @command_inputs, $3;
+					die "ERROR: Duplicated input attribute!" if exists $cmd_info{inputs}{$3};
+					$cmd_info{inputs}{$3} = 1;
 				} elsif ($1 eq "output") {
-					die "ERROR: Duplicated output attribute!" if is_in_array($3, @command_outputs);
-					push @command_outputs, $3;
+					die "ERROR: Duplicated output attribute!" if exists $cmd_info{outputs}{$3};
+					$cmd_info{outputs}{$3} = 1;
 				} elsif ($1 eq "output.temp") {
-					die "ERROR: Duplicated output attribute!" if is_in_array($3, @command_outputs);
-					push @command_outputs, $3;
-					push @command_temp_outputs, $3;
+					die "ERROR: Duplicated output attribute!" if exists $cmd_info{outputs}{$3};
+					$cmd_info{outputs}{$3} = 1;
+					$cmd_info{temp_outputs}{$3} = 1;
 				} elsif ($1 eq "output.final") {
-					die "ERROR: Duplicated output attribute!" if is_in_array($3, @command_outputs);
-					push @command_outputs, $3;
-					push @command_final_outputs, $3;
-					$outputs{$3} = 1;
+					die "ERROR: Duplicated output attribute!" if exists $cmd_info{outputs}{$3};
+					$cmd_info{outputs}{$3} = 1;
+					$cmd_info{final_outputs}{$3} = 1;
 				}
 			}
 		} elsif ($line !~ /^\s*$/) {
-			my $cmd_ref = append_command(\@commands, $type,
-				\%defined_variables, \%eval_variables, \%used_variables, $line,
-				\@command_requires, \@command_inputs, \@command_outputs,
-				\@command_temp_outputs, \@command_final_outputs);
+			my $cmd_ref = parse_cmd($line, $type, \@commands, \%cmd_info, $var_info_ref);
 			
 			if (($type ne 'pipeline' and $type ne 'stage')
 					and cmd_nodep($cmd_ref) and (scalar @commands > 0) and cmd_nodep($commands[-1])) {
@@ -429,65 +404,42 @@ sub parse_block
 			} else {
 				push @commands, $cmd_ref;
 			}
-
-			foreach my $output (@command_outputs, @command_final_outputs) {
-				if (@command_requires) {
-					$requires_of{$output} = {} if not exists $requires_of{$output};
-					foreach my $require (@command_requires) {
-						$requires_of{$output}->{$require} = 1;
-					}
-				}
-				if (@command_inputs) {
-					$inputs_of{$output} = {} if not exists $inputs_of{$output};
-					foreach my $input (@command_inputs) {
-						$inputs_of{$output}->{$input} = 1;
-					}
+			if (keys $cmd_info{temp_outputs}) {
+				foreach my $output (keys $cmd_info{temp_outputs}) {
+					$proc_info_ref->{temp_outputs}{$output} = 1;
 				}
 			}
-			if (@command_final_outputs) {
-				add_workflow_attribute \@command_final_outputs, \%requires_of, \%inputs_of, \%requires, \%inputs;
+			if (keys $cmd_info{final_outputs}) {
+				foreach my $output (keys $cmd_info{final_outputs}) {
+					$proc_info_ref->{final_outputs}{$output} = 1;
+				}
 			}
-			foreach my $output (@command_temp_outputs) {
-				$temp_outputs{$output} = 1;
+			foreach my $output (keys %{$cmd_info{outputs}}) {
+				@{$proc_info_ref->{requires_of}{$output}} = keys %{$cmd_info{requires}};
+				@{$proc_info_ref->{inputs_of  }{$output}} = keys %{$cmd_info{inputs  }};
 			}
-			@command_requires = ();
-			@command_inputs = ();
-			@command_outputs = ();
-			@command_temp_outputs = ();
-			@command_final_outputs = ();
+			%cmd_info = create_cmd_info();
 		}
 	}
 	if ($last_line ne '') {
 		die "ERROR: Invalid procedure declaration! Last command line not finished!";
 	}
 
-	foreach my $variable (keys %requires, keys %inputs, keys %outputs) {
+	foreach my $variable (keys %{$proc_info_ref->{requires}}, keys %{$proc_info_ref->{inputs}}, keys %{$proc_info_ref->{outputs}}) {
 		while ($variable =~ /\${(\w+)}/g) {
-			my $variable_name = $1;
-			if (not exists $used_variables{$variable_name}) {
-				$used_variables{$variable_name} = '';
+			if (not exists $var_info_ref->{used}{$1}) {
+				$var_info_ref->{used}{$1} = '';
 			}
 		}
 	}
 
-	my @procedure_requires = keys %requires;
-	my @procedure_inputs = keys %inputs;
-	my @procedure_outputs = keys %outputs;
-	my @procedure_temps = keys %temp_outputs;
-
-	return {
-		type              => $type,
-		requires          => \@procedure_requires,
-		inputs            => \@procedure_inputs,
-		outputs           => \@procedure_outputs,
-		temps             => \@procedure_temps,
-		commands          => \@commands,
-		defined_variables => \%defined_variables,
-		eval_variables    => \%eval_variables,
-		used_variables    => \%used_variables,
-		module_file       => abs_path($module_file),
-		parallel          => ($blocking eq '{{' ? 1 : 0)
-	};
+	return { type => $type,
+		requires => $proc_info_ref->{requires},
+		inputs => $proc_info_ref->{inputs},
+		outputs => $proc_info_ref->{outputs},
+		commands => \@commands,
+		parallel => ($blocking eq '{{' ? 1 : 0),
+		module_file => abs_path($module_file) };
 }
 
 sub load_lines
@@ -525,103 +477,140 @@ sub parsing_error
 	return " in $line->{file}($line->{line}). It failed";
 }
 
+sub create_proc_info
+{
+	return ( requires_of => {}, inputs_of => {},
+		requires => {}, inputs => {}, outputs => {},
+		temp_outputs => {}, final_outputs => {} );
+}
+
 sub load_modules
 {
 	foreach my $file (@_) {
 		my @lines = load_lines($file, {}, []);
-
-		my $type = '';
-		my %requires = ();
-		my %inputs = ();
-		my %outputs = ();
-
-		while (scalar @lines > 0) {
-			my $l = shift @lines;
-
-			if ($l->{text} =~ /^#\[procedure/) {
-				if ($l->{text} !~ /^#\[procedure(\s+(type|require|input|output)="(.*?)")+\s*\]$/) {
-					die "ERROR: Bad procedure attribute declaration" . parsing_error($l);
-				}
-				while ($l->{text} =~ /\s+(type|require|input|output)="(.*?)"/g) {
-					if ($1 eq 'type') {
-						die "ERROR: Duplicated procedure type declaration" . parsing_error($l) if $type ne '';
-						$type = $2;
-						if (not exists $valid_procedure_type{$type}) {
-							die "ERROR: Unknown procedure type '$type'" . parsing_error($l);
-						}
-					} elsif ($1 eq "require") {
-						die "ERROR: Duplicated require attribute" . parsing_error($l) if exists $requires{$2};
-						$requires{$2} = 1;
-					} elsif ($1 eq "input") {
-						die "ERROR: Duplicated input attribute" . parsing_error($l) if exists $inputs{$2};
-						$inputs{$2} = 1;
-					} elsif ($1 eq "output") {
-						die "ERROR: Duplicated output attribute" . parsing_error($l) if exists $outputs{$2};
-						$outputs{$2} = 1;
-					}
-					next;
-				}
-			} elsif ($l->{text} =~ /^\s*function\s+/) {
-				die "ERROR: Invalid procedure declaration!" if $l->{text} !~ /^function\s+(\w+)\s*(\{|\{\{|)\s*$/;
-				my $proc_name = $1;
-				my $blocking = $2;
-
-				# Treat functions without type declearation as a 'stage'.
-				$type = 'stage' if $type eq '';
-
-				if (exists $procedures{$proc_name}) {
-					print "WARNING: Redeclaration of procedure '$proc_name'\n"
-						if $verbose or not $enable_duplicate;
-					die "You may use '-d' option to enable the duplicated procedure declaration."
-						unless $enable_duplicate;
-				}
-
-				if ($blocking eq '') {
-					while (1) {
-						$l = shift @lines;
-						next if $l->{text} =~ /^\s*$/;
-						if ($l->{text} =~ /^\s*(\{|\{\{)\s*$/) {
-							$blocking = $1;
-							last;
-						}
-						die "ERROR: Invalid procedure declaration! Line '{' or '{{' expected" . parsing_error($l);
-					}
-				}
-
-				$procedures{$proc_name} = parse_block($blocking, $type, $file, \@lines, \%requires, \%inputs, \%outputs);
-				$type = '';
-				%requires = ();
-				%inputs = ();
-				%outputs = ();
-
-			} elsif ($l->{text} =~ /^\s*(\w+)=(.*)$/) {
-				my $option_name = $1;
-				my $option_value = $2;
-				$option_value =~ s/\s+#.*$//g;      # Remove tailing comments and whitespaces.
-				$option_value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
-				if (exists $global_variables{$option_name}) {
-					print "WARNING: Reassignment of global variable '$option_name'\n"
-						if $verbose or not $enable_duplicate;
-					die "ERROR: You may use '-d' option to enable the duplicated global variable declaration."
-						unless $enable_duplicate;
-				}
-				while ($option_value =~ /\${(\w+)}/g) {
-					my $name = $1;
-					if (exists $global_variables{$name}) {
-						$option_value =~ s/\${$name}/$global_variables{$name}/g;
-					} else {
-						$option_value =~ s/\${$name}//g;
-					}
-				}
-				$global_variables{$option_name} = $option_value;
-
-				print "$option_name=$option_value\n" if $verbose;
-			}
+		while (@lines) {
+			parse_proc($file, \@lines);
 		}
 	}
-
 	printf "All %d module file(s) loaded, including %d procedure(s).\n",
 		scalar @_, scalar keys %procedures if $verbose;
+}
+
+sub parse_proc
+{
+	my ($file, $lines_ref) = @_;
+	my $type = '';
+	my %requires = ();
+	my %inputs = ();
+	my %outputs = ();
+
+	while (@{$lines_ref}) {
+		my $l = shift @{$lines_ref};
+
+		if ($l->{text} =~ /^#\[procedure/) {
+			if ($l->{text} !~ /^#\[procedure(\s+(type|require|input|output)="(.*?)")+\s*\]$/) {
+				die "ERROR: Bad procedure attribute declaration" . parsing_error($l);
+			}
+			while ($l->{text} =~ /\s+(type|require|input|output)="(.*?)"/g) {
+				if ($1 eq 'type') {
+					die "ERROR: Duplicated procedure type declaration" . parsing_error($l) if $type ne '';
+					$type = $2;
+					if (not exists $valid_procedure_type{$type}) {
+						die "ERROR: Unknown procedure type '$type'" . parsing_error($l);
+					}
+				} elsif ($1 eq "require") {
+					die "ERROR: Duplicated require attribute" . parsing_error($l) if exists $requires{$2};
+					$requires{$2} = 1;
+				} elsif ($1 eq "input") {
+					die "ERROR: Duplicated input attribute" . parsing_error($l) if exists $inputs{$2};
+					$inputs{$2} = 1;
+				} elsif ($1 eq "output") {
+					die "ERROR: Duplicated output attribute" . parsing_error($l) if exists $outputs{$2};
+					$outputs{$2} = 1;
+				}
+				next;
+			}
+		} elsif ($l->{text} =~ /^\s*function\s+/) {
+			die "ERROR: Invalid procedure declaration!" if $l->{text} !~ /^function\s+(\w+)\s*(\{|\{\{|)\s*$/;
+			my $proc_name = $1;
+			my $blocking = $2;
+
+			# Treat functions without type declearation as a 'stage'.
+			$type = 'stage' if $type eq '';
+
+			if (exists $procedures{$proc_name}) {
+				print "WARNING: Redeclaration of procedure '$proc_name'\n"
+					if $verbose or not $enable_duplicate;
+				die "You may use '-d' option to enable the duplicated procedure declaration."
+					unless $enable_duplicate;
+			}
+
+			if ($blocking eq '') {
+				while (1) {
+					$l = shift @{$lines_ref};
+					next if $l->{text} =~ /^\s*$/;
+					if ($l->{text} =~ /^\s*(\{|\{\{)\s*$/) {
+						$blocking = $1;
+						last;
+					}
+					die "ERROR: Invalid procedure declaration! Line '{' or '{{' expected" . parsing_error($l);
+				}
+			}
+
+			my %proc_info = create_proc_info();
+			my %var_info = ( defined => {}, eval => {}, used => {} );
+			$procedures{$proc_name} = parse_block($blocking, $type, $file, $lines_ref, \%proc_info, \%var_info);
+
+			if (%{$proc_info{final_outputs}}) {
+				add_workflow_attribute $proc_info{final_outputs}, \%proc_info;
+			}
+			foreach my $file (keys %requires) {
+				$proc_info{requires}{$file} = 1;
+			}
+			foreach my $file (keys %inputs) {
+				$proc_info{inputs}{$file} = 1;
+			}
+			foreach my $file (keys %outputs, keys %{$proc_info{final_outputs}}) {
+				$proc_info{outputs}{$file} = 1;
+			}
+
+			$procedures{$proc_name}{requires}          = $proc_info{requires    };
+			$procedures{$proc_name}{inputs}            = $proc_info{inputs      };
+			$procedures{$proc_name}{outputs}           = $proc_info{outputs     };
+			$procedures{$proc_name}{temp_outputs}      = $proc_info{temp_outputs};
+			$procedures{$proc_name}{defined_variables} = $var_info{defined};
+			$procedures{$proc_name}{used_variables}    = $var_info{used};
+			$procedures{$proc_name}{eval_variables}    = $var_info{eval};
+			
+			$type = '';
+			%requires = ();
+			%inputs = ();
+			%outputs = ();
+
+		} elsif ($l->{text} =~ /^\s*(\w+)=(.*)$/) {
+			my $option_name = $1;
+			my $option_value = $2;
+			$option_value =~ s/\s+#.*$//g;      # Remove tailing comments and whitespaces.
+			$option_value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
+			if (exists $global_variables{$option_name}) {
+				print "WARNING: Reassignment of global variable '$option_name'\n"
+					if $verbose or not $enable_duplicate;
+				die "ERROR: You may use '-d' option to enable the duplicated global variable declaration."
+					unless $enable_duplicate;
+			}
+			while ($option_value =~ /\${(\w+)}/g) {
+				my $name = $1;
+				if (exists $global_variables{$name}) {
+					$option_value =~ s/\${$name}/$global_variables{$name}/g;
+				} else {
+					$option_value =~ s/\${$name}//g;
+				}
+			}
+			$global_variables{$option_name} = $option_value;
+
+			print "$option_name=$option_value\n" if $verbose;
+		}
+	}
 }
 
 sub print_usage
@@ -677,12 +666,14 @@ sub show_parameters
 		}
 	}
 
-	my @requires = @{$procedures{$proc_name}{requires}};
-	my @inputs = @{$procedures{$proc_name}{inputs}};
-	my @outputs = @{$procedures{$proc_name}{outputs}};
-	print join("\n   ", ("\nRequire file(s):", @requires)) . "\n" if scalar @requires > 0;
-	print join("\n   ", ("\nInput file(s):",   @inputs))   . "\n" if scalar @inputs > 0;
-	print join("\n   ", ("\nOutput file(s):",  @outputs))  . "\n" if scalar @outputs > 0;
+	my @requires = sort keys %{$procedures{$proc_name}{requires}};
+	my @inputs = sort keys %{$procedures{$proc_name}{inputs}};
+	my @outputs = sort keys %{$procedures{$proc_name}{outputs}};
+	my @temp_outputs = sort keys %{$procedures{$proc_name}{temp_outputs}};
+	print join("\n   ", ("\nRequire file(s):", @requires)) . "\n" if @requires;
+	print join("\n   ", ("\nInput file(s):",   @inputs))   . "\n" if @inputs;
+	print join("\n   ", ("\nOutput file(s):",  @outputs))  . "\n" if @outputs;
+	print join("\n   ", ("\nTemporary file(s):", @temp_outputs))  . "\n" if @temp_outputs;
 
 	print "\n";
 }
@@ -710,26 +701,26 @@ sub display_block
 	my $block_start = 1;
 	foreach my $cmd_ref (@{$procedure{commands}}) {
 
-		if ($cmd_ref->{command} eq '{{' or scalar @{$cmd_ref->{requires}} > 0 or scalar @{$cmd_ref->{inputs}} > 0 or scalar @{$cmd_ref->{outputs}} > 0) {
+		if ($cmd_ref->{command} eq '{{' or %{$cmd_ref->{requires}} or %{$cmd_ref->{inputs}} or %{$cmd_ref->{outputs}}) {
 			if (not $block_start and $cmd_ref->{command} !~ '^(SP_set|}})') {
 				print "\n";
 			}
 
-			foreach my $require (@{$cmd_ref->{requires}}) {
+			foreach my $require (keys %{$cmd_ref->{requires}}) {
 				print "$indent\t#[command require=\"$require\"]\n";
 			}
-			foreach my $input (@{$cmd_ref->{inputs}}) {
+			foreach my $input (keys %{$cmd_ref->{inputs}}) {
 				print "$indent\t#[command input=\"$input\"]\n";
 			}
-			foreach my $output (@{$cmd_ref->{outputs}}) {
-				if (not is_in_array($output, @{$cmd_ref->{temp_outputs}}) and not is_in_array($output, @{$cmd_ref->{final_outputs}})) {
+			foreach my $output (keys %{$cmd_ref->{outputs}}) {
+				if (not exists $cmd_ref->{temp_outputs}{$output} and not exists $cmd_ref->{final_outputs}{$output}) {
 					print "$indent\t#[command output=\"$output\"]\n";
 				}
 			}
-			foreach my $temp_output (@{$cmd_ref->{temp_outputs}}) {
+			foreach my $temp_output (keys %{$cmd_ref->{temp_outputs}}) {
 				print "$indent\t#[command output.temp=\"$temp_output\"]\n";
 			}
-			foreach my $final_output (@{$cmd_ref->{final_outputs}}) {
+			foreach my $final_output (keys %{$cmd_ref->{final_outputs}}) {
 				print "$indent\t#[command output.final=\"$final_output\"]\n";
 			}
 		}
@@ -761,13 +752,13 @@ sub show_raw_code
 
 	print "#[procedure type=\"$procedure{type}\"]\n";
 
-	foreach my $require (@{$procedure{requires}}) {
+	foreach my $require (keys %{$procedure{requires}}) {
 		print "#[procedure require=\"$require\"]\n";
 	}
-	foreach my $input (@{$procedure{inputs}}) {
+	foreach my $input (keys %{$procedure{inputs}}) {
 		print "#[procedure input=\"$input\"]\n";
 	}
-	foreach my $output (@{$procedure{outputs}}) {
+	foreach my $output (keys %{$procedure{outputs}}) {
 		print "#[procedure output=\"$output\"]\n";
 	}
 
@@ -780,7 +771,7 @@ sub check_requires_inputs_outputs
 {
 	my ($proc_name, $variables_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
 	
-	foreach my $require (@{$requires_ref}) {
+	foreach my $require (keys %{$requires_ref}) {
 		my $filename = $require;
 		while ($filename =~ /\${(\w+)}/) {
 			my $option_name = $1;
@@ -793,7 +784,7 @@ sub check_requires_inputs_outputs
 	}
 	
 	my @inputs = ();
-	foreach my $input (@{$inputs_ref}) {
+	foreach my $input (keys %{$inputs_ref}) {
 		my $filename = $input;
 		while ($filename =~ /\${(\w+)}/) {
 			my $option_name = $1;
@@ -806,10 +797,9 @@ sub check_requires_inputs_outputs
 		push @inputs, $filename;
 	}
 	
-	if (scalar @{$outputs_ref} == 0) {
-		return 1;
-	}
-	foreach my $output (@{$outputs_ref}) {
+	return 1 unless %{$outputs_ref};
+
+	foreach my $output (keys %{$outputs_ref}) {
 		my $filename = $output;
 		while ($filename =~ /\${(\w+)}/) {
 			my $option_name = $1;
@@ -1041,7 +1031,7 @@ sub run_procedure
 	my $value = run_block($proc_name, \%procedure, $argv_ref, $log_files_ref, $indent, $pipe_structure_ref, \%variables, \%option_from_cmd);
 
 	if (not $keep_intermediates) {
-		foreach my $item (@{$procedure{temps}}) {
+		foreach my $item (keys %{$procedure{temp_outputs}}) {
 			my $file = eval_string($item, \%variables);
 			if (-e $file) {
 				safe_printf "$indent($record_id) removes intemediate file '%s'\n", $file;
@@ -1077,9 +1067,8 @@ sub run_block
 		my $requires_ref = $command_struct_ref->{requires};
 		my $inputs_ref = $command_struct_ref->{inputs};
 		my $outputs_ref = $command_struct_ref->{outputs};
-		
 		my @output_set = ();
-		foreach my $output_file (@{$outputs_ref}) {
+		foreach my $output_file (keys %{$outputs_ref}) {
 			my $filename = $output_file;
 			while ($filename =~ /\${(\w+)}/) {
 				my $option_name = $1;
@@ -1094,7 +1083,7 @@ sub run_block
 				while ($arg =~ /\${(\w+)}/g) {
 					my $option_name = $1;
 					my $option_value = $variables_ref->{$option_name};
-					$option_value ='' if not defined($option_value);
+					$option_value = '' if not defined($option_value);
 					if ($option_value ne '' or
 						not exists ${$procedure{defined_variables}}{$option_name} or
 						not exists ${$procedure{eval_variables}}{$option_name}) {
@@ -1155,7 +1144,7 @@ sub run_block
 				my $proc_name = shift @procedure_options;
 				my @log_files = ();
 				my @pipe_structure = ();
-				my $value = run_procedure($proc_name, \@procedure_options, 0, \@log_files, $indent . "  ", \@pipe_structure);
+				my $value = run_procedure($proc_name, \@procedure_options, \@log_files, $indent . "  ", \@pipe_structure);
 				next if ($cmd eq 'SP_set' and $value ne 0);
 				if ($cmd eq 'SP_eval') {
 					safe_print "Info: Load log files for SP_eval: ", join(", ", @log_files), "\n" if $verbose;
@@ -1314,12 +1303,11 @@ if ($execute_command ne '') {
 		push @lines, { text => $line, file => '', line => $line_no };
 	}
 	$proc_name = "seqpipe_execute_$$";
+	my %proc_info = create_proc_info();
 	my $type = 'stage';
 	my $module_file = '';
-	my %requires = ();
-	my %inputs = ();
-	my %outputs = ();
-	$procedures{$proc_name} = parse_block('{', $type, $module_file, \@lines, \%requires, \%inputs, \%outputs);
+	my %var_info = ( defined => {}, eval => {}, used => {} );
+	$procedures{$proc_name} = parse_block('{', $type, $module_file, \@lines, \%proc_info, \%var_info);
 }
 
 if ($proc_name ne '' and not exists $procedures{$proc_name}) {
