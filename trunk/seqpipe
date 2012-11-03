@@ -35,14 +35,12 @@ my %exit_on_error = ( 'pipeline' => 1, 'stage' => 1 );
 my $help_mode = 0;
 my $verbose = 0;
 my $list_mode = 0;
-my $list_all_mode = 0;
 my $test_mode = 0;
 my $display_raw_code = 0;
 my $keep_intermediates = 0;
 my $enable_duplicate = 0;
 my $execute_command = '';
 my $shell = '/bin/bash';
-my $strict_mode = 0;
 
 # All procedures are loaded at startup.
 my %procedures;
@@ -842,18 +840,17 @@ sub run_command
 		} elsif ($procedure_type eq 'checker') {
 			$command_with_log = "($command) >/dev/null 2>/dev/null";
 		} else {
-			if ($strict_mode) {
-				$command_with_log = '(' . $command . '; for _RES in ${PIPESTATUS[*]}; do if [ $_RES -ne 0 ]; then exit $_RES; fi; done)';
-			} else {
-				$command_with_log = '(' . $command . ')';
-			}
-			$command_with_log .= " >>" . LOG_DIR . "/$record_id.$procedure_name.log ";
-			$command_with_log .= "2>>" . LOG_DIR . "/$record_id.$procedure_name.err";
+			my @argv = bash_line_decode($command);
+			my $name = $argv[0];
+			$name =~ s/\W//g;
+			$name = LOG_DIR . "/$record_id." . $name;
+			$name .= "_$argv[1]" if $argv[1] =~ /^\w+/;
+			$command_with_log = "($command) >>$name.log 2>>$name.err";
 
-			push @log_files, LOG_DIR . "/$record_id.$procedure_name.log";
+			push @log_files, "$name.log";
 			push @pipe_structure, "$indent($record_id) $command";
 
-			open FILE, ">>" . LOG_DIR . "/$record_id.$procedure_name.cmd";
+			open FILE, ">>$name.cmd";
 			print FILE "$command\n";
 			close FILE;
 		}
@@ -1258,9 +1255,6 @@ if ($#ARGV < 0) {
 			$enable_duplicate = 1;
 		} elsif ($arg eq '-l' or $arg eq '--list') {
 			$list_mode = 1;
-		} elsif ($arg eq '-L' or $arg eq '--list-all') {
-			$list_mode = 1;
-			$list_all_mode = 1;
 		} elsif ($arg eq '-t' or $arg eq '--test') {
 			$test_mode = 1;
 		} elsif ($arg eq '-T') {
@@ -1273,8 +1267,6 @@ if ($#ARGV < 0) {
 			push(@module_files, shift @ARGV);
 		} elsif ($arg eq '-D') {
 			$disable_loading_default_modules = 1;
-		} elsif ($arg eq '-S') {
-			$strict_mode = 1;
 		} elsif ($arg eq '-e') {
 			if ($#ARGV < 0) {
 				print "ERROR: missing argument for option '$arg'!\n";
