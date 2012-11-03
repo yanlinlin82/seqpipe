@@ -35,8 +35,7 @@ my %exit_on_error = ( 'pipeline' => 1, 'stage' => 1 );
 my $help_mode = 0;
 my $verbose = 0;
 my $list_mode = 0;
-my $test_mode = 0;
-my $display_raw_code = 0;
+my $show_mode = 0;
 my $keep_intermediates = 0;
 my $enable_duplicate = 0;
 my $execute_command = '';
@@ -642,7 +641,6 @@ Options:
    -d                Enable duplcated global variables and procedures (overwrited as the latters).
    -D                Disable loading default pipeline modules.
    -l / --list       List current available procedures.
-   -t / --test       Test mode, only print the commands rather than execute them.
    -T                Print the raw procedure declaration.
    -e <cmd>          Direct run a command as a stage-type procedure.
    -s <shell>        Send commands to another shell (such as "qsub"), default: ' . $shell . '
@@ -747,7 +745,7 @@ sub display_block
 	printf "$indent%s\n", ($procedure{parallel} ? '}}' : '}');
 }
 
-sub display_procedure_raw_code
+sub show_raw_code
 {
 	my ($proc_name) = @_;
 
@@ -834,7 +832,7 @@ sub check_requires_inputs_outputs
 
 sub run_command
 {
-	my ($proc_name, $procedure_type, $command, $block_id, $outputs_ref, $is_test_mode, $indent, $variables_ref, $option_from_cmd_ref) = @_;
+	my ($proc_name, $procedure_type, $command, $block_id, $outputs_ref, $indent, $variables_ref, $option_from_cmd_ref) = @_;
 
 	my $return_value = 0;
 	my @log_files = ();
@@ -861,9 +859,9 @@ sub run_command
 		shift @procedure_options;
 		my $proc_name = shift @procedure_options;
 
-		$return_value = run_procedure($proc_name, \@procedure_options, $is_test_mode, \@log_files, $indent, \@pipe_structure);
+		$return_value = run_procedure($proc_name, \@procedure_options, \@log_files, $indent, \@pipe_structure);
 	} elsif ($command eq '') {
-		$return_value = run_block('', $blocks[$block_id], [], $is_test_mode, \@log_files, $indent, \@pipe_structure, $variables_ref, $option_from_cmd_ref);
+		$return_value = run_block('', $blocks[$block_id], [], \@log_files, $indent, \@pipe_structure, $variables_ref, $option_from_cmd_ref);
 	} else {
 		my $command_with_log = '';
 		if ($procedure_type eq 'sysinfo') {
@@ -887,7 +885,7 @@ sub run_command
 		}
 		
 		my $start_time = time;
-		if (not $is_test_mode and exists $need_record{$procedure_type}) {
+		if (exists $need_record{$procedure_type}) {
 			safe_print "$indent($record_id) $command\n";
 			safe_print "$indent($record_id) starts at " . time_string($start_time) . "\n";
 		}
@@ -914,7 +912,7 @@ sub run_command
 			} else {
 				$return_value = ($? >> 8);
 
-				if (not $is_test_mode and exists $need_record{$procedure_type}) {
+				if (exists $need_record{$procedure_type}) {
 					my $end_time = time;
 					safe_printf "$indent($record_id) ends at %s (elapsed: %s)\n",
 						time_string($end_time), time_elapse_string($start_time, $end_time);
@@ -954,7 +952,7 @@ sub eval_string
 
 sub run_procedure
 {
-	my ($proc_name, $argv_ref, $is_test_mode, $log_files_ref, $indent, $pipe_structure_ref) = @_;
+	my ($proc_name, $argv_ref, $log_files_ref, $indent, $pipe_structure_ref) = @_;
 	
 	if (not exists $procedures{$proc_name}) {
 		safe_print "ERROR: Unknown procedure '$proc_name'! Use 'seqpipe -l' to list available procedures.\n";
@@ -1014,19 +1012,14 @@ sub run_procedure
 		}
 	}
 
-	my $need_rerun = 0;
-	if (not $is_test_mode) {
-		$need_rerun = check_requires_inputs_outputs($proc_name, \%variables,
-			$procedure{requires}, $procedure{inputs}, $procedure{outputs});
-	}
-
-	if (not $is_test_mode and not $need_rerun) {
+	my $need_rerun = check_requires_inputs_outputs($proc_name, \%variables, $procedure{requires}, $procedure{inputs}, $procedure{outputs});
+	if (not $need_rerun) {
 		safe_print "$indent(Skip) " . bash_line_encode(('SP_run', $proc_name, @{$argv_ref})) . "\n";
 		return 0;
 	}
 
 	my $record_id = 0;
-	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
+	if (exists $need_record{$procedure{type}}) {
 		{
 			lock($run_counter);
 			$run_counter += 1;
@@ -1040,12 +1033,12 @@ sub run_procedure
 	}
 	
 	my $start_time = time;
-	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
+	if (exists $need_record{$procedure{type}}) {
 		safe_print "$indent($record_id) " . bash_line_encode("SP_run", $proc_name, @{$argv_ref}) . "\n";
 		safe_print "$indent($record_id) starts at " . time_string($start_time) . "\n";
 	}
 
-	my $value = run_block($proc_name, \%procedure, $argv_ref, $is_test_mode, $log_files_ref, $indent, $pipe_structure_ref, \%variables, \%option_from_cmd);
+	my $value = run_block($proc_name, \%procedure, $argv_ref, $log_files_ref, $indent, $pipe_structure_ref, \%variables, \%option_from_cmd);
 
 	if (not $keep_intermediates) {
 		foreach my $item (@{$procedure{temps}}) {
@@ -1057,7 +1050,7 @@ sub run_procedure
 		}
 	}
 
-	if (not $is_test_mode and exists $need_record{$procedure{type}}) {
+	if (exists $need_record{$procedure{type}}) {
 		my $end_time = time;
 		safe_printf "$indent($record_id) ends at %s (elapsed: %s)\n",
 			time_string($end_time), time_elapse_string($start_time, $end_time);
@@ -1067,7 +1060,7 @@ sub run_procedure
 
 sub run_block
 {
-	my ($proc_name, $block_ref, $argv_ref, $is_test_mode, $log_files_ref, $indent, $pipe_structure_ref, $variables_ref, $option_from_cmd_ref) = @_;
+	my ($proc_name, $block_ref, $argv_ref, $log_files_ref, $indent, $pipe_structure_ref, $variables_ref, $option_from_cmd_ref) = @_;
 	my $return_value = 0;
 
 	{
@@ -1076,7 +1069,6 @@ sub run_block
 	}
 
 	my %procedure = %{$block_ref};
-
 	push @{$pipe_structure_ref}, $indent . ($procedure{parallel} ? '{{' : '{');
 
 	my @thread_list = ();
@@ -1103,7 +1095,7 @@ sub run_block
 					my $option_name = $1;
 					my $option_value = $variables_ref->{$option_name};
 					$option_value ='' if not defined($option_value);
-					if (not $is_test_mode or $option_value ne '' or
+					if ($option_value ne '' or
 						not exists ${$procedure{defined_variables}}{$option_name} or
 						not exists ${$procedure{eval_variables}}{$option_name}) {
 						$arg =~ s/\${$option_name}/$option_value/g;
@@ -1116,7 +1108,7 @@ sub run_block
 				my $option_name = $1;
 				my $option_value = $variables_ref->{$option_name};
 				$option_value ='' if not defined($option_value);
-				if (not $is_test_mode or $option_value ne '' or
+				if ($option_value ne '' or
 					not exists ${$procedure{defined_variables}}{$option_name} or
 					not exists ${$procedure{eval_variables}}{$option_name}) {
 					$command =~ s/\${$option_name}/$option_value/g;
@@ -1124,12 +1116,10 @@ sub run_block
 			}
 		}
 
-		if (not $is_test_mode) {
-			if (not check_requires_inputs_outputs($proc_name, $variables_ref,
-				$requires_ref, $inputs_ref, $outputs_ref)) {
-				safe_print "$indent(Skip) $command\n";
-				next;
-			}
+		if (not check_requires_inputs_outputs($proc_name, $variables_ref,
+			$requires_ref, $inputs_ref, $outputs_ref)) {
+			safe_print "$indent(Skip) $command\n";
+			next;
 		}
 
 		if ($command =~ /^SP_set/ or $command =~ /^SP_eval/) {
@@ -1160,7 +1150,6 @@ sub run_block
 			}
 
 			next if exists $option_from_cmd_ref->{$option_name};
-			print "#$command\n" if ($is_test_mode and $verbose);
 
 			if (scalar @procedure_options > 0) {
 				my $proc_name = shift @procedure_options;
@@ -1184,46 +1173,30 @@ sub run_block
 			}
 
 			$variables_ref->{$option_name} = $option_value;
-			if (not $is_test_mode and $verbose) {
-				safe_print "Info: Option '$option_name' changes to '$option_value'.\n";
-			}
+			safe_print "Info: Option '$option_name' changes to '$option_value'.\n" if $verbose;
 			next;
 		}
 
-		if ($is_test_mode) {
-			if ($command =~ /^SP_run/) {
-				print "#$command\n" if $verbose;
-				my @procedure_options = bash_line_decode($command);
-				shift @procedure_options;
-				my $proc_name = shift @procedure_options;
-				run_procedure($proc_name, \@procedure_options, $is_test_mode, $log_files_ref, $indent . "  ", $pipe_structure_ref);
-			} else {
-				if ($verbose or $procedure{type} eq 'stage' or $procedure{type} eq 'pipeline') {
-					print "$command\n";
-				}
-			}
-		} else {
-			if ($can_use_threads) {
-				my $thd = threads->create({'context' => 'list'}, \&run_command,
-					$proc_name, $procedure{type}, $command, $command_struct_ref->{block}, \@output_set, $is_test_mode, $indent . "  ", $variables_ref, $option_from_cmd_ref);
+		if ($can_use_threads) {
+			my $thd = threads->create({'context' => 'list'}, \&run_command,
+				$proc_name, $procedure{type}, $command, $command_struct_ref->{block}, \@output_set, $indent . "  ", $variables_ref, $option_from_cmd_ref);
 
-				if ($procedure{parallel}) {
-					push @thread_list, $thd;
-				} else {
-					my ($return_log_files_ref, $return_pipe_structure_ref);
-					($return_value, $return_log_files_ref, $return_pipe_structure_ref) = $thd->join();
-					push @{$log_files_ref}, @{$return_log_files_ref};
-					push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
-				}
+			if ($procedure{parallel}) {
+				push @thread_list, $thd;
 			} else {
 				my ($return_log_files_ref, $return_pipe_structure_ref);
-				($return_value, $return_log_files_ref, $return_pipe_structure_ref) = run_command(
-					$proc_name, $procedure{type}, $command, $command_struct_ref->{block}, \@output_set, $is_test_mode, $indent . "  ", $variables_ref, $option_from_cmd_ref);
+				($return_value, $return_log_files_ref, $return_pipe_structure_ref) = $thd->join();
 				push @{$log_files_ref}, @{$return_log_files_ref};
 				push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 			}
-			last if exists $exit_on_error{$procedure{type}} and $return_value != 0;
+		} else {
+			my ($return_log_files_ref, $return_pipe_structure_ref);
+			($return_value, $return_log_files_ref, $return_pipe_structure_ref) = run_command(
+				$proc_name, $procedure{type}, $command, $command_struct_ref->{block}, \@output_set, $indent . "  ", $variables_ref, $option_from_cmd_ref);
+			push @{$log_files_ref}, @{$return_log_files_ref};
+			push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 		}
+		last if exists $exit_on_error{$procedure{type}} and $return_value != 0;
 	}
 	if (scalar @thread_list > 0) {
 		foreach my $thd (@thread_list) {
@@ -1265,10 +1238,8 @@ if ($#ARGV < 0) {
 			$enable_duplicate = 1;
 		} elsif ($arg eq '-l' or $arg eq '--list') {
 			$list_mode = 1;
-		} elsif ($arg eq '-t' or $arg eq '--test') {
-			$test_mode = 1;
 		} elsif ($arg eq '-T') {
-			$display_raw_code = 1;
+			$show_mode = 1;
 		} elsif ($arg eq '-m') {
 			if ($#ARGV < 0) {
 				print "ERROR: missing argument for option '$arg'!\n";
@@ -1330,8 +1301,8 @@ if ($list_mode) {
 	exit 1;
 }
 
-if ($display_raw_code) {
-	display_procedure_raw_code $proc_name;
+if ($show_mode) {
+	show_raw_code $proc_name;
 	exit 1;
 }
 
@@ -1393,52 +1364,44 @@ foreach my $variable_name (sort keys %{$used_var_ref}) {
 	}
 }
 
-if ($test_mode) {
-	open LOG_FILE, ">/dev/stderr";
-} else {
-	mkdir LOG_ROOT or die "ERROR: Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
-	mkdir LOG_DIR or die "ERROR: Can't create directory '" . LOG_DIR . "'!";
+mkdir LOG_ROOT or die "ERROR: Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
+mkdir LOG_DIR or die "ERROR: Can't create directory '" . LOG_DIR . "'!";
 
-	open LOG_FILE, ">>" . LOG_ROOT . "/history.log";
-	safe_print UNIQ_ID . "\t$command_line\n";
-	close LOG_FILE;
+open LOG_FILE, ">>" . LOG_ROOT . "/history.log";
+safe_print UNIQ_ID . "\t$command_line\n";
+close LOG_FILE;
 
-	open LOG_FILE, "| tee -ai " . LOG_DIR . "/log";
+open LOG_FILE, "| tee -ai " . LOG_DIR . "/log";
 
-	safe_print "[" . UNIQ_ID . "] $command_line\n";
+safe_print "[" . UNIQ_ID . "] $command_line\n";
 
-	foreach my $sysinfo_proc_name (keys %procedures) {
-		if ($procedures{$sysinfo_proc_name}{type} eq 'sysinfo') {
-			if ($sysinfo_proc_name eq 'sysinfo' or $procedures{$sysinfo_proc_name}{module_file} eq $procedures{$proc_name}{module_file}) {
-				safe_print "Log sysinfo: $sysinfo_proc_name\n";
-				my @args = ();
-				my @log_files = ();
-				my @pipe_struct = ();
-				run_procedure $sysinfo_proc_name, \@args, 0, \@log_files, '', \@pipe_struct;
-			}
+foreach my $sysinfo_proc_name (keys %procedures) {
+	if ($procedures{$sysinfo_proc_name}{type} eq 'sysinfo') {
+		if ($sysinfo_proc_name eq 'sysinfo' or $procedures{$sysinfo_proc_name}{module_file} eq $procedures{$proc_name}{module_file}) {
+			safe_print "Log sysinfo: $sysinfo_proc_name\n";
+			my @args = ();
+			my @log_files = ();
+			my @pipe_struct = ();
+			run_procedure $sysinfo_proc_name, \@args, \@log_files, '', \@pipe_struct;
 		}
 	}
 }
 
 my @log_files = ();
 my @pipe_structure = ();
-my $return_value = run_procedure($proc_name, \@argv, $test_mode, \@log_files, '', \@pipe_structure);
+my $return_value = run_procedure($proc_name, \@argv, \@log_files, '', \@pipe_structure);
 
-if (not $test_mode) {
-	if ($return_value == 0) {
-		safe_print "Pipeline finished successfully!\n";
-	} else {
-		safe_print "Pipeline finished abnormally with exit value: $return_value!\n";
-	}
+if ($return_value == 0) {
+	safe_print "Pipeline finished successfully!\n";
+} else {
+	safe_print "Pipeline finished abnormally with exit value: $return_value!\n";
 }
 close LOG_FILE;
 
-if (not $test_mode) {
-	open LOG_FILE, ">>" . LOG_DIR . "/cmds";
-	foreach my $text (@pipe_structure) {
-		safe_print "$text\n";
-	}
-	close LOG_FILE;
+open LOG_FILE, ">>" . LOG_DIR . "/cmds";
+foreach my $text (@pipe_structure) {
+	safe_print "$text\n";
 }
+close LOG_FILE;
 
 exit $return_value;
