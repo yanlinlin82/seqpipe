@@ -4,10 +4,10 @@
 #
 
 # Load some useful checkers
-. common.inc
+SP_include common.inc
 
 # Load global parameters
-. config.inc
+SP_include config.inc
 
 ###########################################################################
 

@@ -16,9 +16,9 @@ if (eval 'use forks; 1') {
 	require threads;
 	require threads::shared;
 	$can_use_threads = 1;
-	print STDERR "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
+	print "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
 } else {
-	print STDERR "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
+	print "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
 }
 
 # All logs are saved into this directory.
@@ -51,16 +51,10 @@ my %procedures;
 my %global_variables = ( SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dirname abs_path $0) );
 
 # Count how many commands have been run so far.
-my $run_counter :shared;
-$run_counter = 0;
+my $run_counter :shared = 0;
 
 # Flag for exiting (when received KILL or Ctrl+C).
-my $exiting :shared;
-$exiting = 0;
-
-# Module file list for loading at startup.
-my @module_files = ();
-my $disable_loading_default_modules = 0;
+my $exiting :shared = 0;
 
 # Command line entered by user.
 my $command_line = bash_line_encode(abs_path($0), @ARGV);
@@ -150,7 +144,7 @@ sub kill_signal_handler
 {
 	lock($exiting);
 	$exiting = 1;
-	print STDERR "ERROR: Catch KILL signal!\n";
+	print "ERROR: Catch KILL signal!\n";
 }
 $SIG{'INT'} = \&kill_signal_handler;
 $SIG{'ABRT'} = \&kill_signal_handler;
@@ -492,97 +486,118 @@ sub parse_function_code
 	};
 }
 
-sub load_module
+sub load_lines
 {
-	my ($module_file) = @_;
-	my $dir = dirname abs_path $module_file;
-	my $line;
-	my @file_handles = ();
+	my ($file, $loaded_ref, $including_ref) = @_;
+	my @lines = ();
 
-	open MODULE_FILE, $module_file or die "ERROR: Can not open module file '$module_file'!";
-	print STDERR "Load module file '$module_file'\n" if ($verbose and not $test_mode);
-	unshift @file_handles, *MODULE_FILE;
+	if (not exists $loaded_ref->{abs_path($file)}) {
 
-	my $type = '';
-	my %requires = ();
-	my %inputs = ();
-	my %outputs = ();
-	while (scalar @file_handles > 0) {
-		my $file_handle = $file_handles[0];
-		while ($line = <$file_handle>) {
+		open my $handle, $file or die join("\n\t",
+			("ERROR: Can't open file '$file', which is included by:", @{$including_ref})) . "\nFailed";
+		$loaded_ref->{abs_path($file)} = 1;
+
+		my $line_no = 0;
+		while (my $line = <$handle>) {
 			chomp $line;
+			$line_no++;
 
-			if ($line =~ /^\.\s+(\S*)\s*$/) {
-				local *FILE;
-				open FILE, $dir . "/" . $1 or die "WARNING: Can not open module file '$1'!\n";
-				unshift @file_handles, *FILE;
-				$file_handle = *FILE;
-			} elsif ($line =~ /^#\[procedure/) {
-				if ($line !~ /^#\[procedure(\s+(type|require|input|output)="(.*?)")+\s*\]$/) {
-					die "ERROR: Bad format of procedure attribute declaration!";
+			if ($line =~ /^\s*(SP_include|\.)\s(\s*)(.*)$/) { # Process file including
+				my $inc_file = $3;
+				$inc_file = dirname($file) . '/' . $inc_file unless $inc_file =~ /^\//;
+				push @lines, load_lines($inc_file, $loaded_ref, [ "$file($line_no)", @{$including_ref} ]);
+			} else {
+				push @lines, { text => $line, file => $file, line => $line_no };
+			}
+		}
+		close $handle;
+	}
+	return @lines;
+}
+
+sub parsing_error
+{
+	my ($line) = @_;
+	return " in $line->{file}($line->{line}). It failed";
+}
+
+sub load_modules
+{
+	foreach my $file (@_) {
+		my @lines = load_lines($file, {}, []);
+
+		my $type = '';
+		my %requires = ();
+		my %inputs = ();
+		my %outputs = ();
+
+		while (scalar @lines > 0) {
+			my $l = shift @lines;
+
+			if ($l->{text} =~ /^#\[procedure/) {
+				if ($l->{text} !~ /^#\[procedure(\s+(type|require|input|output)="(.*?)")+\s*\]$/) {
+					die "ERROR: Bad procedure attribute declaration" . parsing_error($l);
 				}
-				while ($line =~ /\s+(type|require|input|output)="(.*?)"/g) {
+				while ($l->{text} =~ /\s+(type|require|input|output)="(.*?)"/g) {
 					if ($1 eq 'type') {
-						die "ERROR: Duplicated procedure type declaration!" if $type ne '';
+						die "ERROR: Duplicated procedure type declaration" . parsing_error($l) if $type ne '';
 						$type = $2;
 						if (not exists $valid_procedure_type{$type}) {
-							die "ERROR: Unknown type of procedure: '$type'!";
+							die "ERROR: Unknown procedure type '$type'" . parsing_error($l);
 						}
 					} elsif ($1 eq "require") {
-						die "ERROR: Duplicated require attribute!" if exists $requires{$2};
+						die "ERROR: Duplicated require attribute" . parsing_error($l) if exists $requires{$2};
 						$requires{$2} = 1;
 					} elsif ($1 eq "input") {
-						die "ERROR: Duplicated input attribute!" if exists $inputs{$2};
+						die "ERROR: Duplicated input attribute" . parsing_error($l) if exists $inputs{$2};
 						$inputs{$2} = 1;
 					} elsif ($1 eq "output") {
-						die "ERROR: Duplicated output attribute!" if exists $outputs{$2};
+						die "ERROR: Duplicated output attribute" . parsing_error($l) if exists $outputs{$2};
 						$outputs{$2} = 1;
 					}
 					next;
 				}
-			} elsif ($line =~ /^\s*function\s+/) {
-				die "ERROR: Invalid procedure declaration!" if $line !~ /^function\s+(\w+)\s*$/;
+			} elsif ($l->{text} =~ /^\s*function\s+/) {
+				die "ERROR: Invalid procedure declaration!" if $l->{text} !~ /^function\s+(\w+)\s*$/;
 
 				# Treat functions without type declearation as a 'stage'.
 				$type = 'stage' if $type eq '';
 
 				my $procedure_name = $1;
 				if (exists $procedures{$procedure_name}) {
-					print STDERR "WARNING: Redeclaration of procedure '$procedure_name'\n"
+					print "WARNING: Redeclaration of procedure '$procedure_name'\n"
 						if $verbose or not $enable_duplicate;
 					die "You may use '-d' option to enable the duplicated procedure declaration."
 						unless $enable_duplicate;
 				}
 
-				$line = <$file_handle>;
-				chomp $line;
-				if ($line !~ /^{\s*$/) {
+				$l = shift @lines;
+				if ($l->{text} !~ /^{\s*$/) {
 					die "ERROR: Invalid procedure declaration! Line '{' expected!";
 				}
 
 				my @code_lines = ();
-				while ($line = <$file_handle>) {
-					chomp $line;
-					last if $line =~ /^}\s*$/;
-					push @code_lines, $line;
+				while ($l = shift @lines) {
+					last if $l->{text} =~ /^}\s*$/;
+					push @code_lines, $l->{text};
 				}
-				if ($line !~ /^}\s*$/) {
+				if ($l->{text} !~ /^}\s*$/) {
 					die "ERROR: Invalid procedure declaration! Line '}' expected!";
 				}
 
-				parse_function_code $procedure_name, $type, $module_file, \@code_lines, \%requires, \%inputs, \%outputs;
+				parse_function_code $procedure_name, $type, $file, \@code_lines, \%requires, \%inputs, \%outputs;
 				$type = '';
 				%requires = ();
 				%inputs = ();
 				%outputs = ();
 
-			} elsif ($line =~ /^\s*(\w+)=(.*)$/) {
+			} elsif ($l->{text} =~ /^\s*(\w+)=(.*)$/) {
 				my $option_name = $1;
 				my $option_value = $2;
 				$option_value =~ s/\s+#.*$//g;      # Remove tailing comments and whitespaces.
 				$option_value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
 				if (exists $global_variables{$option_name}) {
-					print STDERR "WARNING: Reassignment of global variable '$option_name'\n"
+					print "WARNING: Reassignment of global variable '$option_name'\n"
 						if $verbose or not $enable_duplicate;
 					die "ERROR: You may use '-d' option to enable the duplicated global variable declaration."
 						unless $enable_duplicate;
@@ -600,9 +615,10 @@ sub load_module
 				print "$option_name=$option_value\n" if $verbose;
 			}
 		}
-		close $file_handle;
-		shift @file_handles;
 	}
+
+	printf "All %d module file(s) loaded, including %d procedure(s).\n",
+		scalar @_, scalar keys %procedures if $verbose;
 }
 
 sub print_usage
@@ -687,11 +703,11 @@ sub display_procedure_raw_code
 	my ($procedure_name) = @_;
 
 	if ($procedure_name eq '') {
-		print STDERR "ERROR: <procedure_name> is required for '-T'!\n";
+		print "ERROR: <procedure_name> is required for '-T'!\n";
 		return;
 	}
 	if (not exists $procedures{$procedure_name}) {
-		print STDERR "ERROR: Unknown procedure '$procedure_name'! Use '-l' option to list available procedures.\n";
+		print "ERROR: Unknown procedure '$procedure_name'! Use '-l' option to list available procedures.\n";
 		return;
 	}
 	my %procedure = %{$procedures{$procedure_name}};
@@ -1139,7 +1155,7 @@ sub run_procedure
 		} else {
 			if ($command eq '{{') {
 				if ($in_parallel) {
-					print STDERR "ERROR: Already in parallel mode, duplicated '$command'!";
+					print "ERROR: Already in parallel mode, duplicated '$command'!";
 					return -1;
 				}
 				$in_parallel = 1;
@@ -1148,7 +1164,7 @@ sub run_procedure
 			}
 			if ($command eq '}}') {
 				if (not $in_parallel) {
-					print STDERR "ERROR: Not in parallel mode, unexpected '$command'!";
+					print "ERROR: Not in parallel mode, unexpected '$command'!";
 					return -1;
 				}
 				$in_parallel = 0;
@@ -1225,6 +1241,9 @@ my @argv = ();
 my $procedure_name = '';
 my %option_from_cmd = ();
 
+my @module_files = ();
+my $disable_loading_default_modules = 0;
+
 if ($#ARGV < 0) {
 	$help_mode = 1;
 } else {
@@ -1248,7 +1267,7 @@ if ($#ARGV < 0) {
 			$display_raw_code = 1;
 		} elsif ($arg eq '-m') {
 			if ($#ARGV < 0) {
-				print STDERR "ERROR: missing argument for option '$arg'!\n";
+				print "ERROR: missing argument for option '$arg'!\n";
 				exit 1;
 			}
 			push(@module_files, shift @ARGV);
@@ -1258,22 +1277,22 @@ if ($#ARGV < 0) {
 			$strict_mode = 1;
 		} elsif ($arg eq '-e') {
 			if ($#ARGV < 0) {
-				print STDERR "ERROR: missing argument for option '$arg'!\n";
+				print "ERROR: missing argument for option '$arg'!\n";
 				exit 1;
 			}
 			if ($execute_command ne '') {
-				print STDERR "ERROR: duplicated '-e' option!\n";
+				print "ERROR: duplicated '-e' option!\n";
 				exit 1;
 			}
 			$execute_command = shift @ARGV;
 		} elsif ($arg eq '-s') {
 			if ($#ARGV < 0) {
-				print STDERR "ERROR: missing argument for option '$arg'!\n";
+				print "ERROR: missing argument for option '$arg'!\n";
 				exit 1;
 			}
 			$shell = shift @ARGV;
 		} elsif ($arg =~ '^-') {
-			print STDERR "ERROR: Unknown option '$arg'!\n";
+			print "ERROR: Unknown option '$arg'!\n";
 			exit 1;
 		} else {
 			if ($arg =~ /^(\w+)=(.*)$/) {
@@ -1284,7 +1303,7 @@ if ($#ARGV < 0) {
 				if ($procedure_name eq '') {
 					$procedure_name = $arg;
 				} else {
-					print STDERR "ERROR: Invalid format of option: $arg\n";
+					print "ERROR: Invalid format of option: $arg\n";
 					exit 1;
 				}
 			}
@@ -1293,21 +1312,14 @@ if ($#ARGV < 0) {
 }
 
 if ($procedure_name ne '' and $execute_command ne '') {
-	print STDERR "ERROR: can not use both '-e' and '<procedure_name>'!\n";
+	print "ERROR: can not use both '-e' and '<procedure_name>'!\n";
 	exit 1;
 }
 
 if (not $disable_loading_default_modules) {
 	@module_files = (glob((dirname abs_path $0) . '/*.pipe'), @module_files);
 }
-foreach my $module_file (@module_files) {
-	load_module $module_file;
-}
-
-if ($verbose) {
-	printf STDERR "All %d module file(s) loaded, including %d procedure(s).\n",
-		scalar @module_files, scalar keys %procedures;
-}
+load_modules @module_files;
 
 if ($list_mode) {
 	list_procedures;
@@ -1331,7 +1343,7 @@ if ($execute_command ne '') {
 }
 
 if ($procedure_name ne '' and not exists $procedures{$procedure_name}) {
-	print STDERR "ERROR: Unknown procedure '$procedure_name'! Use '-l' option to list available procedures.\n";
+	print "ERROR: Unknown procedure '$procedure_name'! Use '-l' option to list available procedures.\n";
 	exit 1;
 }
 
@@ -1345,7 +1357,7 @@ if ($help_mode) {
 }
 
 if ($procedure_name eq '') {
-	print STDERR "ERROR: No procedure name provided!\n";
+	print "ERROR: No procedure name provided!\n";
 	print_usage;
 	exit 1;
 }
@@ -1366,7 +1378,7 @@ foreach my $variable_name (sort keys %{$used_var_ref}) {
 	}
 	if ($default_value eq "" and not exists $defined_var_ref->{$variable_name}) {
 		if (not exists $option_from_cmd{$variable_name}) {
-			printf STDERR "ERROR: Option '$variable_name' is required for procedure '$procedure_name'!\n";
+			printf "ERROR: Option '$variable_name' is required for procedure '$procedure_name'!\n";
 			exit 1;
 		}
 	}
