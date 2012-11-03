@@ -43,7 +43,8 @@ my $execute_command = '';
 my $shell = '/bin/bash';
 
 # All procedures are loaded at startup.
-my %procedures;
+my %procedures = ();
+my @blocks = ();
 
 # Global variables (which are defined outside procedures in .pipe files).
 my %global_variables = ( SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dirname abs_path $0) );
@@ -292,30 +293,6 @@ sub append_command
 		$command = '}}';
 	}
 
-	my $merge_commands = 0;
-	if ($type ne 'pipeline' and $type ne 'stage') {
-		if (scalar(@requires) == 0 and scalar(@inputs) == 0 and scalar(@outputs) == 0) {
-			if (scalar(@{$commands_ref}) > 0) {
-				my $cmd_ref = ${$commands_ref}[-1];
-				if (scalar(@{$cmd_ref->{requires}}) == 0 and scalar(@{$cmd_ref->{inputs}}) == 0 and scalar(@{$cmd_ref->{outputs}}) == 0) {
-					$merge_commands = 1;
-				}
-			}
-		}
-	}
-
-	if ($merge_commands) {
-		${$commands_ref}[-1]->{command} .= "\n" . $command;
-	} else {
-		push(@{$commands_ref}, {
-				command => $command,
-				requires => \@requires,
-				inputs => \@inputs,
-				outputs => \@outputs,
-				temp_outputs => $temp_outputs_ref,
-				final_outputs => $final_outputs_ref });
-	}
-
 	foreach my $item ($command, @requires, @inputs, @outputs) {
 		while ($item =~ /\${(\w+)}/g) {
 			my $variable_name = $1;
@@ -324,6 +301,8 @@ sub append_command
 			}
 		}
 	}
+
+	return { command => $command, requires => \@requires, inputs => \@inputs, outputs => \@outputs, temp_outputs => $temp_outputs_ref, final_outputs => $final_outputs_ref };
 }
 
 sub add_workflow_attribute
@@ -357,7 +336,16 @@ sub add_workflow_attribute
 	}
 }
 
-sub parse_function_code
+sub cmd_nodep
+{
+	my ($cmd_ref) = @_;
+	return 0 if scalar @{$cmd_ref->{requires}} > 0;
+	return 0 if scalar @{$cmd_ref->{inputs}} > 0;
+	return 0 if scalar @{$cmd_ref->{outputs}} > 0;
+	return 1;
+}
+
+sub parse_block
 {
 	my ($blocking, $type, $module_file, $lines_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
 	my %requires = %{$requires_ref};
@@ -395,6 +383,12 @@ sub parse_function_code
 				last if $1 eq '}}';
 				die "ERROR: Unmatched curly bracket! Line '}}' expected!";
 			}
+		} elsif ($line =~ /^\s*({|{{)\s*(|#.*)$/) {
+			my $sub_blocking = $1;
+			my $block_index = scalar @blocks;
+			push @blocks, parse_block($sub_blocking, $type, $module_file, $lines_ref, $requires_ref, $inputs_ref, $outputs_ref);
+			push @commands, { command => '', block => $block_index, requires => [], inputs => [], outputs => [] };
+			next;
 		}
 
 		# Skip comment line
@@ -434,10 +428,17 @@ sub parse_function_code
 				}
 			}
 		} elsif ($line !~ /^\s*$/) {
-			append_command \@commands, $type,
+			my $cmd_ref = append_command(\@commands, $type,
 				\%defined_variables, \%eval_variables, \%used_variables, $line,
 				\@command_requires, \@command_inputs, \@command_outputs,
-				\@command_temp_outputs, \@command_final_outputs;
+				\@command_temp_outputs, \@command_final_outputs);
+			
+			if (($type ne 'pipeline' and $type ne 'stage')
+					and cmd_nodep($cmd_ref) and (scalar @commands > 0) and cmd_nodep($commands[-1])) {
+				$commands[-1]->{command} .= "\n" . $cmd_ref->{command};
+			} else {
+				push @commands, $cmd_ref;
+			}
 
 			foreach my $output (@command_outputs, @command_final_outputs) {
 				if (@command_requires) {
@@ -597,7 +598,7 @@ sub load_modules
 					}
 				}
 
-				$procedures{$proc_name} = parse_function_code($blocking, $type, $file, \@lines, \%requires, \%inputs, \%outputs);
+				$procedures{$proc_name} = parse_block($blocking, $type, $file, \@lines, \%requires, \%inputs, \%outputs);
 				$type = '';
 				%requires = ();
 				%inputs = ();
@@ -710,6 +711,51 @@ sub list_procedures
 	print "\n";
 }
 
+sub display_block
+{
+	my ($block_ref, $indent) = @_;
+	my %procedure = %{$block_ref};
+
+	printf "$indent%s\n", ($procedure{parallel} ? '{{' : '{');
+
+	my $block_start = 1;
+	foreach my $cmd_ref (@{$procedure{commands}}) {
+
+		if ($cmd_ref->{command} eq '{{' or scalar @{$cmd_ref->{requires}} > 0 or scalar @{$cmd_ref->{inputs}} > 0 or scalar @{$cmd_ref->{outputs}} > 0) {
+			if (not $block_start and $cmd_ref->{command} !~ '^(SP_set|}})') {
+				print "\n";
+			}
+
+			foreach my $require (@{$cmd_ref->{requires}}) {
+				print "$indent\t#[command require=\"$require\"]\n";
+			}
+			foreach my $input (@{$cmd_ref->{inputs}}) {
+				print "$indent\t#[command input=\"$input\"]\n";
+			}
+			foreach my $output (@{$cmd_ref->{outputs}}) {
+				if (not is_in_array($output, @{$cmd_ref->{temp_outputs}}) and not is_in_array($output, @{$cmd_ref->{final_outputs}})) {
+					print "$indent\t#[command output=\"$output\"]\n";
+				}
+			}
+			foreach my $temp_output (@{$cmd_ref->{temp_outputs}}) {
+				print "$indent\t#[command output.temp=\"$temp_output\"]\n";
+			}
+			foreach my $final_output (@{$cmd_ref->{final_outputs}}) {
+				print "$indent\t#[command output.final=\"$final_output\"]\n";
+			}
+		}
+
+		if ($cmd_ref->{command} eq '') {
+			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
+		} else {
+			print "$indent\t$cmd_ref->{command}\n";
+		}
+		$block_start = ($cmd_ref->{command} eq '{{');
+	}
+
+	printf "$indent%s\n", ($procedure{parallel} ? '}}' : '}');
+}
+
 sub display_procedure_raw_code
 {
 	my ($proc_name) = @_;
@@ -737,40 +783,8 @@ sub display_procedure_raw_code
 	}
 
 	print "function $proc_name\n";
-	printf "%s\n", ($procedure{parallel} ? '{{' : '{');
 
-	my $block_start = 1;
-	foreach my $command_ref (@{$procedure{commands}}) {
-		my %command = %{$command_ref};
-
-		if ($command{command} eq '{{' or scalar @{$command{requires}} > 0 or scalar @{$command{inputs}} > 0 or scalar @{$command{outputs}} > 0) {
-			if (not $block_start and $command{command} !~ '^(SP_set|}})') {
-				print "\n";
-			}
-
-			foreach my $require (@{$command{requires}}) {
-				print "\t#[command require=\"$require\"]\n";
-			}
-			foreach my $input (@{$command{inputs}}) {
-				print "\t#[command input=\"$input\"]\n";
-			}
-			foreach my $output (@{$command{outputs}}) {
-				if (not is_in_array($output, @{$command{temp_outputs}}) and not is_in_array($output, @{$command{final_outputs}})) {
-					print "\t#[command output=\"$output\"]\n";
-				}
-			}
-			foreach my $temp_output (@{$command{temp_outputs}}) {
-				print "\t#[command output.temp=\"$temp_output\"]\n";
-			}
-			foreach my $final_output (@{$command{final_outputs}}) {
-				print "\t#[command output.final=\"$final_output\"]\n";
-			}
-		}		
-		print "\t$command{command}\n";
-		$block_start = ($command{command} eq '{{');
-	}
-
-	printf "%s\n", ($procedure{parallel} ? '}}' : '}');
+	display_block \%procedure, '';
 }
 
 sub check_requires_inputs_outputs
@@ -829,7 +843,7 @@ sub check_requires_inputs_outputs
 
 sub run_command
 {
-	my ($proc_name, $procedure_type, $command, $record_id, $outputs_ref, $is_test_mode, $indent) = @_;
+	my ($proc_name, $procedure_type, $command, $block_id, $record_id, $outputs_ref, $is_test_mode, $indent) = @_;
 
 	my $return_value = 0;
 	my @log_files = ();
@@ -847,6 +861,8 @@ sub run_command
 		my $proc_name = shift @procedure_options;
 
 		$return_value = run_procedure($proc_name, \@procedure_options, $is_test_mode, \@log_files, $indent, \@pipe_structure);
+	} elsif ($command eq '') {
+		$return_value = run_block('', $blocks[$block_id], [], $is_test_mode, \@log_files, $indent, \@pipe_structure);
 	} else {
 		my $command_with_log = '';
 		if ($procedure_type eq 'sysinfo') {
@@ -1213,7 +1229,7 @@ sub run_block
 
 			if ($can_use_threads) {
 				my $thd = threads->create({'context' => 'list'}, \&run_command,
-					$proc_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode, $indent . "  ");
+					$proc_name, $procedure{type}, $command, $command_struct_ref->{block}, $record_id, \@output_set, $is_test_mode, $indent . "  ");
 
 				if ($in_parallel) {
 					push @thread_list, $thd;
@@ -1226,7 +1242,7 @@ sub run_block
 			} else {
 				my ($return_log_files_ref, $return_pipe_structure_ref);
 				($return_value, $return_log_files_ref, $return_pipe_structure_ref) = run_command(
-					$proc_name, $procedure{type}, $command, $record_id, \@output_set, $is_test_mode, $indent . "  ");
+					$proc_name, $procedure{type}, $command, $command_struct_ref->{block}, $record_id, \@output_set, $is_test_mode, $indent . "  ");
 				push @{$log_files_ref}, @{$return_log_files_ref};
 				push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 			}
@@ -1371,7 +1387,7 @@ if ($execute_command ne '') {
 	my %requires = ();
 	my %inputs = ();
 	my %outputs = ();
-	$procedures{$proc_name} = parse_function_code('{', $type, $module_file, \@lines, \%requires, \%inputs, \%outputs);
+	$procedures{$proc_name} = parse_block('{', $type, $module_file, \@lines, \%requires, \%inputs, \%outputs);
 }
 
 if ($proc_name ne '' and not exists $procedures{$proc_name}) {
