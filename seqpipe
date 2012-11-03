@@ -374,7 +374,7 @@ sub parse_block
 		}
 		my $line_ref = shift @{$lines_ref};
 		my $line = $line_ref->{text};
-		if ($line =~ /^\s*(}|}})\s*(|#.*)$/) {
+		if ($line =~ /^\s*(\}|\}\})\s*(|#.*)$/) {
 			if ($blocking eq '{') {
 				last if $1 eq '}';
 				die "ERROR: Unmatched curly bracket! Line '}' expected!";
@@ -383,10 +383,10 @@ sub parse_block
 				last if $1 eq '}}';
 				die "ERROR: Unmatched curly bracket! Line '}}' expected!";
 			}
-		} elsif ($line =~ /^\s*({|{{)\s*(|#.*)$/) {
+		} elsif ($line =~ /^\s*(\{|\{\{)\s*(|#.*)$/) {
 			my $sub_blocking = $1;
-			my $block_index = scalar @blocks;
 			push @blocks, parse_block($sub_blocking, $type, $module_file, $lines_ref, $requires_ref, $inputs_ref, $outputs_ref);
+			my $block_index = scalar @blocks - 1;
 			push @commands, { command => '', block => $block_index, requires => [], inputs => [], outputs => [] };
 			next;
 		}
@@ -874,7 +874,7 @@ sub run_command
 			my $name = $argv[0];
 			$name =~ s/\W//g;
 			$name = LOG_DIR . "/$record_id." . $name;
-			$name .= "_$argv[1]" if $argv[1] =~ /^\w+$/;
+			$name .= "_$argv[1]" if defined $argv[1] and $argv[1] =~ /^\w+$/;
 			$command_with_log = "($command) >>$name.log 2>>$name.err";
 
 			push @log_files, "$name.log";
