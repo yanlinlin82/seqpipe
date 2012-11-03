@@ -359,8 +359,7 @@ sub add_workflow_attribute
 
 sub parse_function_code
 {
-	my ($proc_name, $type, $module_file, $code_lines_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
-	my @code_lines = @{$code_lines_ref};
+	my ($blocking, $type, $module_file, $lines_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
 	my %requires = %{$requires_ref};
 	my %inputs = %{$inputs_ref};
 	my %outputs = %{$outputs_ref};
@@ -380,8 +379,23 @@ sub parse_function_code
 	my @command_outputs = ();
 	my @command_temp_outputs = ();
 	my @command_final_outputs = ();
-	while (scalar @code_lines > 0) {
-		$line = shift @code_lines;
+
+	while (1) {
+		if (scalar @{$lines_ref} <= 0) {
+			die "ERROR: Invalid procedure declaration! Line '}' or '}}' expected!";
+		}
+		my $line_ref = shift @{$lines_ref};
+		my $line = $line_ref->{text};
+		if ($line =~ /^\s*(}|}})\s*(|#.*)$/) {
+			if ($blocking eq '{') {
+				last if $1 eq '}';
+				die "ERROR: Unmatched curly bracket! Line '}' expected!";
+			}
+			if ($blocking eq '{{') {
+				last if $1 eq '}}';
+				die "ERROR: Unmatched curly bracket! Line '}}' expected!";
+			}
+		}
 
 		# Skip comment line
 		next if $line =~ /^\s*#/ and $line !~ /^\s*#\[command.*\]\s*$/;
@@ -480,7 +494,8 @@ sub parse_function_code
 		defined_variables => \%defined_variables,
 		eval_variables    => \%eval_variables,
 		used_variables    => \%used_variables,
-		module_file       => abs_path($module_file)
+		module_file       => abs_path($module_file),
+		parallel          => ($blocking eq '{{' ? 1 : 0)
 	};
 }
 
@@ -556,12 +571,13 @@ sub load_modules
 					next;
 				}
 			} elsif ($l->{text} =~ /^\s*function\s+/) {
-				die "ERROR: Invalid procedure declaration!" if $l->{text} !~ /^function\s+(\w+)\s*$/;
+				die "ERROR: Invalid procedure declaration!" if $l->{text} !~ /^function\s+(\w+)\s*(\{|\{\{|)\s*$/;
+				my $proc_name = $1;
+				my $blocking = $2;
 
 				# Treat functions without type declearation as a 'stage'.
 				$type = 'stage' if $type eq '';
 
-				my $proc_name = $1;
 				if (exists $procedures{$proc_name}) {
 					print "WARNING: Redeclaration of procedure '$proc_name'\n"
 						if $verbose or not $enable_duplicate;
@@ -569,21 +585,19 @@ sub load_modules
 						unless $enable_duplicate;
 				}
 
-				$l = shift @lines;
-				if ($l->{text} !~ /^{\s*$/) {
-					die "ERROR: Invalid procedure declaration! Line '{' expected!";
+				if ($blocking eq '') {
+					while (1) {
+						$l = shift @lines;
+						next if $l->{text} =~ /^\s*$/;
+						if ($l->{text} =~ /^\s*(\{|\{\{)\s*$/) {
+							$blocking = $1;
+							last;
+						}
+						die "ERROR: Invalid procedure declaration! Line '{' or '{{' expected" . parsing_error($l);
+					}
 				}
 
-				my @code_lines = ();
-				while ($l = shift @lines) {
-					last if $l->{text} =~ /^}\s*$/;
-					push @code_lines, $l->{text};
-				}
-				if ($l->{text} !~ /^}\s*$/) {
-					die "ERROR: Invalid procedure declaration! Line '}' expected!";
-				}
-
-				$procedures{$proc_name} = parse_function_code($proc_name, $type, $file, \@code_lines, \%requires, \%inputs, \%outputs);
+				$procedures{$proc_name} = parse_function_code($blocking, $type, $file, \@lines, \%requires, \%inputs, \%outputs);
 				$type = '';
 				%requires = ();
 				%inputs = ();
@@ -723,7 +737,7 @@ sub display_procedure_raw_code
 	}
 
 	print "function $proc_name\n";
-	print "{\n";
+	printf "%s\n", ($procedure{parallel} ? '{{' : '{');
 
 	my $block_start = 1;
 	foreach my $command_ref (@{$procedure{commands}}) {
@@ -756,7 +770,7 @@ sub display_procedure_raw_code
 		$block_start = ($command{command} eq '{{');
 	}
 
-	print "}\n";
+	printf "%s\n", ($procedure{parallel} ? '}}' : '}');
 }
 
 sub check_requires_inputs_outputs
@@ -924,6 +938,19 @@ sub eval_string
 sub run_procedure
 {
 	my ($proc_name, $argv_ref, $is_test_mode, $log_files_ref, $indent, $pipe_structure_ref) = @_;
+	
+	if (not exists $procedures{$proc_name}) {
+		safe_print "ERROR: Unknown procedure '$proc_name'! Use 'seqpipe -l' to list available procedures.\n";
+		return -1;
+	}
+	my %procedure = %{$procedures{$proc_name}};
+
+	return run_block($proc_name, \%procedure, $argv_ref, $is_test_mode, $log_files_ref, $indent, $pipe_structure_ref);
+}
+
+sub run_block
+{
+	my ($proc_name, $block_ref, $argv_ref, $is_test_mode, $log_files_ref, $indent, $pipe_structure_ref) = @_;
 	my $return_value = 0;
 
 	{
@@ -931,11 +958,7 @@ sub run_procedure
 		return -1 if $exiting;
 	}
 
-	if (not exists $procedures{$proc_name}) {
-		safe_print "ERROR: Unknown procedure '$proc_name'! Use 'seqpipe -l' to list available procedures.\n";
-		return -1;
-	}
-	my %procedure = %{$procedures{$proc_name}};
+	my %procedure = %{$block_ref};
 
 	my %variables;
 	foreach my $arg (keys %{$procedure{used_variables}}) {
@@ -1022,7 +1045,7 @@ sub run_procedure
 		safe_print "$indent($record_id) starts at " . time_string($start_time) . "\n";
 	}
 
-	my $in_parallel = 0;
+	my $in_parallel = $procedure{parallel};
 	my @thread_list = ();
 	foreach my $command_struct_ref (@{$procedure{commands}}) {
 		my $command = $command_struct_ref->{command};
@@ -1156,7 +1179,7 @@ sub run_procedure
 					return -1;
 				}
 				$in_parallel = 1;
-				push @{$pipe_structure_ref}, $depth_text . ">>>>>";
+				push @{$pipe_structure_ref}, $depth_text . "{{";
 				next;
 			}
 			if ($command eq '}}') {
@@ -1174,7 +1197,7 @@ sub run_procedure
 					}
 					@thread_list = ();
 				}
-				push @{$pipe_structure_ref}, $depth_text . "<<<<<";
+				push @{$pipe_structure_ref}, $depth_text . "}}";
 				next;
 			}
 
@@ -1210,6 +1233,16 @@ sub run_procedure
 			last if exists $exit_on_error{$procedure{type}} and $return_value != 0;
 		}
 	}
+	if (scalar @thread_list > 0) {
+		foreach my $thd (@thread_list) {
+			my ($return_log_files_ref, $return_pipe_structure_ref);
+			($return_value, $return_log_files_ref, $return_pipe_structure_ref) = $thd->join();
+			push @{$log_files_ref}, @{$return_log_files_ref};
+			push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
+		}
+		@thread_list = ();
+	}
+	push @{$pipe_structure_ref}, $depth_text . "}}";
 
 	if (not $keep_intermediates) {
 		foreach my $item (@{$procedure{temps}}) {
@@ -1326,14 +1359,19 @@ if ($display_raw_code) {
 }
 
 if ($execute_command ne '') {
-	my @code_lines = split(/\n/, $execute_command);
+	my $line_no = 0;
+	my @lines = ();
+	foreach my $line (split(/\n/, $execute_command), '}') {
+		$line_no++;
+		push @lines, { text => $line, file => '', line => $line_no };
+	}
 	$proc_name = "seqpipe_execute_$$";
 	my $type = 'stage';
 	my $module_file = '';
 	my %requires = ();
 	my %inputs = ();
 	my %outputs = ();
-	$procedures{$proc_name} = parse_function_code($proc_name, $type, $module_file, \@code_lines, \%requires, \%inputs, \%outputs);
+	$procedures{$proc_name} = parse_function_code('{', $type, $module_file, \@lines, \%requires, \%inputs, \%outputs);
 }
 
 if ($proc_name ne '' and not exists $procedures{$proc_name}) {
