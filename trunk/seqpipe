@@ -1336,12 +1336,16 @@ if ($procedure_name ne '' and not exists $procedures{$procedure_name}) {
 }
 
 if ($help_mode) {
-	show_parameters $procedure_name;
+	if ($procedure_name eq '') {
+		print_usage;
+	} else {
+		show_parameters $procedure_name;
+	}
 	exit 1;
 }
 
 if ($procedure_name eq '') {
-	print STDERR "ERROR: No procedure name provided!\n" if not $help_mode;
+	print STDERR "ERROR: No procedure name provided!\n";
 	print_usage;
 	exit 1;
 }
