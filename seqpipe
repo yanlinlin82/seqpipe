@@ -41,6 +41,7 @@ my $enable_duplicate = 0;
 my $execute_command = '';
 my $shell = '/bin/bash';
 my $obsolete_warned = 0;
+my $max_thread_number = 2;
 
 # All procedures are loaded at startup.
 my %procedures = ();
@@ -702,14 +703,15 @@ Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
 
 Options:
    -h / --help       Show this help or require parameters for a procedure.
+   -m <file>         Load procedure module file, this option can be used many times.
+   -l / --list       List current available procedures.
+   -t <max_thread>   Max thread number, 0 for unlimited. default: ' . $max_thread_number . '
+   -T                Print the raw procedure declaration.
    -v / --verbose    Show verbose message.
    -q / --quiet      Do not show warning messages.
-   -m <file>         Load procedure module file, this option can be used many times.
    -k                Keep intermediate files.
    -d                Enable duplcated global variables and procedures (overwrited as the latters).
    -D                Disable loading default pipeline modules.
-   -l / --list       List current available procedures.
-   -T                Print the raw procedure declaration.
    -e <cmd>          Direct run a command as a stage-type procedure.
    -s <shell>        Send commands to another shell (such as "qsub"), default: ' . $shell . '
    -S                Strict mode, which will check return value of every command in pipe.
@@ -1224,7 +1226,15 @@ sub run_block
 			next;
 		}
 
-		if ($can_use_threads) {
+		if ($can_use_threads and $max_thread_number != 1) {
+			if ($max_thread_number > 0) {
+				while (1) {
+					my $thread_number = 0;
+					$thread_number += ($_->is_running()) foreach(threads->list());
+					last if $thread_number < $max_thread_number;
+					sleep 1;
+				}
+			}
 			my $thd = threads->create({'context' => 'list'}, \&run_command,
 				$proc_name, $procedure{type}, $command, $command_struct_ref, \@output_set, $indent . "  ", $variables_ref, $option_from_cmd_ref);
 
@@ -1296,6 +1306,16 @@ if ($#ARGV < 0) {
 			$list_mode = 1;
 		} elsif ($arg eq '-q') {
 			$quiet_mode = 1;
+		} elsif ($arg eq '-t') {
+			if ($#ARGV < 0) {
+				print "ERROR: missing argument for option '$arg'!\n";
+				exit 1;
+			}
+			$max_thread_number = shift @ARGV;
+			if ($max_thread_number < 0) {
+				print "ERROR: invalid max thread number: $max_thread_number!\n";
+				exit 1;
+			}
 		} elsif ($arg eq '-T') {
 			$show_mode = 1;
 		} elsif ($arg eq '-m') {
