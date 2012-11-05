@@ -36,6 +36,7 @@ my $help_mode = 0;
 my $verbose = 0;
 my $list_mode = 0;
 my $show_mode = 0;
+my $quiet_mode = 0;
 my $keep_intermediates = 0;
 my $enable_duplicate = 0;
 my $execute_command = '';
@@ -358,7 +359,10 @@ sub parse_block
 			}
 		} elsif ($line =~ /^\s*(\{|\{\{|SP_parallel_begin)\s*(|#.*)$/) {
 			my $sub_blocking = $1;
-			$sub_blocking = '{{' if $sub_blocking eq 'SP_parallel_begin';
+			if ($sub_blocking eq 'SP_parallel_begin') {
+				print "WARNING: 'SP_parallel_begin' and 'SP_parallel_end' are obsolete, use '{{' and '}}' instead!\n" if not $quiet_mode;
+				$sub_blocking = '{{';
+			}
 			push @blocks, parse_block($sub_blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
 			my $block_index = scalar @blocks - 1;
 			push @commands, { command => '', block => $block_index, requires => {}, inputs => {}, outputs => {} };
@@ -551,11 +555,8 @@ sub parse_proc
 			# Treat functions without type declearation as a 'stage'.
 			$type = 'stage' if $type eq '';
 
-			if (exists $procedures{$proc_name}) {
-				print "WARNING: Redeclaration of procedure '$proc_name'\n"
-					if $verbose or not $enable_duplicate;
-				die "You may use '-d' option to enable the duplicated procedure declaration."
-					unless $enable_duplicate;
+			if (exists $procedures{$proc_name} and not $enable_duplicate) {
+				die "ERROR: Redeclaration of procedure '$proc_name'" . parsing_error($l);
 			}
 
 			if ($blocking eq '') {
@@ -605,11 +606,8 @@ sub parse_proc
 			my $option_value = $2;
 			$option_value =~ s/\s+#.*$//g;      # Remove tailing comments and whitespaces.
 			$option_value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
-			if (exists $global_variables{$option_name}) {
-				print "WARNING: Reassignment of global variable '$option_name'\n"
-					if $verbose or not $enable_duplicate;
-				die "ERROR: You may use '-d' option to enable the duplicated global variable declaration."
-					unless $enable_duplicate;
+			if (exists $global_variables{$option_name} and not $enable_duplicate) {
+				die "ERROR: Redeclaration of global variable '$option_name'" . parsing_error($l);
 			}
 			while ($option_value =~ /\${(\w+)}/g) {
 				my $name = $1;
@@ -638,6 +636,7 @@ Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
 Options:
    -h / --help       Show this help or require parameters for a procedure.
    -v / --verbose    Show verbose message.
+   -q / --quiet      Do not show warning messages.
    -m <file>         Load procedure module file, this option can be used many times.
    -k                Keep intermediate files.
    -d                Enable duplcated global variables and procedures (overwrited as the latters).
@@ -999,17 +998,7 @@ sub run_procedure
 	}
 	my %procedure = %{$procedures{$proc_name}};
 
-	my %variables;
-	foreach my $arg (keys %{$procedure{used_variables}}) {
-		if (${$procedure{used_variables}}{$arg} ne "") {
-			$variables{$arg} = ${$procedure{used_variables}}{$arg};
-		}
-	}
-	foreach my $arg (keys %{$procedure{used_variables}}) {
-		if (exists $global_variables{$arg} and $global_variables{$arg} ne "") {
-			$variables{$arg} = $global_variables{$arg};
-		}
-	}
+	my %variables = %global_variables;
 	my %option_from_cmd = ();
 	foreach my $arg (@{$argv_ref}) {
 		if ($arg =~ /^(\w+)=(.*)$/) {
@@ -1079,7 +1068,7 @@ sub run_procedure
 
 	my $value = run_block($proc_name, \%procedure, $argv_ref, $log_files_ref, $indent, $pipe_structure_ref, \%variables, \%option_from_cmd);
 
-	if (not $keep_intermediates) {
+	if ($value == 0 and not $keep_intermediates) {
 		foreach my $item (keys %{$procedure{temp_outputs}}) {
 			my $file = eval_string($item, \%variables);
 			if (-e $file) {
@@ -1285,6 +1274,8 @@ if ($#ARGV < 0) {
 			$enable_duplicate = 1;
 		} elsif ($arg eq '-l' or $arg eq '--list') {
 			$list_mode = 1;
+		} elsif ($arg eq '-q') {
+			$quiet_mode = 1;
 		} elsif ($arg eq '-T') {
 			$show_mode = 1;
 		} elsif ($arg eq '-m') {
