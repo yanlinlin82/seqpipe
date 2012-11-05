@@ -30,7 +30,7 @@ function sysinfo
 	echo    "   "${SEQPIPE_ROOT}/${SEQPIPE}
 	echo -n "      "; ${SEQPIPE_ROOT}/${SEQPIPE} | grep Version
 	echo 'Modules: '
-	ls $(dirname $(realpath $(which seqpipe)))/*.pipe \
+	ls ${SEQPIPE_ROOT}/*.pipe \
 		| while read FILE; do \
 			echo    "   $FILE"; \
 			echo -n "      "; \
