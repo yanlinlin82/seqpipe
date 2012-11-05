@@ -1,0 +1,15 @@
+#!/bin/bash
+
+function demo_blocks
+{{
+	echo a; sleep 3; echo b
+	echo c; sleep 2; echo d
+	{
+		echo e
+		sleep 1
+		{{
+			echo f; sleep 4; echo g
+			echo h; sleep 3; echo i
+		}}
+	}
+}}
