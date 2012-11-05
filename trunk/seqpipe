@@ -315,6 +315,7 @@ sub parse_cmd
 			$cmd_ref->{command} = 'SP_for';
 			$cmd_ref->{variable} = $1;
 			$cmd_ref->{text} = $2;
+			push @{$cmd_ref->{var_checking}}, $2;
 			if (not exists $var_info_ref->{defined}{$1}) {
 				# Treat the first SP_for as the initial value of the variable.
 				$var_info_ref->{defined}{$1} = $2;
@@ -323,6 +324,18 @@ sub parse_cmd
 			my $line_ref = shift @{$lines_ref};
 			my $line = $line_ref->{text};
 			die 'ERROR: Invalid format for SP_for!' if $line !~ /^\s*(\{|\{\{)\s*$/;
+			my $blocking = $1;
+			push @blocks, parse_block($blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
+			$cmd_ref->{block} = scalar @blocks - 1;
+		} elsif ($argv[0] eq 'SP_while') {
+			die 'ERROR: Invalid option for SP_while!' if $command !~ /^\s*SP_while\s*\((.*)\)\s*$/;
+			$cmd_ref->{command} = 'SP_while';
+			$cmd_ref->{bash} = $1;
+			push @{$cmd_ref->{var_checking}}, $1;
+			
+			my $line_ref = shift @{$lines_ref};
+			my $line = $line_ref->{text};
+			die 'ERROR: Invalid format for SP_while!' if $line !~ /^\s*(\{|\{\{)\s*$/;
 			my $blocking = $1;
 			push @blocks, parse_block($blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
 			$cmd_ref->{block} = scalar @blocks - 1;
@@ -805,6 +818,9 @@ sub display_block
 		} elsif ($cmd_ref->{command} eq 'SP_for') {
 			print "$indent\tSP_for $cmd_ref->{variable}=$cmd_ref->{text}\n";
 			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
+		} elsif ($cmd_ref->{command} eq 'SP_while') {
+			print "$indent\tSP_while ($cmd_ref->{bash})\n";
+			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
 		} else {
 			print "$indent\t$cmd_ref->{command}\n";
 		}
@@ -1029,7 +1045,20 @@ sub run_command
 		return ( -1, \@log_files, \@pipe_structure ) if not defined $value;
 		foreach my $each_value (split(/\s/, $value)) {
 			$variables{$name} = $each_value;
-			run_block('SP_for', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+			$return_value = run_block('SP_for', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+			last if (exists $exit_on_error{$procedure_type} and $return_value != 0);
+		}
+	
+	} elsif ($command eq 'SP_while') {
+		my $cmd = "SP_while ($command_struct_ref->{bash})";
+		while (1) {
+			my $shell_return = run_shell(eval_string($command_struct_ref->{bash}, \%variables), 'checker', $run_id, $indent, \@pipe_structure);
+			return (-1, \@log_files, \@pipe_structure) if not defined $shell_return;
+			my $yes = ($shell_return->{return_value} == 0);
+			safe_print "$indent($run_id) $cmd returns '" . ($yes ? "yes" : "no") . "'\n";
+			last if (not $yes);
+			$return_value = run_block('SP_while', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+			last if (exists $exit_on_error{$procedure_type} and $return_value != 0);
 		}
 	
 	} elsif ($command eq '') { # code block
@@ -1038,16 +1067,16 @@ sub run_command
 		my $shell_return = run_shell(eval_string($command, \%variables), $procedure_type, $run_id, $indent, \@pipe_structure);
 		return ( -1, \@log_files, \@pipe_structure ) if not defined $shell_return;
 		$return_value = $shell_return->{return_value};
-		
-		if (exists $exit_on_error{$procedure_type} and $return_value != 0) {
-			safe_print "$indent($run_id) returns $return_value\n";
-			foreach my $output_file (@{$outputs_ref}) {
-				if (-e $output_file) {
-					if ($verbose) {
-						safe_print "$indent($run_id) removes bad output file '$output_file'!\n";
-					}
-					unlink $output_file;
+	}
+	
+	if (exists $exit_on_error{$procedure_type} and $return_value != 0) {
+		safe_print "$indent($run_id) returns $return_value\n";
+		foreach my $output_file (@{$outputs_ref}) {
+			if (-e $output_file) {
+				if ($verbose) {
+					safe_print "$indent($run_id) removes bad output file '$output_file'!\n";
 				}
+				unlink $output_file;
 			}
 		}
 	}

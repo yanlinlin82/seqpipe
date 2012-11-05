@@ -16,6 +16,8 @@ function demo_blocks
 
 function demo_SP_if
 {
+	SP_set COND=true
+
 	SP_if (${COND})
 	{
 		echo true
@@ -23,6 +25,16 @@ function demo_SP_if
 	SP_else
 	{
 		echo false
+	}
+
+	SP_if *.txt
+	{
+		wc *.gz
+	}
+
+	SP_if *.mp3
+	{
+		ls -sh *.mp3
 	}
 }
 
@@ -42,5 +54,15 @@ function demo_SP_for
 	SP_for X=abc *.gz {1..5} $((3+4))
 	{
 		echo ${X}
+	}
+}
+
+function demo_SP_while
+{
+	SP_set X=2
+	SP_while (test ${X} -lt 5)
+	{
+		SP_set X=$((${X} + 1))
+		echo "waiting ... (X=${X})"; sleep 1
 	}
 }
