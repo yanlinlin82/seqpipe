@@ -1,11 +1,11 @@
 #!/bin/bash
 #
-#[seqpipe version="0.3.3 ($Id$)"]
+#[version="0.3.3 ($Id$)"]
 #
 
 ###########################################################################
 
-#[procedure type="sysinfo"]
+#[type="sysinfo"]
 function sysinfo
 {
 	echo '===== System Information ====='
@@ -34,7 +34,7 @@ function sysinfo
 		| while read FILE; do \
 			echo    "   $FILE"; \
 			echo -n "      "; \
-			egrep '^#\[seqpipe version' $FILE; \
+			egrep '^#\[(seqpipe\s+|)version' $FILE; \
 		done
 	echo
 }

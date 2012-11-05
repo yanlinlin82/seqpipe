@@ -41,6 +41,7 @@ my $keep_intermediates = 0;
 my $enable_duplicate = 0;
 my $execute_command = '';
 my $shell = '/bin/bash';
+my $obsolete_warned = 0;
 
 # All procedures are loaded at startup.
 my %procedures = ();
@@ -346,8 +347,8 @@ sub parse_block
 		if (scalar @{$lines_ref} <= 0) {
 			die "ERROR: Invalid procedure declaration! Line '}' or '}}' expected!";
 		}
-		my $line_ref = shift @{$lines_ref};
-		my $line = $line_ref->{text};
+		my $l = shift @{$lines_ref};
+		my $line = $l->{text};
 		if ($line =~ /^\s*(\}|\}\}|SP_parallel_end)\s*(|#.*)$/) {
 			if ($blocking eq '{') {
 				last if $1 eq '}';
@@ -360,7 +361,10 @@ sub parse_block
 		} elsif ($line =~ /^\s*(\{|\{\{|SP_parallel_begin)\s*(|#.*)$/) {
 			my $sub_blocking = $1;
 			if ($sub_blocking eq 'SP_parallel_begin') {
-				print "WARNING: 'SP_parallel_begin' and 'SP_parallel_end' are obsolete, use '{{' and '}}' instead!\n" if not $quiet_mode;
+				if (not $quiet_mode and not $obsolete_warned) {
+					print "WARNING: 'SP_parallel_begin' and 'SP_parallel_end' are obsolete, use '{{' and '}}' instead! Found in: $l->{file}($l->{line})\n";
+					$obsolete_warned = 1;
+				}
 				$sub_blocking = '{{';
 			}
 			push @blocks, parse_block($sub_blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
@@ -370,7 +374,7 @@ sub parse_block
 		}
 
 		# Skip comment line
-		next if $line =~ /^\s*#/ and $line !~ /^\s*#\[command.*\]\s*$/;
+		next if $line =~ /^\s*#/ and $line !~ /^\s*#\[.*\]\s*$/;
 
 		if ($last_line eq '') {
 			$line =~ s/^\s+//g;
@@ -383,8 +387,12 @@ sub parse_block
 
 		if ($line =~ s/\\$//) {
 			$last_line = $line;
-		} elsif ($line =~ /^#\[command\s+(require|input|output(|.temp|.final))=.*\]$/) {
-			while ($line =~ /\s+(require|input|output(|.temp|.final))="(.*?)"/g) {
+		} elsif ($line =~ /^#\[(command\s+|)(require|input|output(|.temp|.final))=.*\]$/) {
+			if ($1 =~ /^command\s+$/ and not $quiet_mode and not $obsolete_warned) {
+				print "WARNING: '#[procedure ...]' and '#[command ...]' are obsolete, use '#[attr=\"...\"]' instead! Found in: $l->{file}($l->{line})\n";
+				$obsolete_warned = 1;
+			}
+			while ($line =~ /(require|input|output(|.temp|.final))="(.*?)"/g) {
 				if ($1 eq "require") {
 					die "ERROR: Duplicated require attribute!" if exists $cmd_info{requires}{$3};
 					$cmd_info{requires}{$3} = 1;
@@ -524,11 +532,16 @@ sub parse_proc
 	while (@{$lines_ref}) {
 		my $l = shift @{$lines_ref};
 
-		if ($l->{text} =~ /^#\[procedure/) {
-			if ($l->{text} !~ /^#\[procedure(\s+(type|require|input|output)="(.*?)")+\s*\]$/) {
+		if ($l->{text} =~ /^#\[/) {
+			next if $l->{text} =~ /^#\[(seqpipe|version)/;
+			if ($l->{text} !~ /^#\[(procedure\s+|)(type|require|input|output)="(.*?)"+\s*\]$/) {
 				die "ERROR: Bad procedure attribute declaration" . parsing_error($l);
 			}
-			while ($l->{text} =~ /\s+(type|require|input|output)="(.*?)"/g) {
+			if ($1 =~ /^procedure\s+$/ and not $quiet_mode and not $obsolete_warned) {
+				print "WARNING: '#[procedure ...]' and '#[command ...]' are obsolete, use '#[attr=\"...\"]' instead! Found in: $l->{file}($l->{line})\n";
+				$obsolete_warned = 1;
+			}
+			while ($l->{text} =~ /(type|require|input|output)="(.*?)"/g) {
 				if ($1 eq 'type') {
 					die "ERROR: Duplicated procedure type declaration" . parsing_error($l) if $type ne '';
 					$type = $2;
@@ -719,21 +732,21 @@ sub display_block
 			}
 
 			foreach my $require (keys %{$cmd_ref->{requires}}) {
-				print "$indent\t#[command require=\"$require\"]\n";
+				print "$indent\t#[require=\"$require\"]\n";
 			}
 			foreach my $input (keys %{$cmd_ref->{inputs}}) {
-				print "$indent\t#[command input=\"$input\"]\n";
+				print "$indent\t#[input=\"$input\"]\n";
 			}
 			foreach my $output (keys %{$cmd_ref->{outputs}}) {
 				if (not exists $cmd_ref->{temp_outputs}{$output} and not exists $cmd_ref->{final_outputs}{$output}) {
-					print "$indent\t#[command output=\"$output\"]\n";
+					print "$indent\t#[output=\"$output\"]\n";
 				}
 			}
 			foreach my $temp_output (keys %{$cmd_ref->{temp_outputs}}) {
-				print "$indent\t#[command output.temp=\"$temp_output\"]\n";
+				print "$indent\t#[output.temp=\"$temp_output\"]\n";
 			}
 			foreach my $final_output (keys %{$cmd_ref->{final_outputs}}) {
-				print "$indent\t#[command output.final=\"$final_output\"]\n";
+				print "$indent\t#[output.final=\"$final_output\"]\n";
 			}
 		}
 
@@ -769,18 +782,10 @@ sub show_raw_code
 	}
 	my %procedure = %{$procedures{$proc_name}};
 
-	print "#[procedure type=\"$procedure{type}\"]\n";
-
-	foreach my $require (keys %{$procedure{requires}}) {
-		print "#[procedure require=\"$require\"]\n";
-	}
-	foreach my $input (keys %{$procedure{inputs}}) {
-		print "#[procedure input=\"$input\"]\n";
-	}
-	foreach my $output (keys %{$procedure{outputs}}) {
-		print "#[procedure output=\"$output\"]\n";
-	}
-
+	print "#[type=\"$procedure{type}\"]\n";
+	print "#[require=\"$_\"]\n" for (keys %{$procedure{requires}});
+	print "#[input=\"$_\"]\n" for (keys %{$procedure{inputs}});
+	print "#[output=\"$_\"]\n" for (keys %{$procedure{outputs}});
 	print "function $proc_name\n";
 
 	display_block \%procedure, '';
@@ -996,6 +1001,9 @@ sub run_procedure
 		safe_print "ERROR: Unknown procedure '$proc_name'! Use 'seqpipe -l' to list available procedures.\n";
 		return -1;
 	}
+
+	# Variables are not shared between procedures except global variables.
+	# However, global variables can be overwriten but not changed in run-time.
 	my %procedure = %{$procedures{$proc_name}};
 
 	my %variables = %global_variables;
@@ -1257,7 +1265,7 @@ my @argv = ();
 my $proc_name = '';
 my %option_from_cmd = ();
 
-my @module_files = ();
+my @module_files = ((dirname abs_path $0) . '/default.pipe');
 my $disable_loading_default_modules = 0;
 
 if ($#ARGV < 0) {
@@ -1327,10 +1335,10 @@ if ($proc_name ne '' and $execute_command ne '') {
 	exit 1;
 }
 
-if ($disable_loading_default_modules) {
-	@module_files = ((dirname abs_path $0) . '/default.pipe', @module_files);
-} else {
-	@module_files = (glob((dirname abs_path $0) . '/*.pipe'), @module_files);
+if (not $disable_loading_default_modules) {
+	for my $file (sort glob((dirname abs_path $0) . '/*.pipe')) {
+		push @module_files, $file if $file ne $module_files[0];
+	}
 }
 load_modules @module_files;
 
