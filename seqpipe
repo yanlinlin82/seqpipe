@@ -28,7 +28,6 @@ use constant LOG_DIR => LOG_ROOT . '/' . UNIQ_ID;
 
 # Procedure types and attributes.
 my %valid_procedure_type = ( 'sysinfo' => 1, 'pipeline' => 2, 'stage' => 3, 'checker' => 4, 'evaluator' => 5 );
-my %need_record = ( 'pipeline' => 1, 'stage' => 1, 'checker' => 1, 'evaluator' => 1 );
 my %exit_on_error = ( 'pipeline' => 1, 'stage' => 1 );
 
 # Command line parsing results.
@@ -248,7 +247,8 @@ sub parse_cmd
 		inputs => $cmd_info_ref->{inputs},
 		outputs => $cmd_info_ref->{outputs},
 		temp_outputs => $cmd_info_ref->{temp_outputs},
-		final_outputs => $cmd_info_ref->{final_outputs} };
+		final_outputs => $cmd_info_ref->{final_outputs},
+		var_checking => [] };
 
 	my @argv = bash_line_decode($command);
 	if ($argv[0] =~ /^SP_/) {
@@ -276,13 +276,28 @@ sub parse_cmd
 			$cmd_ref->{command} = 'SP_if';
 			if ($command =~ /^SP_if\s+\((.*)\)\s*$/) {
 				$cmd_ref->{bash} = $1;
+				push @{$cmd_ref->{var_checking}}, $1;
 			} elsif ($command =~ /^SP_if\s+(.*)\s*$/) {
 				$cmd_ref->{text} = $1;
+				push @{$cmd_ref->{var_checking}}, $1;
 			} else {
 				die 'ERROR: Invalid format for SP_if!';
 			}
 			push @blocks, parse_block($blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
 			$cmd_ref->{block} = scalar @blocks - 1;
+
+			while (@{$lines_ref})
+			{
+				next if $lines_ref->[0]->{text} =~ /^\s*#.*$/;
+				last if $lines_ref->[0]->{text} !~ /^\s*SP_else\s*$/;
+				shift @{$lines_ref};
+				$line_ref = shift @{$lines_ref};
+				my $line = $line_ref->{text};
+				die 'ERROR: Invalid option for SP_else!' if $line !~ /^\s*(\{|\{\{)\s*$/;
+				my $blocking = $1;
+				push @blocks, parse_block($blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
+				$cmd_ref->{else_block} = scalar @blocks - 1;
+			}
 		} elsif ($argv[0] eq 'SP_run') {
 		} else {
 			die "ERROR: Invalid primitive line '$argv[0]'!\n";
@@ -415,7 +430,7 @@ sub parse_block
 		} elsif ($line !~ /^\s*(#.*|)$/) {
 			my $cmd_ref = parse_cmd($line, $type, $module_file, $lines_ref, \@commands, \%cmd_info, $var_info_ref, $proc_info_ref);
 
-			foreach my $item ($cmd_ref->{command}, keys %{$cmd_info{requires}}, keys %{$cmd_info{inputs}}, keys %{$cmd_info{outputs}}) {
+			foreach my $item ($cmd_ref->{command}, keys %{$cmd_info{requires}}, keys %{$cmd_info{inputs}}, keys %{$cmd_info{outputs}}, @{$cmd_ref->{var_checking}}) {
 				while ($item =~ /\${(\w+)}/g) {
 					if (not exists $var_info_ref->{used}{$1}) {
 						$var_info_ref->{used}{$1} = '';
@@ -762,6 +777,10 @@ sub display_block
 				print "$indent\tSP_if $cmd_ref->{text}\n";
 			}
 			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
+			if (exists $cmd_ref->{else_block}) {
+				print "$indent\tSP_else\n";
+				display_block($blocks[$cmd_ref->{else_block}], $indent . "\t");
+			}
 		} else {
 			print "$indent\t$cmd_ref->{command}\n";
 		}
@@ -873,7 +892,7 @@ sub run_shell
 	my $return_value = 0;
 	my $start_failed = 0;
 	my $start_time = time;
-	if (exists $need_record{$procedure_type}) {
+	if ($procedure_type ne 'sysinfo') {
 		safe_print "$indent($run_id) $command\n";
 		safe_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 	}
@@ -900,7 +919,7 @@ sub run_shell
 		} else {
 			$return_value = ($? >> 8);
 
-			if (exists $need_record{$procedure_type}) {
+			if ($procedure_type ne 'sysinfo') {
 				my $end_time = time;
 				safe_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
 					time_string($end_time), time_elapse_string($start_time, $end_time);
@@ -927,7 +946,7 @@ sub run_command
 	}
 
 	my $run_id = 0;
-	if ($command ne '' and exists $need_record{$procedure_type} and $command !~ /^SP_run/) {
+	if ($command ne '' and $procedure_type ne 'sysinfo' and $command !~ /^SP_run/) {
 		{
 			lock($run_counter);
 			$run_counter += 1;
@@ -958,6 +977,10 @@ sub run_command
 		safe_print "$indent($run_id) returns $r (" . ($r == 0 ? 'true' : 'false') . ")\n";
 		if ($r == 0) {
 			$return_value = run_block('', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+		} else {
+			if (exists $command_struct_ref->{else_block}) {
+				$return_value = run_block('', $blocks[$command_struct_ref->{else_block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+			}
 		}
 	} elsif ($command eq '') { # code block
 		$return_value = run_block('', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
@@ -1058,7 +1081,7 @@ sub run_procedure
 	}
 
 	my $run_id = 0;
-	if (exists $need_record{$procedure{type}}) {
+	if ($procedure{type} ne 'sysinfo') {
 		{
 			lock($run_counter);
 			$run_counter += 1;
@@ -1072,7 +1095,7 @@ sub run_procedure
 	}
 	
 	my $start_time = time;
-	if (exists $need_record{$procedure{type}}) {
+	if ($procedure{type} ne 'sysinfo') {
 		safe_print "$indent($run_id) " . bash_line_encode("SP_run", $proc_name, @{$argv_ref}) . "\n";
 		safe_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 	}
@@ -1089,7 +1112,7 @@ sub run_procedure
 		}
 	}
 
-	if (exists $need_record{$procedure{type}}) {
+	if ($procedure{type} ne 'sysinfo') {
 		my $end_time = time;
 		safe_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
 			time_string($end_time), time_elapse_string($start_time, $end_time);

@@ -13,3 +13,15 @@ function demo_blocks
 		}}
 	}
 }}
+
+function demo_if_statement
+{
+	SP_if (${COND})
+	{
+		echo true
+	}
+	SP_else
+	{
+		echo false
+	}
+}
