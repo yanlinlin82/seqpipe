@@ -614,26 +614,14 @@ function gatk_call_variants
 	mv -vf ${OUTPUT}.filtered.vcf ${OUTPUT}.gatk.vcf
 }
 
-#[type="evaluator"]
-function get_file_name
-{
-	basename ${FILE} | sed 's,\.[^.]*$,,'
-}
-
-#[type="evaluator"]
-function get_file_date
-{
-	stat ${FILE} | grep Modify | awk '{print $2}' | sed 's,-,,g'
-}
-
 #[require="${REFERENCE}"]
 #[input="${INPUT}.bam"]
 #[require="${INPUT}.bam.bai"]
 #[output="${OUTPUT}.pindel.vcf"]
 function pindel_call_structure_variants
 {
-	SP_eval REFERENCE_NAME get_file_name FILE=${REFERENCE}
-	SP_eval REFERENCE_DATE get_file_date FILE=${REFERENCE}
+	SP_set REFERENCE_NAME=$(basename ${REFERENCE} | sed 's,\.[^.]*$,,')
+	SP_set REFERENCE_DATE=$(stat ${REFERENCE} | grep Modify | awk '{print $2}' | sed 's,-,,g')
 
 ##### Call Structure Variants #####
 	#[require="${REFERENCE}"]

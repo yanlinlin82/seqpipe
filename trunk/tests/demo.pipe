@@ -14,7 +14,7 @@ function demo_blocks
 	}
 }}
 
-function demo_if_statement
+function demo_SP_if
 {
 	SP_if (${COND})
 	{
@@ -24,4 +24,15 @@ function demo_if_statement
 	{
 		echo false
 	}
+}
+
+function demo_SP_set
+{
+	SP_set X=abc *.gz
+	echo ${X}
+
+	SP_set TMP_FILE=$(mktemp)
+	ls > ${TMP_FILE}
+	wc ${TMP_FILE}
+	rm -vf ${TMP_FILE}
 }

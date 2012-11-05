@@ -238,6 +238,23 @@ sub bash_line_decode {
 	return @argv;
 }
 
+sub eval_string
+{
+	my ($string, $variables_ref) = @_;
+
+	while ($string =~ /\${(\w+)}/) {
+		my $var_name = $1;
+		if (exists $variables_ref->{$var_name}) {
+			$string =~ s/\${$var_name}/$variables_ref->{$var_name}/g;
+		} else {
+			$string =~ s/\${$var_name}//g;
+		}
+	}
+	return $string;
+}
+
+############################################################
+
 sub parse_cmd
 {
 	my ($command, $type, $module_file, $lines_ref, $commands_ref, $cmd_info_ref, $var_info_ref, $proc_info_ref) = @_;
@@ -253,19 +270,13 @@ sub parse_cmd
 	my @argv = bash_line_decode($command);
 	if ($argv[0] =~ /^SP_/) {
 		if ($argv[0] eq 'SP_set') {
-			die 'ERROR: Invalid option for SP_set!' if ($argv[0] ne 'SP_set' or $argv[1] !~ /^(\w+)=(.*?)$/);
+			die 'ERROR: Invalid option for SP_set!' if $command !~ /^\s*SP_set\s+(\w+)=(.*)$/;
+			$cmd_ref->{command} = 'SP_set';
+			$cmd_ref->{variable} = $1;
+			$cmd_ref->{text} = $2;
 			if (not exists $var_info_ref->{defined}{$1}) {
-				if (scalar @argv > 2) {
-					$var_info_ref->{defined}{$1} = '(null)';
-				} else {
-					$var_info_ref->{defined}{$1} = $2;
-				}
-			}
-		} elsif ($argv[0] eq 'SP_eval') {
-			die 'ERROR: Invalid option for SP_eval!' if ($argv[0] ne 'SP_eval' or $argv[1] !~ /^(\w+)$/);
-			die "ERROR: Unknown procedure '$argv[2]' for SP_eval!" unless (exists $procedures{$argv[2]});
-			if (not exists $var_info_ref->{eval}{$1}) {
-				$var_info_ref->{eval}{$1} = '';
+				# Treat the first SP_set as the initial value of the variable.
+				$var_info_ref->{defined}{$1} = $2;
 			}
 		} elsif ($argv[0] eq 'SP_if') {
 			my $line_ref = shift @{$lines_ref};
@@ -637,17 +648,8 @@ sub parse_proc
 			if (exists $global_variables{$option_name} and not $enable_duplicate) {
 				die "ERROR: Redeclaration of global variable '$option_name'" . parsing_error($l);
 			}
-			while ($option_value =~ /\${(\w+)}/g) {
-				my $name = $1;
-				if (exists $global_variables{$name}) {
-					$option_value =~ s/\${$name}/$global_variables{$name}/g;
-				} else {
-					$option_value =~ s/\${$name}//g;
-				}
-			}
-			$global_variables{$option_name} = $option_value;
-
-			print "$option_name=$option_value\n" if $verbose;
+			$global_variables{$option_name} = eval_string($option_value, \%global_variables);
+			print "$option_name=$global_variables{$option_name}\n" if $verbose;
 		}
 	}
 }
@@ -745,7 +747,7 @@ sub display_block
 	foreach my $cmd_ref (@{$procedure{commands}}) {
 
 		if ($cmd_ref->{command} eq '{{' or %{$cmd_ref->{requires}} or %{$cmd_ref->{inputs}} or %{$cmd_ref->{outputs}}) {
-			if (not $block_start and $cmd_ref->{command} !~ '^(SP_set|}})') {
+			if (not $block_start and $cmd_ref->{command} ne 'SP_set') {
 				print "\n";
 			}
 
@@ -770,6 +772,8 @@ sub display_block
 
 		if ($cmd_ref->{command} eq '') {
 			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
+		} elsif ($cmd_ref->{command} eq 'SP_set') {
+			print "$indent\tSP_set $cmd_ref->{variable}=$cmd_ref->{text}\n";
 		} elsif ($cmd_ref->{command} eq 'SP_if') {
 			if (exists $cmd_ref->{bash}) {
 				print "$indent\tSP_if ($cmd_ref->{bash})\n";
@@ -818,11 +822,7 @@ sub check_requires_inputs_outputs
 	my ($proc_name, $variables_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
 	
 	foreach my $require (keys %{$requires_ref}) {
-		my $filename = $require;
-		while ($filename =~ /\${(\w+)}/) {
-			my $option_name = $1;
-			$filename =~ s/\${$option_name}/$variables_ref->{$option_name}/g;
-		}
+		my $filename = eval_string($require, $variables_ref);
 		if (not -e $filename) {
 			safe_print "ERROR: Required file '$filename' of procedure '$proc_name' does not exist!\n";
 			exit 1;
@@ -831,11 +831,7 @@ sub check_requires_inputs_outputs
 	
 	my @inputs = ();
 	foreach my $input (keys %{$inputs_ref}) {
-		my $filename = $input;
-		while ($filename =~ /\${(\w+)}/) {
-			my $option_name = $1;
-			$filename =~ s/\${$option_name}/$variables_ref->{$option_name}/g;
-		}
+		my $filename = eval_string($input, $variables_ref);
 		if (not -e $filename) {
 			safe_print "ERROR: Input file '$filename' of procedure '$proc_name' does not exist!\n";
 			exit 1;
@@ -846,11 +842,7 @@ sub check_requires_inputs_outputs
 	return 1 unless %{$outputs_ref};
 
 	foreach my $output (keys %{$outputs_ref}) {
-		my $filename = $output;
-		while ($filename =~ /\${(\w+)}/) {
-			my $option_name = $1;
-			$filename =~ s/\${$option_name}/$variables_ref->{$option_name}/g;
-		}
+		my $filename = eval_string($output, $variables_ref);
 		if (-e $filename) {
 			foreach my $input (@inputs) {
 				if ((stat($input))->mtime > (stat($filename))->mtime) {
@@ -955,7 +947,27 @@ sub run_command
 		push @log_files, LOG_DIR . "/$run_id.$proc_name.log";
 	}
 
-	if ($command =~ /^SP_run\s+(\w+)/) {
+	if ($command eq 'SP_set') {
+		my @eval_log_files = ();
+		my @eval_pipe_structure = ();
+		my ($r, $s) = run_shell("echo " . eval_string($command_struct_ref->{text}, \%variables), 'evaluator', $run_id, $indent, \@eval_log_files, \@eval_pipe_structure);
+		return ($r, \@log_files, \@pipe_structure) if $s;
+
+		my $option_name = $command_struct_ref->{variable};
+		my $option_value = '';
+		foreach my $log_file (@eval_log_files) {
+			open FILE, $log_file;
+			while (my $line = <FILE>) {
+				chomp $line if $option_value eq '';
+				$option_value .= "\n" if $option_value ne '';
+				$option_value .= $line;
+			}
+			close FILE;
+		}
+		$variables{$option_name} = $option_value;
+		safe_print "$indent(*) SP_set $variables{$option_name}=$option_value\n" if $verbose;
+
+	} elsif ($command =~ /^SP_run\s+(\w+)/) {
 		my @procedure_options = bash_line_decode($command);
 		shift @procedure_options;
 		my $proc_name = shift @procedure_options;
@@ -968,11 +980,7 @@ sub run_command
 		} else {
 			$cmd = "test -n \"\$(echo $command_struct_ref->{text})\"";
 		}
-		while ($cmd =~ /\${(\w+)}/) {
-			my $name = $1;
-			$cmd =~ s/\${$name}/$variables{$name}/g;
-		}
-		my ($r, $s) = run_shell($cmd, 'checker', $run_id, $indent, \@log_files, \@pipe_structure);
+		my ($r, $s) = run_shell(eval_string($cmd, \%variables), 'checker', $run_id, $indent, \@log_files, \@pipe_structure);
 		return ($r, \@log_files, \@pipe_structure) if $s;
 		safe_print "$indent($run_id) returns $r (" . ($r == 0 ? 'true' : 'false') . ")\n";
 		if ($r == 0) {
@@ -985,7 +993,7 @@ sub run_command
 	} elsif ($command eq '') { # code block
 		$return_value = run_block('', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
 	} else {
-		my ($r, $s) = run_shell($command, $procedure_type, $run_id, $indent, \@log_files, \@pipe_structure);
+		my ($r, $s) = run_shell(eval_string($command, \%variables), $procedure_type, $run_id, $indent, \@log_files, \@pipe_structure);
 		$return_value = $r;
 		$start_failed = $s;
 		
@@ -1004,21 +1012,6 @@ sub run_command
 	return ( $return_value, \@log_files, \@pipe_structure, \%variables );
 }
 
-sub eval_string
-{
-	my ($string, $variables_ref) = @_;
-
-	while ($string =~ /\${(\w+)}/) {
-		my $var_name = $1;
-		if (exists $variables_ref->{$var_name}) {
-			$string =~ s/\${$var_name}/$variables_ref->{$var_name}/g;
-		} else {
-			$string =~ s/\${$var_name}//g;
-		}
-	}
-	return $string;
-}
-
 sub run_procedure
 {
 	my ($proc_name, $argv_ref, $log_files_ref, $indent, $pipe_structure_ref) = @_;
@@ -1028,11 +1021,12 @@ sub run_procedure
 		return -1;
 	}
 
-	# Variables are not shared between procedures except global variables.
-	# However, global variables can be overwriten but not changed in run-time.
 	my %procedure = %{$procedures{$proc_name}};
 
+	# Variables are not shared between procedures except global variables.
+	# However, global variables can be overwriten but not changed in run-time.
 	my %variables = %global_variables;
+
 	my %option_from_cmd = ();
 	foreach my $arg (@{$argv_ref}) {
 		if ($arg =~ /^(\w+)=(.*)$/) {
@@ -1148,93 +1142,10 @@ sub run_block
 			}
 			push @output_set, $filename;
 		}
-		
-		if ($command =~ /^SP_/) {
-			my @argv = bash_line_decode($command);
-			foreach my $arg (@argv) {
-				while ($arg =~ /\${(\w+)}/g) {
-					my $option_name = $1;
-					my $option_value = $variables_ref->{$option_name};
-					$option_value = '' if not defined($option_value);
-					if ($option_value ne '' or
-						not exists ${$procedure{defined_variables}}{$option_name} or
-						not exists ${$procedure{eval_variables}}{$option_name}) {
-						$arg =~ s/\${$option_name}/$option_value/g;
-					}
-				}
-			}
-			$command = bash_line_encode(@argv);
-		} else {
-			while ($command =~ /\${(\w+)}/g) {
-				my $option_name = $1;
-				my $option_value = $variables_ref->{$option_name};
-				$option_value ='' if not defined($option_value);
-				if ($option_value ne '' or
-					not exists ${$procedure{defined_variables}}{$option_name} or
-					not exists ${$procedure{eval_variables}}{$option_name}) {
-					$command =~ s/\${$option_name}/$option_value/g;
-				}
-			}
-		}
 
 		if (not check_requires_inputs_outputs($proc_name, $variables_ref,
 			$requires_ref, $inputs_ref, $outputs_ref)) {
 			safe_print "$indent(Skip) $command\n";
-			next;
-		}
-
-		if ($command =~ /^SP_set/ or $command =~ /^SP_eval/) {
-
-			my @procedure_options = bash_line_decode($command);
-			my $cmd = shift @procedure_options;
-			my $setting = shift @procedure_options;
-
-			my $option_name = '';
-			my $option_value = '';
-			if ($cmd eq 'SP_set') {
-				if ($setting !~ /^(\w+)=(.*)$/) {
-					safe_print "ERROR: Invalid syntex of SP_set!\n";
-					return -1;
-				}
-				$option_name = $1;
-				$option_value = $2;
-			} elsif ($cmd eq 'SP_eval') {
-				if ($setting !~ /^(\w+)$/) {
-					safe_print "ERROR: Invalid syntex of SP_eval!\n";
-					return -1;
-				}
-				$option_name = $1;
-				if (scalar @procedure_options == 0) {
-					safe_print "ERROR: Invalid syntex of SP_eval!\n";
-					return -1;
-				}
-			}
-
-			next if exists $option_from_cmd_ref->{$option_name};
-
-			if (scalar @procedure_options > 0) {
-				my $proc_name = shift @procedure_options;
-				my @log_files = ();
-				my @pipe_structure = ();
-				my $value = run_procedure($proc_name, \@procedure_options, \@log_files, $indent . "  ", \@pipe_structure);
-				next if ($cmd eq 'SP_set' and $value ne 0);
-				if ($cmd eq 'SP_eval') {
-					safe_print "Info: Load log files for SP_eval: ", join(", ", @log_files), "\n" if $verbose;
-					foreach my $log_file (@log_files) {
-						$option_value = '';
-						open FILE, $log_file;
-						while (my $line = <FILE>) {
-							chomp $line if $option_value eq '';
-							$option_value .= "\n" if $option_value ne '';
-							$option_value .= $line;
-						}
-						close FILE;
-					}
-				}
-			}
-
-			$variables_ref->{$option_name} = $option_value;
-			safe_print "$indent(*) SP_set $variables_ref->{$option_name}=$option_value\n" if $verbose;
 			next;
 		}
 
