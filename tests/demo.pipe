@@ -28,11 +28,19 @@ function demo_SP_if
 
 function demo_SP_set
 {
-	SP_set X=abc *.gz
+	SP_set X=abc *.gz {1..5} $((3+4))
 	echo ${X}
 
 	SP_set TMP_FILE=$(mktemp)
 	ls > ${TMP_FILE}
 	wc ${TMP_FILE}
 	rm -vf ${TMP_FILE}
+}
+
+function demo_SP_for
+{
+	SP_for X=abc *.gz {1..5} $((3+4))
+	{
+		echo ${X}
+	}
 }
