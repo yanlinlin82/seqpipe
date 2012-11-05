@@ -38,6 +38,34 @@ function fastqc
 			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT_DIR}/${NAME}.fastqc.zip
 }
 
+function fq_33to64
+{
+	#Check if it is base-33
+	test -n "$(${SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+
+	#[command input="${INPUT}"]
+	#[command output.final="${OUTPUT}.fq.gz"]
+	${SEQPIPE_ROOT}/uxcat ${INPUT} \
+		| perl -e 'while($a=<>){$b=<>;$c=<>;$d=<>;print "$a$b$c"; print($_ eq "\n" ? "\n" : pack("C", unpack("C*",$_)-33+64)) for(split(//,$d));}' \
+		| gzip -9c \
+		> ${OUTPUT}.fq.gz
+}
+
+function fq_64to33
+{
+	#Check if it is base-64
+	test -z "$(${SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+
+	#[command input="${INPUT}"]
+	#[command output.final="${OUTPUT}.fq.gz"]
+	${SEQPIPE_ROOT}/uxcat ${INPUT} \
+		| perl -e 'while($a=<>){$b=<>;$c=<>;$d=<>;print "$a$b$c"; print($_ eq "\n" ? "\n" : pack("C", unpack("C*",$_)-64+33)) for(split(//,$d));}' \
+		| gzip -9c \
+		> ${OUTPUT}.fq.gz
+}
+
+###########################################################################
+
 function bwa_build
 {
 	SP_set ALGORITHM="is"
@@ -51,72 +79,101 @@ function bwa_build
 	bwa index -a ${ALGORITHM} ${FASTA}
 }
 
-function bwa_read_mapping
+function bwa_map_pe
 {
-	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${FASTQ_1}"
-	SP_set BWA_SAMPE_OPTS=""
-	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
-	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
-	SP_set RGID="1"
-	SP_set SAMPLE_NAME="${RGID}"
+	SP_set INPUT_DIR="."
+	SP_set OUTPUT_DIR="."
+
+	SP_set RGID="${SAMPLE}"
 	SP_set RGLB="${RGID}"
 	SP_set RGPL="illumina"
 	SP_set RGCN="BGI"
+	SP_set OUTPUT="${SAMPLE}"
+
+	SP_set THREAD_NUM=2
+	SP_set MAX_INSERT_SIZE=500
+	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
+	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
+
+	SP_set BWA_ALN_OPTS=""
+	SP_set BWA_SAMPE_OPTS=""
+
+	SP_set BWA_ALN_QUAL_OPTS=""
+	SP_if (test -z "$(${SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ_1} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	{
+		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
+		SP_set BWA_ALN_QUAL_OPTS="-I"
+	}
 
 	# This will be skipped if the index files exist.
-	SP_run bwa_build_index REFERENCE="${REFERENCE}"
+	SP_run bwa_build FASTA="${REF}"
 
-	SP_parallel_begin
-	
-	#[command require="${REFERENCE}" input="${FASTQ_1}" output.temp="${FASTQ_1}.sai"]
-	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REFERENCE} ${FASTQ_1} -f ${FASTQ_1}.sai ${BWA_ALN_OPTS}
-	
-	#[command require="${REFERENCE}" input="${FASTQ_2}" output.temp="${FASTQ_2}.sai"]
-	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REFERENCE} ${FASTQ_2} -f ${FASTQ_2}.sai ${BWA_ALN_OPTS}
-	
-	SP_parallel_end
+	{{
+		#[command require="${REF}" input="${INPUT_DIR}/${FQ_1}" output.temp="${OUTPUT_DIR}/${FQ_1}.sai"]
+		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+			${REF} ${INPUT_DIR}/${FQ_1} -f ${OUTPUT_DIR}/${FQ_1}.sai \
+			${BWA_ALN_QUAL_OPTS} ${BWA_ALN_OPTS}
+		
+		#[command require="${REF}" input="${INPUT_DIR}/${FQ_2}" output.temp="${OUTPUT_DIR}/${FQ_2}.sai"]
+		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+			${REF} ${INPUT_DIR}/${FQ_2} -f ${OUTPUT_DIR}/${FQ_2}.sai \
+			${BWA_ALN_QUAL_OPTS} ${BWA_ALN_OPTS}
+	}}
 
-	#[command require="${REFERENCE}"]
-	#[command input="${FASTQ_1}" input="${FASTQ_1}.sai"]
-	#[command input="${FASTQ_2}" input="${FASTQ_2}.sai"]
-	#[command output.final="${OUTPUT}.bam"]
-	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
-		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
-		${FASTQ_1}.sai ${FASTQ_2}.sai ${FASTQ_1} ${FASTQ_2} ${BWA_SAMPE_OPTS} \
+	#[command require="${REF}"]
+	#[command input="${INPUT_DIR}/${FQ_1}" input="${OUTPUT_DIR}/${FQ_1}.sai"]
+	#[command input="${INPUT_DIR}/${FQ_2}" input="${OUTPUT_DIR}/${FQ_2}.sai"]
+	#[command output.final="${OUTPUT_DIR}/${OUTPUT}.bam"]
+	bwa sampe -P ${REF} -a ${MAX_INSERT_SIZE} \
+		${OUTPUT_DIR}/${FQ_1}.sai ${OUTPUT_DIR}/${FQ_2}.sai \
+		${INPUT_DIR}/${FQ_1} ${INPUT_DIR}/${FQ_2} \
+		-r "@RG\tID:${RGID}\tSM:${SAMPLE}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
+		${BWA_SAMPE_OPTS} \
 		| samtools view -Sb - \
-		> ${OUTPUT}.bam
+		> ${OUTPUT_DIR}/${OUTPUT}.bam
 }
 
-function bwa_read_mapping_se
+function bwa_map_se
 {
-	SP_set BWA_ALN_OPTS="-I ${BWA_ALN_OPTS}" if_fastq_is_not_base_33 INPUT_FASTQ="${INPUT_FASTQ}"
-	SP_set BWA_SAMSE_OPTS="${BWA_SAMSE_OPTS}"
-	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
-	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
-	SP_set RGID="1"
-	SP_set SAMPLE_NAME="${RGID}"
+	SP_set INPUT_DIR="."
+	SP_set OUTPUT_DIR="."
+
+	SP_set RGID="${SAMPLE}"
 	SP_set RGLB="${RGID}"
 	SP_set RGPL="illumina"
 	SP_set RGCN="BGI"
+	SP_set OUTPUT="${SAMPLE}"
+
+	SP_set THREAD_NUM=2
+	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
+	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
+
+	SP_set BWA_ALN_OPTS=""
+	SP_set BWA_SAMPE_OPTS=""
+
+	SP_set BWA_ALN_QUAL_OPTS=""
+	SP_if (test -z "$(${SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	{
+		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
+		SP_set BWA_ALN_QUAL_OPTS="-I"
+	}
 
 	# This will be skipped if the index files exist.
-	SP_run bwa_build_index REFERENCE="${REFERENCE}"
+	SP_run bwa_build FASTA="${REF}"
 
-	#[command require="${REFERENCE}"]
-	#[command input="${INPUT_FASTQ}" output.temp="${INPUT_FASTQ}.sai"]
+	#[command require="${REF}" input="${INPUT_DIR}/${FQ}" output.temp="${OUTPUT_DIR}/${FQ}.sai"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REFERENCE} ${INPUT_FASTQ} -f ${INPUT_FASTQ}.sai ${BWA_ALN_OPTS}
+		${REF} ${INPUT_DIR}/${FQ} -f ${OUTPUT_DIR}/${FQ}.sai \
+		${BWA_ALN_QUAL_OPTS} ${BWA_ALN_OPTS}
 
-	#[command require="${REFERENCE}"]
-	#[command input="${INPUT_FASTQ}" input="${INPUT_FASTQ}.sai"]
-	#[command output.final="${OUTPUT}.bam"]
-	bwa samse \
-		-r "@RG\tID:${RGID}\tSM:${SAMPLE_NAME}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
-		${REFERENCE} ${INPUT_FASTQ}.sai ${INPUT_FASTQ} ${BWA_SAMSE_OPTS} \
+	#[command require="${REF}"]
+	#[command input="${INPUT_DIR}/${FQ}" input="${OUTPUT_DIR}/${FQ}.sai"]
+	#[command output.final="${OUTPUT_DIR}/${OUTPUT}.bam"]
+	bwa samse ${REF} ${OUTPUT_DIR}/${FQ}.sai ${INPUT_DIR}/${FQ} \
+		-r "@RG\tID:${RGID}\tSM:${SAMPLE}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
+		${BWA_SAMPE_OPTS} \
 		| samtools view -Sb - \
-		> ${OUTPUT}.bam
+		> ${OUTPUT_DIR}/${OUTPUT}.bam
 }
 
 #[procedure input="${INPUT_1}.bam"]
@@ -299,7 +356,7 @@ function picard_set_read_group
 	# LIBRARY         : Read Group Library  Required. 
 	# PLATFORM        : Read Group platform (e.g. illumina, solid)  Required. 
 	# PLATFORM_UNIT   : Read Group platform unit (eg. run barcode)  Required. 
-	# SAMPLE_NAME     : Read Group sample name  Required. 
+	# SAMPLE          : Read Group sample name  Required. 
 	# SEQ_CENTER_NAME : Read Group sequencing center name  Default value: null. 
 	# DESCRIPTION     : Read Group description  Default value: null. 
 
@@ -324,7 +381,7 @@ function picard_set_read_group
 		RGLB=${LIBRARY} \
 		RGPL=${PLATFORM} \
 		RGPU=${PLATFORM_UNIT} \
-		RGSM=${SAMPLE_NAME} \
+		RGSM=${SAMPLE} \
 		RGCN=${SEQ_CENTER_NAME} \
 		${PICARD_RG_OPTS}
 
@@ -464,62 +521,58 @@ function gatk_filter_variants
 	SP_set FILTER_EXPRESSION="(AB ?: 0) > 0.75 || QUAL < 50.0 || DP < 10 || DP > 360 || (SB ?: -1) > -0.1 || MQ0 >= 4"
 
 ##### Select Different Types of Variants #####
-	SP_parallel_begin
+	{{
+		#[command require="${REFERENCE}"]
+		#[command input="${INPUT}.vcf"]
+		#[command output="${INPUT}.snp.vcf"]
+		java ${JAVA_OPTS} \
+			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+			-T SelectVariants \
+			-R ${REFERENCE} \
+			--variant ${INPUT}.vcf \
+			-selectType SNP -selectType MNP \
+			-o ${INPUT}.snp.vcf
 
-	#[command require="${REFERENCE}"]
-	#[command input="${INPUT}.vcf"]
-	#[command output="${INPUT}.snp.vcf"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
-		-T SelectVariants \
-		-R ${REFERENCE} \
-		--variant ${INPUT}.vcf \
-		-selectType SNP -selectType MNP \
-		-o ${INPUT}.snp.vcf
-
-	#[command require="${REFERENCE}"]
-	#[command input="${INPUT}.vcf"]
-	#[command output="${INPUT}.indel.vcf"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
-		-T SelectVariants \
-		-R ${REFERENCE} \
-		--variant ${INPUT}.vcf \
-		-selectType INDEL \
-		-o ${INPUT}.indel.vcf
-
-	SP_parallel_end
+		#[command require="${REFERENCE}"]
+		#[command input="${INPUT}.vcf"]
+		#[command output="${INPUT}.indel.vcf"]
+		java ${JAVA_OPTS} \
+			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+			-T SelectVariants \
+			-R ${REFERENCE} \
+			--variant ${INPUT}.vcf \
+			-selectType INDEL \
+			-o ${INPUT}.indel.vcf
+	}}
 
 ##### Filter Variants #####
-	SP_parallel_begin
+	{{
+		#[command require="${REFERENCE}"]
+		#[command input="${INPUT}.snp.vcf"]
+		#[command output="${INPUT}.snp.filtered.vcf"]
+		java ${JAVA_OPTS} \
+			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+			-T VariantFiltration \
+			-R ${REFERENCE} \
+			--variant ${INPUT}.snp.vcf \
+			--filterExpression "${FILTER_EXPRESSION}" \
+			--filterName "${FILTER_NAME}" \
+			--clusterWindowSize 10 \
+			-o ${INPUT}.snp.filtered.vcf
 
-	#[command require="${REFERENCE}"]
-	#[command input="${INPUT}.snp.vcf"]
-	#[command output="${INPUT}.snp.filtered.vcf"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
-		-T VariantFiltration \
-		-R ${REFERENCE} \
-		--variant ${INPUT}.snp.vcf \
-		--filterExpression "${FILTER_EXPRESSION}" \
-		--filterName "${FILTER_NAME}" \
-		--clusterWindowSize 10 \
-		-o ${INPUT}.snp.filtered.vcf
-
-	#[command require="${REFERENCE}"]
-	#[command input="${INPUT}.indel.vcf"]
-	#[command output="${INPUT}.indel.filtered.vcf"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
-		-T VariantFiltration \
-		-R ${REFERENCE} \
-		--variant ${INPUT}.snp.vcf \
-		--filterExpression "${FILTER_EXPRESSION}" \
-		--filterName "${FILTER_NAME}" \
-		--clusterWindowSize 10 \
-		-o ${INPUT}.indel.filtered.vcf
-
-	SP_parallel_end
+		#[command require="${REFERENCE}"]
+		#[command input="${INPUT}.indel.vcf"]
+		#[command output="${INPUT}.indel.filtered.vcf"]
+		java ${JAVA_OPTS} \
+			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+			-T VariantFiltration \
+			-R ${REFERENCE} \
+			--variant ${INPUT}.snp.vcf \
+			--filterExpression "${FILTER_EXPRESSION}" \
+			--filterName "${FILTER_NAME}" \
+			--clusterWindowSize 10 \
+			-o ${INPUT}.indel.filtered.vcf
+	}}
 
 ##### Combine Variants #####
 	#[command input="${INPUT}.snp.filtered.vcf"]
@@ -582,37 +635,35 @@ function pindel_call_structure_variants
 	#[command output="${OUTPUT}_INV"]
 	#[command output="${OUTPUT}_TD"]
 	pindel -f ${REFERENCE} \
-		-i <(echo "${INPUT}.bam ${INSERT_SIZE} ${SAMPLE_NAME}") \
+		-i <(echo "${INPUT}.bam ${INSERT_SIZE} ${SAMPLE}") \
 		-l -k -s -c ALL -o ${OUTPUT}
 
 ##### Convert to VCF #####
-	SP_parallel_begin
+	{{
+		#[command require="${REFERENCE}"]
+		#[command input="${OUTPUT}_D"]
+		#[command output="${OUTPUT}_D.vcf"]
+		pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+			-p ${OUTPUT}_D -v ${OUTPUT}_D.vcf
 
-	#[command require="${REFERENCE}"]
-	#[command input="${OUTPUT}_D"]
-	#[command output="${OUTPUT}_D.vcf"]
-	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
-		-p ${OUTPUT}_D -v ${OUTPUT}_D.vcf
-
-	#[command require="${REFERENCE}"]
-	#[command input="${OUTPUT}_SI"]
-	#[command output="${OUTPUT}_SI.vcf"]
-	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
-		-p ${OUTPUT}_SI -v ${OUTPUT}_SI.vcf
-	
-	#[command require="${REFERENCE}"]
-	#[command input="${OUTPUT}_INV"]
-	#[command output="${OUTPUT}_INV.vcf"]
-	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
-		-p ${OUTPUT}_INV -v ${OUTPUT}_INV.vcf
-	
-	#[command require="${REFERENCE}"]
-	#[command input="${OUTPUT}_TD"]
-	#[command output="${OUTPUT}_TD.vcf"]
-	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
-		-p ${OUTPUT}_TD -v ${OUTPUT}_TD.vcf
-
-	SP_parallel_end
+		#[command require="${REFERENCE}"]
+		#[command input="${OUTPUT}_SI"]
+		#[command output="${OUTPUT}_SI.vcf"]
+		pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+			-p ${OUTPUT}_SI -v ${OUTPUT}_SI.vcf
+		
+		#[command require="${REFERENCE}"]
+		#[command input="${OUTPUT}_INV"]
+		#[command output="${OUTPUT}_INV.vcf"]
+		pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+			-p ${OUTPUT}_INV -v ${OUTPUT}_INV.vcf
+		
+		#[command require="${REFERENCE}"]
+		#[command input="${OUTPUT}_TD"]
+		#[command output="${OUTPUT}_TD.vcf"]
+		pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+			-p ${OUTPUT}_TD -v ${OUTPUT}_TD.vcf
+	}}
 
 ##### Combine Variants #####
 	#[command require="${REFERENCE}"]
@@ -637,90 +688,91 @@ function pindel_call_structure_variants
 #[procedure require="${REFERENCE}"]
 #[procedure input="${FASTQ_1}.fq.gz"]
 #[procedure input="${FASTQ_2}.fq.gz"]
-#[procedure output="${SAMPLE_NAME}.samtools.vcf"]
-#[procedure output="${SAMPLE_NAME}.gatk.vcf"]
-#[procedure output="${SAMPLE_NAME}.pindel.vcf"]
-#[procedure output="${SAMPLE_NAME}.summary.txt"]
+#[procedure output="${SAMPLE}.samtools.vcf"]
+#[procedure output="${SAMPLE}.gatk.vcf"]
+#[procedure output="${SAMPLE}.pindel.vcf"]
+#[procedure output="${SAMPLE}.summary.txt"]
 function DNAseq_analysis
 {
 	SP_set RGID="${RGID}"
 	SP_set RGLB="${RGLB}"
 	SP_set RGPL="${RGPL}"
 	SP_set RGCN="${RGCN}"
+	SP_set MAX_INSERT_SIZE=500
 
 ##### FastQC #####
-	SP_parallel_begin
-	SP_run fastqc_check INPUT_FASTQ=${FASTQ_1}.fq.gz OUTPUT=${FASTQ_1}
-	SP_run fastqc_check INPUT_FASTQ=${FASTQ_2}.fq.gz OUTPUT=${FASTQ_2}
-	SP_parallel_end
+	{{
+		SP_run fastqc INPUT_FASTQ=${FASTQ_1}.fq.gz OUTPUT=${FASTQ_1}
+		SP_run fastqc INPUT_FASTQ=${FASTQ_2}.fq.gz OUTPUT=${FASTQ_2}
+	}}
 
 ##### Read Mapping #####
-	SP_run bwa_read_mapping \
-		REFERENCE=${REFERENCE} \
-		FASTQ_1=${FASTQ_1}.fq.gz \
-		FASTQ_2=${FASTQ_2}.fq.gz \
+	SP_run bwa_map_se \
+		REF=${REFERENCE} \
+		FQ_1=${FASTQ_1}.fq.gz \
+		FQ_2=${FASTQ_2}.fq.gz \
 		MAX_INSERT_SIZE=${MAX_INSERT_SIZE} \
-		OUTPUT=${SAMPLE_NAME} \
+		OUTPUT=${SAMPLE} \
 		RGID=${RGID} \
 		RGLB=${RGLB} \
-		SAMPLE_NAME=${SAMPLE_NAME} \
+		SAMPLE_NAME=${SAMPLE} \
 		RGPL=${RGPL} \
 		RGCN=${RGCN}
 
 ##### Call Variants #####
-	SP_parallel_begin
-	#[command input="${SAMPLE_NAME}.bam" output="${SAMPLE_NAME}.mapped.bam"]
-	samtools view ${SAMPLE_NAME}.bam -F 4 -b > ${SAMPLE_NAME}.mapped.bam
-	#[command input="${SAMPLE_NAME}.bam" output="${SAMPLE_NAME}.unmapped.bam"]
-	samtools view ${SAMPLE_NAME}.bam -f 4 -b > ${SAMPLE_NAME}.unmapped.bam
-	SP_parallel_end
+	{{
+		#[command input="${SAMPLE}.bam" output="${SAMPLE}.mapped.bam"]
+		samtools view ${SAMPLE}.bam -F 4 -b > ${SAMPLE}.mapped.bam
+		#[command input="${SAMPLE}.bam" output="${SAMPLE}.unmapped.bam"]
+		samtools view ${SAMPLE}.bam -f 4 -b > ${SAMPLE}.unmapped.bam
+	}}
 
-	SP_run select_unique_hit_reads INPUT=${SAMPLE_NAME}.mapped
+	SP_run select_unique_hit_reads INPUT=${SAMPLE}.mapped
 
-	SP_run sort_bam INPUT=${SAMPLE_NAME}.mapped.uniq
+	SP_run sort_bam INPUT=${SAMPLE}.mapped.uniq
 
-	SP_run mark_duplicate_reads INPUT=${SAMPLE_NAME}.mapped.uniq.sorted
+	SP_run mark_duplicate_reads INPUT=${SAMPLE}.mapped.uniq.sorted
 
 	SP_run samtools_call_variants \
 		REFERENCE=${REFERENCE} \
-		INPUT=${SAMPLE_NAME}.mapped.uniq.sorted.mkdup \
-		OUTPUT=${SAMPLE_NAME}
+		INPUT=${SAMPLE}.mapped.uniq.sorted.mkdup \
+		OUTPUT=${SAMPLE}
 
 	SP_run gatk_call_variants \
 		REFERENCE=${REFERENCE} \
-		INPUT=${SAMPLE_NAME}.mapped.uniq.sorted.mkdup \
-		OUTPUT=${SAMPLE_NAME}
+		INPUT=${SAMPLE}.mapped.uniq.sorted.mkdup \
+		OUTPUT=${SAMPLE}
 
 ##### Call Structure Variants #####
 	SP_run sort_bam \
 		VALIDATION_STRINGENCY=SILENT \
-		INPUT=${SAMPLE_NAME} \
-		OUTPUT=${SAMPLE_NAME}.sorted
+		INPUT=${SAMPLE} \
+		OUTPUT=${SAMPLE}.sorted
 
 	SP_run pindel_call_structure_variants \
 		REFERENCE=${REFERENCE} \
-		SAMPLE_NAME=${SAMPLE_NAME} \
+		SAMPLE_NAME=${SAMPLE} \
 		INSERT_SIZE=${INSERT_SIZE} \
-		INPUT=${SAMPLE_NAME}.sorted \
-		OUTPUT=${SAMPLE_NAME}
+		INPUT=${SAMPLE}.sorted \
+		OUTPUT=${SAMPLE}
 
 ##### Report Summary Counts #####
 	( \
 		echo -n 'Total reads  : '; unzip -p ${FASTQ_1}.fastqc.zip '*/fastqc_data.txt' | grep 'Total Sequences' | cut -f2 | awk '{print $1+$1}'; \
-		echo -n 'Mapped reads : '; samtools view -c ${SAMPLE_NAME}.mapped.bam; \
-		echo -n 'Unique reads : '; samtools view -c ${SAMPLE_NAME}.mapped.uniq.bam; \
-		echo -n 'Non-Duplicate: '; samtools flagstat ${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam | head -n2 | awk '{print $1}' | paste - - | awk '{print $1-$2}'; \
-		echo -n 'Variants (gatk)    :'; cat ${SAMPLE_NAME}.gatk.vcf | grep -v ^# | wc -l; \
-		echo -n 'Variants (samtools):'; cat ${SAMPLE_NAME}.samtools.vcf | grep -v ^# | wc -l; \
-		echo -n 'Variants (pindel)  :'; cat ${SAMPLE_NAME}.pindel.vcf | grep -v ^# | wc -l; \
-	) > ${SAMPLE_NAME}.summary.txt
+		echo -n 'Mapped reads : '; samtools view -c ${SAMPLE}.mapped.bam; \
+		echo -n 'Unique reads : '; samtools view -c ${SAMPLE}.mapped.uniq.bam; \
+		echo -n 'Non-Duplicate: '; samtools flagstat ${SAMPLE}.mapped.uniq.sorted.mkdup.bam | head -n2 | awk '{print $1}' | paste - - | awk '{print $1-$2}'; \
+		echo -n 'Variants (gatk)    :'; cat ${SAMPLE}.gatk.vcf | grep -v ^# | wc -l; \
+		echo -n 'Variants (samtools):'; cat ${SAMPLE}.samtools.vcf | grep -v ^# | wc -l; \
+		echo -n 'Variants (pindel)  :'; cat ${SAMPLE}.pindel.vcf | grep -v ^# | wc -l; \
+	) > ${SAMPLE}.summary.txt
 
 ##### Remove Intermediate Files #####
-	#[command require="${SAMPLE_NAME}.mapped.uniq.bam"]
-	#[command require="${SAMPLE_NAME}.mapped.non_uniq.bam"]
-	rm -vf ${SAMPLE_NAME}.mapped.bam
-	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.bam"]
-	rm -vf ${SAMPLE_NAME}.mapped.uniq.bam
-	#[command require="${SAMPLE_NAME}.mapped.uniq.sorted.mkdup.bam"]
-	rm -vf ${SAMPLE_NAME}.mapped.uniq.sorted.bam{,.bai}
+	#[command require="${SAMPLE}.mapped.uniq.bam"]
+	#[command require="${SAMPLE}.mapped.non_uniq.bam"]
+	rm -vf ${SAMPLE}.mapped.bam
+	#[command require="${SAMPLE}.mapped.uniq.sorted.bam"]
+	rm -vf ${SAMPLE}.mapped.uniq.bam
+	#[command require="${SAMPLE}.mapped.uniq.sorted.mkdup.bam"]
+	rm -vf ${SAMPLE}.mapped.uniq.sorted.bam{,.bai}
 }
