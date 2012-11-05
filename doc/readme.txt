@@ -179,28 +179,20 @@ format: NAME=VALUE (no space beside the equal mark).
 3.7. Primitives
 
    There are a few primitives in SeqPipe:
-      SP_run
       SP_set
-      SP_eval
-      SP_parallel_begin
-      SP_parallel_end
+      SP_run
+      SP_if / SP_else
 
 ---------------------------------------------------------------------------
 
 4. Evaluation in Run-time
 
-Variables are supported, for example:
-
-#[procedure type="evaluator"]
-function get_temp_file
-{
-	mktemp
-}
+Embeded bash command in SP_set are supported, for example:
 
 #[procedure type="stage"]
 function foo
 {
-	SP_eval TMP_FILE get_temp_file
+	SP_set TMP_FILE=$(mktemp)
 	ls > ${TMP_FILE}
 	cat ${TMP_FILE}
 	wc ${TMP_FILE}
