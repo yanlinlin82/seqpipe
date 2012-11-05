@@ -705,10 +705,13 @@ sub show_parameters
 
 sub list_procedures
 {
+	my ($proc_name) = @_;
 	foreach my $type ("stage", "pipeline") {
-		print "\nCurrent available procedures ($type):\n";
+		print "\nCurrent available procedures ($type)";
+		print " (search for '$proc_name')" if $proc_name;
+		print ":\n";
 		foreach my $name (sort keys %procedures) {
-			if ($procedures{$name}{type} eq $type) {
+			if ($procedures{$name}{type} eq $type and $name =~ /$proc_name/) {
 				print "   $name\n";
 			}
 		}
@@ -1343,7 +1346,7 @@ if (not $disable_loading_default_modules) {
 load_modules @module_files;
 
 if ($list_mode) {
-	list_procedures;
+	list_procedures $proc_name;
 	exit 1;
 }
 
