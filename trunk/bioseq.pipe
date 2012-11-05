@@ -38,13 +38,17 @@ function fastqc
 			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT_DIR}/${NAME}.fastqc.zip
 }
 
-function bwa_build_index
+function bwa_build
 {
 	SP_set ALGORITHM="is"
-	SP_set ALGORITHM="bwtsw" if_fasta_is_long_genome INPUT_FASTA="${REFERENCE}"
+	SP_if $(ls -lL ${FASTA} | awk '$5>=1e8')
+	{
+		# Treat >=100MB .fasta file as long genome, use '-a bwtsw' instead of '-a is'
+		SP_set ALGORITHM="bwtsw"
+	}
 
-	#[command input="${REFERENCE}" output.final="${REFERENCE}.bwt"]
-	bwa index -a ${ALGORITHM} ${REFERENCE}
+	#[command input="${FASTA}" output.final="${FASTA}.bwt"]
+	bwa index -a ${ALGORITHM} ${FASTA}
 }
 
 function bwa_read_mapping
