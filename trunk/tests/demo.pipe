@@ -27,12 +27,12 @@ function demo_SP_if
 		echo false
 	}
 
-	SP_if *.txt
+	SP_if (ls *.gz)
 	{
 		wc *.gz
 	}
 
-	SP_if *.mp3
+	SP_if (ls *.mp3)
 	{
 		ls -sh *.mp3
 	}
