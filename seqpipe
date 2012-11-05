@@ -340,6 +340,13 @@ sub parse_cmd
 			push @blocks, parse_block($blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
 			$cmd_ref->{block} = scalar @blocks - 1;
 		} elsif ($argv[0] eq 'SP_run') {
+			$cmd_ref->{command} = shift @argv;
+			$cmd_ref->{proc_name} = shift @argv;
+			die 'ERROR: Invalid option for SP_run!' if $cmd_ref->{proc_name} !~ /^\w+$/;
+			for my $opt (@argv) {
+				die 'ERROR: Invalid option for SP_run!' . $opt if $opt !~ /^\w+=(.*)$/;
+			}
+			$cmd_ref->{options} = [@argv];
 		} else {
 			die "ERROR: Invalid primitive line '$argv[0]'!\n";
 		}
@@ -804,6 +811,8 @@ sub display_block
 			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
 		} elsif ($cmd_ref->{command} eq 'SP_set') {
 			print "$indent\tSP_set $cmd_ref->{variable}=$cmd_ref->{text}\n";
+		} elsif ($cmd_ref->{command} eq 'SP_run') {
+			print "$indent\tSP_run $cmd_ref->{proc_name} " . bash_line_encode(@{$cmd_ref->{options}}) . "\n";
 		} elsif ($cmd_ref->{command} eq 'SP_if') {
 			if (exists $cmd_ref->{bash}) {
 				print "$indent\tSP_if ($cmd_ref->{bash})\n";
@@ -853,7 +862,7 @@ sub show_raw_code
 	display_block \%procedure, '';
 }
 
-sub check_files
+sub check_for_skip
 {
 	my ($variables_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
 	
@@ -875,23 +884,26 @@ sub check_files
 		push @inputs, $file;
 	}
 	
-	return 1 unless %{$outputs_ref};
-
-	foreach my $output (keys %{$outputs_ref}) {
-		my $file = eval_string($output, $variables_ref);
-		if (-e $file) {
-			foreach my $input (@inputs) {
-				if ((stat($input))->mtime > (stat($file))->mtime) {
-					return 1;
+	if (%{$outputs_ref}) {
+		foreach my $output (keys %{$outputs_ref}) {
+			my $file = eval_string($output, $variables_ref);
+			if (-e $file) {
+				foreach my $input (@inputs) {
+					if ((stat($input))->mtime > (stat($file))->mtime) {
+						return 0;
+					}
 				}
+			} else {
+				my $output_dir = dirname $file;
+				system "mkdir", "-p", $output_dir unless -d $output_dir;
+				return 0;
 			}
-		} else {
-			my $output_dir = dirname $file;
-			system "mkdir", "-p", $output_dir unless -d $output_dir;
-			return 1;
 		}
+		return 1;
+	} else {
+		# Force to run pipeline if no any output file defined.
+		return 0;
 	}
-	return 0;
 }
 
 sub save_command
@@ -984,68 +996,62 @@ sub run_command
 {
 	my ($proc_name, $procedure_type, $command, $command_struct_ref, $outputs_ref, $indent, $variables_ref, $option_from_cmd_ref) = @_;
 
-	my @log_files = ();
 	my @pipe_structure = ();
 	my $return_value = 0;
 	my %variables = %{$variables_ref};
 
 	{
 		lock($exiting);
-		return ( -1, \@log_files, \@pipe_structure ) if $exiting;
+		return ( -1, \@pipe_structure ) if $exiting;
 	}
 
 	my $run_id = 0;
-	if ($command ne '' and $procedure_type ne 'sysinfo' and $command !~ /^SP_run/) {
+	if ($command ne '' and $procedure_type ne 'sysinfo') {
 		{
 			lock($run_counter);
 			$run_counter += 1;
 			$run_id = $run_counter;
 		}
-		push @log_files, LOG_DIR . "/$run_id.$proc_name.log";
 	}
 
 	if ($command eq 'SP_set') {
 		my $name = $command_struct_ref->{variable};
 		my $value = eval_string_in_shell($command_struct_ref->{text}, \%variables, $run_id, $indent);
-		return ( -1, \@log_files, \@pipe_structure ) if not defined $value;
+		return ( -1, \@pipe_structure ) if not defined $value;
 		$variables{$name} = $value;
 		safe_print "$indent($run_id) SP_set $name=$value\n";
 
-	} elsif ($command =~ /^SP_run\s+(\w+)/) {
-		my @procedure_options = bash_line_decode($command);
-		shift @procedure_options;
-		my $proc_name = shift @procedure_options;
-
-		$return_value = run_procedure($proc_name, \@procedure_options, \@log_files, $indent, \@pipe_structure);
+	} elsif ($command =~ 'SP_run') {
+		$return_value = run_procedure($command_struct_ref->{proc_name}, $command_struct_ref->{options}, $indent, \@pipe_structure);
 	} elsif ($command eq 'SP_if') {
 		my $yes;
 		my $cmd;
 		if (exists $command_struct_ref->{bash}) {
 			$cmd = "SP_if ($command_struct_ref->{bash})";
 			my $shell_return = run_shell(eval_string($command_struct_ref->{bash}, \%variables), 'checker', $run_id, $indent, \@pipe_structure);
-			return (-1, \@log_files, \@pipe_structure) if not defined $shell_return;
+			return (-1, \@pipe_structure) if not defined $shell_return;
 			$yes = ($shell_return->{return_value} == 0);
 		} else {
 			$cmd = "SP_if $command_struct_ref->{text}";
 			my $s = eval_string_in_shell($command_struct_ref->{text}, \%variables, $run_id, $indent);
-			return (-1, \@log_files, \@pipe_structure) if not defined $s;
+			return (-1, \@pipe_structure) if not defined $s;
 			$yes = ($s ne '');
 		}
 		safe_print "$indent($run_id) $cmd returns '" . ($yes ? "yes" : "no") . "'\n";
 		if ($yes) {
-			$return_value = run_block('SP_if', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+			$return_value = run_block('SP_if', $blocks[$command_struct_ref->{block}], [], $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
 		} else {
 			if (exists $command_struct_ref->{else_block}) {
-				$return_value = run_block('SP_if', $blocks[$command_struct_ref->{else_block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+				$return_value = run_block('SP_if', $blocks[$command_struct_ref->{else_block}], [], $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
 			}
 		}
 	} elsif ($command eq 'SP_for') {
 		my $name = $command_struct_ref->{variable};
 		my $value = eval_string_in_shell($command_struct_ref->{text}, \%variables, $run_id, $indent);
-		return ( -1, \@log_files, \@pipe_structure ) if not defined $value;
+		return ( -1, \@pipe_structure ) if not defined $value;
 		foreach my $each_value (split(/\s/, $value)) {
 			$variables{$name} = $each_value;
-			$return_value = run_block('SP_for', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+			$return_value = run_block('SP_for', $blocks[$command_struct_ref->{block}], [], $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
 			last if (exists $exit_on_error{$procedure_type} and $return_value != 0);
 		}
 	
@@ -1053,19 +1059,19 @@ sub run_command
 		my $cmd = "SP_while ($command_struct_ref->{bash})";
 		while (1) {
 			my $shell_return = run_shell(eval_string($command_struct_ref->{bash}, \%variables), 'checker', $run_id, $indent, \@pipe_structure);
-			return (-1, \@log_files, \@pipe_structure) if not defined $shell_return;
+			return (-1, \@pipe_structure) if not defined $shell_return;
 			my $yes = ($shell_return->{return_value} == 0);
 			safe_print "$indent($run_id) $cmd returns '" . ($yes ? "yes" : "no") . "'\n";
 			last if (not $yes);
-			$return_value = run_block('SP_while', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+			$return_value = run_block('SP_while', $blocks[$command_struct_ref->{block}], [], $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
 			last if (exists $exit_on_error{$procedure_type} and $return_value != 0);
 		}
 	
 	} elsif ($command eq '') { # code block
-		$return_value = run_block('', $blocks[$command_struct_ref->{block}], [], \@log_files, $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
+		$return_value = run_block('', $blocks[$command_struct_ref->{block}], [], $indent, \@pipe_structure, \%variables, $option_from_cmd_ref);
 	} else {
 		my $shell_return = run_shell(eval_string($command, \%variables), $procedure_type, $run_id, $indent, \@pipe_structure);
-		return ( -1, \@log_files, \@pipe_structure ) if not defined $shell_return;
+		return ( -1, \@pipe_structure ) if not defined $shell_return;
 		$return_value = $shell_return->{return_value};
 	}
 	
@@ -1080,12 +1086,12 @@ sub run_command
 			}
 		}
 	}
-	return ( $return_value, \@log_files, \@pipe_structure, \%variables );
+	return ( $return_value, \@pipe_structure, \%variables );
 }
 
 sub run_procedure
 {
-	my ($proc_name, $argv_ref, $log_files_ref, $indent, $pipe_structure_ref) = @_;
+	my ($proc_name, $argv_ref, $indent, $pipe_structure_ref) = @_;
 	
 	if (not exists $procedures{$proc_name}) {
 		safe_print "ERROR: Unknown procedure '$proc_name'! Use 'seqpipe -l' to list available procedures.\n";
@@ -1139,8 +1145,7 @@ sub run_procedure
 		}
 	}
 
-	my $need_rerun = check_files(\%variables, $procedure{requires}, $procedure{inputs}, $procedure{outputs});
-	if (not $need_rerun) {
+	if (check_for_skip(\%variables, $procedure{requires}, $procedure{inputs}, $procedure{outputs})) {
 		safe_print "$indent(Skip) " . bash_line_encode(('SP_run', $proc_name, @{$argv_ref})) . "\n";
 		return 0;
 	}
@@ -1165,7 +1170,7 @@ sub run_procedure
 		safe_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 	}
 
-	my $value = run_block($proc_name, \%procedure, $argv_ref, $log_files_ref, $indent, $pipe_structure_ref, \%variables, \%option_from_cmd);
+	my $value = run_block($proc_name, \%procedure, $argv_ref, $indent, $pipe_structure_ref, \%variables, \%option_from_cmd);
 
 	if ($value == 0 and not $keep_intermediates) {
 		foreach my $item (keys %{$procedure{temp_outputs}}) {
@@ -1187,7 +1192,7 @@ sub run_procedure
 
 sub run_block
 {
-	my ($proc_name, $block_ref, $argv_ref, $log_files_ref, $indent, $pipe_structure_ref, $variables_ref, $option_from_cmd_ref) = @_;
+	my ($proc_name, $block_ref, $argv_ref, $indent, $pipe_structure_ref, $variables_ref, $option_from_cmd_ref) = @_;
 	my $return_value = 0;
 
 	{
@@ -1214,7 +1219,7 @@ sub run_block
 			push @output_set, $filename;
 		}
 
-		if (not check_files($variables_ref, $requires_ref, $inputs_ref, $outputs_ref)) {
+		if (check_for_skip($variables_ref, $requires_ref, $inputs_ref, $outputs_ref)) {
 			safe_print "$indent(Skip) $command\n";
 			next;
 		}
@@ -1226,19 +1231,19 @@ sub run_block
 			if ($procedure{parallel}) {
 				push @thread_list, $thd;
 			} else {
-				my ($return_log_files_ref, $return_pipe_structure_ref, $return_variables_ref);
-				($return_value, $return_log_files_ref, $return_pipe_structure_ref, $return_variables_ref) = $thd->join();
-				push @{$log_files_ref}, @{$return_log_files_ref};
+				my $return_pipe_structure_ref;
+				my $return_variables_ref;
+				($return_value, $return_pipe_structure_ref, $return_variables_ref) = $thd->join();
 				push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 				foreach my $name (keys %{$return_variables_ref}) {
 					$variables_ref->{$name} = $return_variables_ref->{$name};
 				}
 			}
 		} else {
-			my ($return_log_files_ref, $return_pipe_structure_ref, $return_variables_ref);
-			($return_value, $return_log_files_ref, $return_pipe_structure_ref, $return_variables_ref) = run_command(
+			my $return_pipe_structure_ref;
+			my $return_variables_ref;
+			($return_value, $return_pipe_structure_ref, $return_variables_ref) = run_command(
 				$proc_name, $procedure{type}, $command, $command_struct_ref, \@output_set, $indent . "  ", $variables_ref, $option_from_cmd_ref);
-			push @{$log_files_ref}, @{$return_log_files_ref};
 			push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 			foreach my $name (keys %{$return_variables_ref}) {
 				$variables_ref->{$name} = $return_variables_ref->{$name};
@@ -1248,9 +1253,9 @@ sub run_block
 	}
 	if (scalar @thread_list > 0) {
 		foreach my $thd (@thread_list) {
-			my ($return_log_files_ref, $return_pipe_structure_ref, $return_variables_ref);
-			($return_value, $return_log_files_ref, $return_pipe_structure_ref, $return_variables_ref) = $thd->join();
-			push @{$log_files_ref}, @{$return_log_files_ref};
+			my $return_pipe_structure_ref;
+			my $return_variables_ref;
+			($return_value, $return_pipe_structure_ref, $return_variables_ref) = $thd->join();
 			push @{$pipe_structure_ref}, @{$return_pipe_structure_ref};
 			foreach my $name (keys %{$return_variables_ref}) {
 				$variables_ref->{$name} = $return_variables_ref->{$name};
@@ -1432,16 +1437,14 @@ foreach my $sysinfo_proc_name (keys %procedures) {
 		if ($sysinfo_proc_name eq 'sysinfo' or $procedures{$sysinfo_proc_name}{module_file} eq $procedures{$proc_name}{module_file}) {
 			safe_print "Log sysinfo: $sysinfo_proc_name\n";
 			my @args = ();
-			my @log_files = ();
 			my @pipe_struct = ();
-			run_procedure $sysinfo_proc_name, \@args, \@log_files, '', \@pipe_struct;
+			run_procedure $sysinfo_proc_name, \@args, '', \@pipe_struct;
 		}
 	}
 }
 
-my @log_files = ();
 my @pipe_structure = ();
-my $return_value = run_procedure($proc_name, \@argv, \@log_files, '', \@pipe_structure);
+my $return_value = run_procedure($proc_name, \@argv, '', \@pipe_structure);
 
 if ($return_value == 0) {
 	safe_print "Pipeline finished successfully!\n";
