@@ -34,7 +34,6 @@ my $list_mode = 0;
 my $show_mode = 0;
 my $quiet_mode = 0;
 my $keep_intermediates = 0;
-my $enable_duplicate = 0;
 my $execute_command = '';
 my $shell = '/bin/bash';
 my $obsolete_warned = 0;
@@ -45,7 +44,7 @@ my %procedures = ();
 my @blocks = ();
 
 # Global variables (which are defined outside procedures in .pipe files).
-my %global_var = ( SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dirname abs_path $0) );
+my %global_var = ();
 
 # Count how many commands have been run so far.
 my $run_counter :shared = 0;
@@ -264,7 +263,7 @@ sub check_var
 	my ($proc_name, $options_ref) = @_;
 	my @req_vars = ();
 	foreach my $var (sort keys %{$procedures{$proc_name}{used_var}}) {
-		next if exists $global_var{$var};
+		next if exists $global_var{$procedures{$proc_name}{module_file}}{$var};
 		next if exists $procedures{$proc_name}{defined_var}{$var};
 		next if exists $procedures{$proc_name}{iterator_var}{$var};
 		next if exists $options_ref->{$var};
@@ -601,6 +600,9 @@ sub create_proc_info
 sub load_modules
 {
 	foreach my $file (@_) {
+		if (not exists $global_var{abs_path $file}) {
+			$global_var{abs_path $file} = { SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dirname abs_path $0) };
+		}
 		my @lines = load_lines($file, {}, []);
 		while (@lines) {
 			parse_proc($file, \@lines);
@@ -657,8 +659,8 @@ sub parse_proc
 			my $proc_name = $1;
 			my $blocking = $2;
 
-			if (exists $procedures{$proc_name} and not $enable_duplicate) {
-				die "ERROR: Redeclaration of procedure '$proc_name'" . parsing_error($l);
+			if (exists $procedures{$proc_name}) {
+				print "WARNING: Redeclaration of procedure '$proc_name'" . parsing_error($l) . "\n";
 			}
 
 			if ($blocking eq '') {
@@ -709,19 +711,19 @@ sub parse_proc
 			%outputs = ();
 
 		} elsif ($l->{text} =~ /^\s*(\w+)=(.*)$/) {
-			my $option_name = $1;
-			my $option_value = $2;
-			$option_value =~ s/\s+#.*$//g;      # Remove tailing comments and whitespaces.
-			$option_value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
-			if (exists $global_var{$option_name} and not $enable_duplicate) {
-				die "ERROR: Redeclaration of global variable '$option_name'" . parsing_error($l);
+			my $name = $1;
+			my $value = $2;
+			$value =~ s/\s+#.*$//g;      # Remove tailing comments and whitespaces.
+			$value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
+			if (exists $global_var{abs_path $file}{$name}) {
+				die "ERROR: Redeclaration of global variable '$name' for '$file'" . parsing_error($l);
 			}
-			while ($option_value =~ /\${(\w+)}/g) {
-				if (not exists $global_var{$1}) {
-					die "ERROR: Undetermined global variable '$option_name'" .parsing_error($l);
+			while ($value =~ /\${(\w+)}/g) {
+				if (not exists $global_var{abs_path $file}{$1}) {
+					die "ERROR: Undetermined global variable '$name' for '$file'" .parsing_error($l);
 				}
 			}
-			$global_var{$option_name} = $option_value;
+			$global_var{abs_path $file}{$name} = $value;
 		}
 	}
 }
@@ -736,19 +738,16 @@ Copyright: 2012, Centre for Bioinformatics, Peking University, China
 Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
 
 Options:
-   -h / --help       Show this help or require parameters for a procedure.
-   -m <file>         Load procedure module file, this option can be used many times.
-   -l / --list       List current available procedures.
-   -t <max_thread>   Max thread number, 0 for unlimited. default: ' . $max_thread_number . '
-   -T                Print the raw procedure declaration.
-   -v / --verbose    Show verbose message.
-   -q / --quiet      Do not show warning messages.
-   -k                Keep intermediate files.
-   -d                Enable duplcated global variables and procedures (overwrited as the latters).
-   -D                Disable loading default pipeline modules.
-   -e <cmd>          Inline mode, run a bash command directly.
-   -s <shell>        Send commands to another shell (such as "qsub"), default: ' . $shell . '
-   -S                Strict mode, which will check return value of every command in pipe.
+   -h          Show this help, or its usage when procedure name given.
+   -m <file>   Load procedure module file, this option can be used many times.
+   -l          List current available procedures.
+   -t <int>    Max thread number, 0 for unlimited. default: ' . $max_thread_number . '
+   -T          Print the raw procedure declaration.
+   -v          Show verbose message.
+   -q          Do not show warning messages.
+   -k          Keep intermediate files.
+   -e <cmd>    Inline mode, run a bash command directly.
+   -s <shell>  Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
 
 ';
 }
@@ -765,8 +764,8 @@ sub show_parameters
 			$def_vars{$name} = "(runtime-evaluate)";
 		} elsif (exists $procedures{$proc_name}{defined_var}{$name}) {
 			$def_vars{$name} = $procedures{$proc_name}{defined_var}{$name};
-		} elsif (exists $global_var{$name}) {
-			$def_vars{$name} = $global_var{$name};
+		} elsif (exists $global_var{$procedures{$proc_name}{module_file}}{$name}) {
+			$def_vars{$name} = $global_var{$procedures{$proc_name}{module_file}}{$name};
 		} else {
 			push @req_vars, $name;
 		}
@@ -776,7 +775,7 @@ sub show_parameters
 		printf "   %-30s Required\n", $name;
 	}
 	foreach my $name (sort keys %def_vars) {
-		printf "   %-30s %s\n", $name, $def_vars{$name};
+		printf "   %-30s Def: %s\n", $name, $def_vars{$name};
 	}
 
 	my @requires = sort keys %{$procedures{$proc_name}{requires}};
@@ -801,6 +800,7 @@ sub list_proc
 		print "   $name\n" if $name =~ /$proc_name/;
 	}
 	print "\n";
+	exit 1;
 }
 
 sub display_block
@@ -891,6 +891,7 @@ sub show_raw_code
 	print "function $proc_name\n";
 
 	display_block \%procedure, '';
+	exit 1;
 }
 
 sub check_for_skip
@@ -1094,10 +1095,10 @@ sub run_cmd
 		}
 		safe_print "$indent($run_id) $cmd returns '" . ($yes ? "yes" : "no") . "'\n";
 		if ($yes) {
-			$return_value = run_block('SP_if', $blocks[$cmd_ref->{block}], $indent, \%variables, $option_from_cmd_ref);
+			$return_value = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%variables, $option_from_cmd_ref);
 		} else {
 			if (exists $cmd_ref->{else_block}) {
-				$return_value = run_block('SP_if', $blocks[$cmd_ref->{else_block}], $indent, \%variables, $option_from_cmd_ref);
+				$return_value = run_block($proc_name, $blocks[$cmd_ref->{else_block}], $indent, \%variables, $option_from_cmd_ref);
 			}
 		}
 
@@ -1108,7 +1109,7 @@ sub run_cmd
 		return undef if not defined $value;
 		foreach my $each_value (split(/\s/, $value)) {
 			$variables{$name} = $each_value;
-			$return_value = run_block('SP_for', $blocks[$cmd_ref->{block}], $indent, \%variables, $option_from_cmd_ref);
+			$return_value = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%variables, $option_from_cmd_ref);
 			return undef if not defined $return_value;
 			last if $return_value != 0;
 		}
@@ -1122,14 +1123,14 @@ sub run_cmd
 			my $yes = ($shell_return->{return_value} == 0) ^ ($cmd_ref->{negative} ne '');
 			safe_print "$indent($run_id) $cmd returns '" . ($yes ? "yes" : "no") . "'\n";
 			last if (not $yes);
-			$return_value = run_block('SP_while', $blocks[$cmd_ref->{block}], $indent, \%variables, $option_from_cmd_ref);
+			$return_value = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%variables, $option_from_cmd_ref);
 			return undef if not defined $return_value;
 			last if $return_value != 0;
 		}
 
 	} elsif ($command eq '') {
 		# code block
-		$return_value = run_block('', $blocks[$cmd_ref->{block}], $indent, \%variables, $option_from_cmd_ref);
+		$return_value = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%variables, $option_from_cmd_ref);
 		return undef if not defined $return_value;
 
 	} else {
@@ -1168,7 +1169,7 @@ sub run_proc
 
 	# Variables are not shared between procedures except global variables.
 	# However, global variables can be overwriten but not changed in run-time.
-	my %variables = %global_var;
+	my %variables = %{$global_var{$procedures{$proc_name}{module_file}}};
 	foreach my $name (keys %{$procedures{$proc_name}{defined_var}}) {
 		$variables{$name} = eval_string($procedures{$proc_name}{defined_var}{$name}, \%variables);
 	}
@@ -1334,26 +1335,22 @@ initialize_config;
 my $proc_name = '';
 my %option_from_cmd = ();
 
-my @module_files = (dirname abs_path $0) . '/default.pipe';
-my $disable_loading_default_modules = 0;
-my @user_module_files = ();
+my @module_files = glob((dirname abs_path $0) . '/*.pipe');
 
 if ($#ARGV < 0) {
 	$help_mode = 1;
 } else {
 	while (my $arg = shift @ARGV) {
-		if ($arg eq '-h' or $arg eq '--help') {
+		if ($arg eq '-h') {
 			$help_mode = 1;
-		} elsif ($arg eq '-v' or $arg eq '--verbose') {
-			$verbose = 1;
-		} elsif ($arg eq '-k') {
-			$keep_intermediates = 1;
-		} elsif ($arg eq '-d') {
-			$enable_duplicate = 1;
-		} elsif ($arg eq '-l' or $arg eq '--list') {
+		} elsif ($arg eq '-m') {
+			if ($#ARGV < 0) {
+				print "ERROR: missing argument for option '$arg'!\n";
+				exit 1;
+			}
+			push(@module_files, shift @ARGV);
+		} elsif ($arg eq '-l') {
 			$list_mode = 1;
-		} elsif ($arg eq '-q') {
-			$quiet_mode = 1;
 		} elsif ($arg eq '-t') {
 			if ($#ARGV < 0) {
 				print "ERROR: missing argument for option '$arg'!\n";
@@ -1366,14 +1363,12 @@ if ($#ARGV < 0) {
 			}
 		} elsif ($arg eq '-T') {
 			$show_mode = 1;
-		} elsif ($arg eq '-m') {
-			if ($#ARGV < 0) {
-				print "ERROR: missing argument for option '$arg'!\n";
-				exit 1;
-			}
-			push(@user_module_files, shift @ARGV);
-		} elsif ($arg eq '-D') {
-			$disable_loading_default_modules = 1;
+		} elsif ($arg eq '-v') {
+			$verbose = 1;
+		} elsif ($arg eq '-q') {
+			$quiet_mode = 1;
+		} elsif ($arg eq '-k') {
+			$keep_intermediates = 1;
 		} elsif ($arg eq '-e') {
 			if ($#ARGV < 0) {
 				print "ERROR: missing argument for option '$arg'!\n";
@@ -1413,23 +1408,10 @@ if ($proc_name ne '' and $execute_command ne '') {
 	print "ERROR: can not use both '-e' and '<proc_name>'!\n";
 	exit 1;
 }
+load_modules @module_files;
 
-if (not $disable_loading_default_modules) {
-	for my $file (sort glob((dirname abs_path $0) . '/*.pipe')) {
-		push @module_files, $file if $file ne $module_files[0];
-	}
-}
-load_modules @module_files, @user_module_files;
-
-if ($list_mode) {
-	list_proc $proc_name;
-	exit 1;
-}
-
-if ($show_mode) {
-	show_raw_code $proc_name;
-	exit 1;
-}
+list_proc $proc_name if $list_mode;
+show_raw_code $proc_name if $show_mode;
 
 if ($execute_command ne '') {
 	my $line_no = 0;
@@ -1438,11 +1420,10 @@ if ($execute_command ne '') {
 		$line_no++;
 		push @lines, { text => $line, file => '', line => $line_no };
 	}
-	$proc_name = "seqpipe_execute_$$";
 	my %proc_info = create_proc_info();
 	my $module_file = '';
 	my %var_info = ( defined_var => {}, used_var => {}, iterator_var => {} );
-	$procedures{$proc_name} = parse_block('{', $module_file, \@lines, \%proc_info, \%var_info);
+	push @blocks, parse_block('{', $module_file, \@lines, \%proc_info, \%var_info);
 }
 
 if ($proc_name ne '' and not exists $procedures{$proc_name}) {
@@ -1459,7 +1440,7 @@ if ($help_mode) {
 	exit 1;
 }
 
-if ($proc_name eq '') {
+if ($proc_name eq '' and $execute_command eq '') {
 	print "ERROR: No procedure name provided!\n";
 	print_usage;
 	exit 1;
@@ -1483,14 +1464,20 @@ safe_print "[" . UNIQ_ID . "] $command_line\n";
 
 foreach my $name (keys %procedures) {
 	if ($name =~ /_sysinfo$/) {
-		if ($name eq '_sysinfo' or $procedures{$name}{module_file} eq $procedures{$proc_name}{module_file}) {
+		if ($name eq '_sysinfo' or ($proc_name ne '' and $procedures{$name}{module_file} eq $procedures{$proc_name}{module_file})) {
 			safe_print "Log sysinfo: $name\n";
 			run_proc $name, {}, '';
 		}
 	}
 }
 
-my $return_value = run_proc($proc_name, \%option_from_cmd, '');
+my $return_value = 0;
+if ($proc_name eq '') {
+	my %variables = %{$global_var{abs_path((dirname abs_path $0) . '/default.pipe')}};
+	$return_value = run_block('', $blocks[-1], '', \%variables, \%option_from_cmd);
+} else {
+	$return_value = run_proc($proc_name, \%option_from_cmd, '');
+}
 if (not defined $return_value) {
 	safe_print "Pipeline finished abnormally!\n";
 } elsif ($return_value != 0) {
