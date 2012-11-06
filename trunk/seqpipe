@@ -295,9 +295,10 @@ sub parse_cmd
 			}
 		} elsif ($argv[0] eq 'SP_if') {
 			$cmd_ref->{command} = 'SP_if';
-			if ($command =~ /^SP_if\s+\((.*)\)\s*$/) {
-				$cmd_ref->{bash} = $1;
-				push @{$cmd_ref->{var_checking}}, $1;
+			if ($command =~ /^SP_if\s*(|!)\s*\((.*)\)\s*$/) {
+				$cmd_ref->{negative} = $1;
+				$cmd_ref->{bash} = $2;
+				push @{$cmd_ref->{var_checking}}, $2;
 			} elsif ($command =~ /^SP_if\s+(.*)\s*$/) {
 				$cmd_ref->{text} = $1;
 				push @{$cmd_ref->{var_checking}}, $1;
@@ -342,10 +343,11 @@ sub parse_cmd
 			push @blocks, parse_block($blocking, $type, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
 			$cmd_ref->{block} = scalar @blocks - 1;
 		} elsif ($argv[0] eq 'SP_while') {
-			die 'ERROR: Invalid option for SP_while!' if $command !~ /^\s*SP_while\s*\((.*)\)\s*$/;
+			die 'ERROR: Invalid option for SP_while!' if $command !~ /^\s*SP_while\s*(|!)\s*\((.*)\)\s*$/;
 			$cmd_ref->{command} = 'SP_while';
-			$cmd_ref->{bash} = $1;
-			push @{$cmd_ref->{var_checking}}, $1;
+			$cmd_ref->{negative} = $1;
+			$cmd_ref->{bash} = $2;
+			push @{$cmd_ref->{var_checking}}, $2;
 			
 			my $line_ref = shift @{$lines_ref};
 			my $line = $line_ref->{text};
@@ -836,7 +838,7 @@ sub display_block
 			print "\n";
 		} elsif ($cmd_ref->{command} eq 'SP_if') {
 			if (exists $cmd_ref->{bash}) {
-				print "$indent\tSP_if ($cmd_ref->{bash})\n";
+				print "$indent\tSP_if $cmd_ref->{negative}($cmd_ref->{bash})\n";
 			} else {
 				print "$indent\tSP_if $cmd_ref->{text}\n";
 			}
@@ -849,7 +851,7 @@ sub display_block
 			print "$indent\tSP_for $cmd_ref->{variable}=$cmd_ref->{text}\n";
 			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
 		} elsif ($cmd_ref->{command} eq 'SP_while') {
-			print "$indent\tSP_while ($cmd_ref->{bash})\n";
+			print "$indent\tSP_while $cmd_ref->{negative}($cmd_ref->{bash})\n";
 			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
 		} else {
 			print "$indent\t$cmd_ref->{command}\n";
@@ -1065,10 +1067,10 @@ sub run_command
 		my $yes;
 		my $cmd;
 		if (exists $command_struct_ref->{bash}) {
-			$cmd = "SP_if ($command_struct_ref->{bash})";
+			$cmd = "SP_if $command_struct_ref->{negative}($command_struct_ref->{bash})";
 			my $shell_return = run_shell(eval_string($command_struct_ref->{bash}, \%variables), 'checker', $run_id, $indent);
 			return undef if not defined $shell_return;
-			$yes = ($shell_return->{return_value} == 0);
+			$yes = ($shell_return->{return_value} == 0) ^ ($command_struct_ref->{negative} ne '');
 		} else {
 			$cmd = "SP_if $command_struct_ref->{text}";
 			my $s = eval_string_in_shell($command_struct_ref->{text}, \%variables, $run_id, $indent);
@@ -1094,11 +1096,11 @@ sub run_command
 		}
 	
 	} elsif ($command eq 'SP_while') {
-		my $cmd = "SP_while ($command_struct_ref->{bash})";
+		my $cmd = "SP_while $command_struct_ref->{negative}($command_struct_ref->{bash})";
 		while (1) {
 			my $shell_return = run_shell(eval_string($command_struct_ref->{bash}, \%variables), 'checker', $run_id, $indent);
 			return undef if not defined $shell_return;
-			my $yes = ($shell_return->{return_value} == 0);
+			my $yes = ($shell_return->{return_value} == 0) ^ ($command_struct_ref->{negative} ne '');
 			safe_print "$indent($run_id) $cmd returns '" . ($yes ? "yes" : "no") . "'\n";
 			last if (not $yes);
 			$return_value = run_block('SP_while', $blocks[$command_struct_ref->{block}], $indent, \%variables, $option_from_cmd_ref);

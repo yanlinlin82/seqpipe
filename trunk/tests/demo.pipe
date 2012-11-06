@@ -27,6 +27,15 @@ function demo_SP_if
 		echo false
 	}
 
+	SP_if !(${COND})
+	{
+		echo false
+	}
+	SP_else
+	{
+		echo true
+	}
+
 	SP_if (ls *.gz)
 	{
 		wc *.gz
@@ -63,6 +72,11 @@ function demo_SP_while
 	SP_while (test ${X} -lt 5)
 	{
 		SP_set X=$((${X} + 1))
+		echo "waiting ... (X=${X})"; sleep 1
+	}
+	SP_while !(test ${X} -lt 1)
+	{
+		SP_set X=$((${X} / 2))
 		echo "waiting ... (X=${X})"; sleep 1
 	}
 }
