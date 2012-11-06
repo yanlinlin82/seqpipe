@@ -37,11 +37,11 @@ function fastqc
 function fq_33to64
 {
 	#Check if it is base-33
-	test -n "$(${SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+	test -n "$(${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
 
 	#[input="${INPUT}"]
 	#[output.final="${OUTPUT}.fq.gz"]
-	${SEQPIPE_ROOT}/uxcat ${INPUT} \
+	${_SEQPIPE_ROOT}/uxcat ${INPUT} \
 		| perl -e 'while($a=<>){$b=<>;$c=<>;$d=<>;print "$a$b$c"; print($_ eq "\n" ? "\n" : pack("C", unpack("C*",$_)-33+64)) for(split(//,$d));}' \
 		| gzip -9c \
 		> ${OUTPUT}.fq.gz
@@ -50,11 +50,11 @@ function fq_33to64
 function fq_64to33
 {
 	#Check if it is base-64
-	test -z "$(${SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+	test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
 
 	#[input="${INPUT}"]
 	#[output.final="${OUTPUT}.fq.gz"]
-	${SEQPIPE_ROOT}/uxcat ${INPUT} \
+	${_SEQPIPE_ROOT}/uxcat ${INPUT} \
 		| perl -e 'while($a=<>){$b=<>;$c=<>;$d=<>;print "$a$b$c"; print($_ eq "\n" ? "\n" : pack("C", unpack("C*",$_)-64+33)) for(split(//,$d));}' \
 		| gzip -9c \
 		> ${OUTPUT}.fq.gz
@@ -64,15 +64,15 @@ function fq_64to33
 
 function bwa_build
 {
-	SP_set ALGORITHM="is"
+	SP_set _ALGORITHM="is"
 	SP_if $(ls -lL ${FASTA} | awk '$5>=1e8')
 	{
 		# Treat >=100MB .fasta file as long genome, use '-a bwtsw' instead of '-a is'
-		SP_set ALGORITHM="bwtsw"
+		SP_set _ALGORITHM="bwtsw"
 	}
 
 	#[input="${FASTA}" output.final="${FASTA}.bwt"]
-	bwa index -a ${ALGORITHM} ${FASTA}
+	bwa index -a ${_ALGORITHM} ${FASTA}
 }
 
 function bwa_map_pe
@@ -95,7 +95,7 @@ function bwa_map_pe
 	SP_set BWA_SAMPE_OPTS=""
 
 	SP_set BWA_ALN_QUAL_OPTS=""
-	SP_if (test -z "$(${SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ_1} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ_1} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
 	{
 		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
 		SP_set BWA_ALN_QUAL_OPTS="-I"
@@ -148,7 +148,7 @@ function bwa_map_se
 	SP_set BWA_SAMPE_OPTS=""
 
 	SP_set BWA_ALN_QUAL_OPTS=""
-	SP_if (test -z "$(${SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
 	{
 		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
 		SP_set BWA_ALN_QUAL_OPTS="-I"
