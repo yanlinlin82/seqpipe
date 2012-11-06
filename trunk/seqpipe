@@ -476,20 +476,30 @@ sub parse_block
 			}
 			while ($line =~ /(require|input|output(|.temp|.final))="(.*?)"/g) {
 				if ($1 eq "require") {
-					die "ERROR: Duplicated require attribute!" if exists $cmd_info{requires}{$3};
+					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
+						die "ERROR: Duplicated attribute for require file '$3'!";
+					}
 					$cmd_info{requires}{$3} = 1;
 				} elsif ($1 eq "input") {
-					die "ERROR: Duplicated input attribute!" if exists $cmd_info{inputs}{$3};
+					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
+						die "ERROR: Duplicated attribute for input file '$3'!";
+					}
 					$cmd_info{inputs}{$3} = 1;
 				} elsif ($1 eq "output") {
-					die "ERROR: Duplicated output attribute!" if exists $cmd_info{outputs}{$3};
+					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
+						die "ERROR: Duplicated attribute for output file '$3'!";
+					}
 					$cmd_info{outputs}{$3} = 1;
 				} elsif ($1 eq "output.temp") {
-					die "ERROR: Duplicated output attribute!" if exists $cmd_info{outputs}{$3};
+					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
+						die "ERROR: Duplicated attribute for output file '$3'!";
+					}
 					$cmd_info{outputs}{$3} = 1;
 					$cmd_info{temp_outputs}{$3} = 1;
 				} elsif ($1 eq "output.final") {
-					die "ERROR: Duplicated output attribute!" if exists $cmd_info{outputs}{$3};
+					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
+						die "ERROR: Duplicated attribute for output file '$3'!";
+					}
 					$cmd_info{outputs}{$3} = 1;
 					$cmd_info{final_outputs}{$3} = 1;
 				}
@@ -631,13 +641,19 @@ sub parse_proc
 						die "ERROR: Unknown procedure type '$type'" . parsing_error($l);
 					}
 				} elsif ($1 eq "require") {
-					die "ERROR: Duplicated require attribute" . parsing_error($l) if exists $requires{$2};
+					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
+						die "ERROR: Duplicated attribute for require file '$2'" . parsing_error($l);
+					}
 					$requires{$2} = 1;
 				} elsif ($1 eq "input") {
-					die "ERROR: Duplicated input attribute" . parsing_error($l) if exists $inputs{$2};
+					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
+						die "ERROR: Duplicated attribute for input file '$2'" . parsing_error($l);
+					}
 					$inputs{$2} = 1;
 				} elsif ($1 eq "output") {
-					die "ERROR: Duplicated output attribute" . parsing_error($l) if exists $outputs{$2};
+					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
+						die "ERROR: Duplicated attribute for output file '$2'" . parsing_error($l);
+					}
 					$outputs{$2} = 1;
 				}
 				next;
@@ -681,6 +697,11 @@ sub parse_proc
 			}
 			foreach my $file (keys %outputs, keys %{$proc_info{final_outputs}}) {
 				$proc_info{outputs}{$file} = 1;
+			}
+			foreach my $name (keys %requires, keys %inputs, keys %outputs) {
+				while ($name =~ /\${(\w+)}/g) {
+					$var_info{used_var}{$1} = '';
+				}
 			}
 
 			$procedures{$proc_name}{requires}     = $proc_info{requires};
@@ -889,29 +910,35 @@ sub check_for_skip
 {
 	my ($vars_ref, $requires_ref, $inputs_ref, $outputs_ref) = @_;
 	
+	my %requires = ();
 	foreach my $require (keys %{$requires_ref}) {
 		my $file = eval_string($require, $vars_ref);
 		if (not -e $file) {
 			safe_print "ERROR: Required file '$file' does not exist!\n";
 			exit 1;
 		}
+		$requires{$file} = 1;
 	}
 	
-	my @inputs = ();
+	my %inputs = ();
 	foreach my $input (keys %{$inputs_ref}) {
 		my $file = eval_string($input, $vars_ref);
 		if (not -e $file) {
 			safe_print "ERROR: Input file '$file' does not exist!\n";
 			exit 1;
 		}
-		push @inputs, $file;
+		$inputs{$file} = 1;
 	}
 	
 	if (%{$outputs_ref}) {
 		foreach my $output (keys %{$outputs_ref}) {
 			my $file = eval_string($output, $vars_ref);
+			if (exists $requires{$file} or exists $inputs{$file}) {
+				safe_print "ERROR: Output file '$file' has also been defined as require or input!\n";
+				exit 1;
+			}
 			if (-e $file) {
-				foreach my $input (@inputs) {
+				foreach my $input (keys %inputs) {
 					if ((stat($input))->mtime > (stat($file))->mtime) {
 						return 0;
 					}
