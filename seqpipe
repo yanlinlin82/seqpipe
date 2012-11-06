@@ -50,6 +50,13 @@ my %global_var = ( SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dirname a
 # Count how many commands have been run so far.
 my $run_counter :shared = 0;
 
+sub get_new_run_id
+{
+	lock($run_counter);
+	$run_counter++;
+	return $run_counter;
+}
+
 # Flag for exiting (when received KILL or Ctrl+C).
 my $exiting :shared = 0;
 
@@ -1008,11 +1015,9 @@ sub run_shell
 
 sub eval_string_in_shell
 {
-	my ($cmd, $vars_ref, $run_id, $indent) = @_;
-	$run_id = 0 if not defined $run_id;
-	$indent = '' if not defined $indent;
+	my ($text, $vars_ref, $indent) = @_;
 
-	my $string = eval_string($cmd, $vars_ref);
+	my $string = eval_string($text, $vars_ref);
 	while (1) {
 		last if $string =~ /\${\w+}/;
 		last if $string =~ /\$\(\(.*\)\)/;
@@ -1024,7 +1029,9 @@ sub eval_string_in_shell
 		return $string;
 	}
 
-	my $shell_return = run_shell(eval_string("echo $cmd", $vars_ref), 'evaluator', $run_id, $indent);
+	my $run_id = get_new_run_id;
+	safe_print "$indent($run_id) [eval] $text\n";
+	my $shell_return = run_shell(eval_string("echo $text", $vars_ref), 'evaluator', $run_id, $indent);
 	return undef if not defined $shell_return;
 
 	open FILE, $shell_return->{log_file} or return '';
@@ -1036,13 +1043,6 @@ sub eval_string_in_shell
 	close FILE;
 	unlink $shell_return->{log_file} if $run_id == 0;
 	return join("\n", @text);
-}
-
-sub get_new_run_id
-{
-	lock($run_counter);
-	$run_counter++;
-	return $run_counter;
 }
 
 sub run_cmd
@@ -1062,20 +1062,20 @@ sub run_cmd
 	if ($command eq 'SP_set') {
 		my $name = $cmd_ref->{variable};
 		if (not exists $option_from_cmd_ref->{$name}) {
-			my $run_id = get_new_run_id;
-			my $value = eval_string_in_shell($cmd_ref->{text}, \%variables, $run_id, $indent);
+			my $value = eval_string_in_shell($cmd_ref->{text}, \%variables, $indent);
 			return undef if not defined $value;
 			$variables{$name} = $value;
-			safe_print "$indent($run_id) SP_set $name=$value\n";
+			if ($value ne $cmd_ref->{text}) {
+				safe_print "$indent(*) SP_set $name=$value\n";
+			}
 		}
 
 	} elsif ($command =~ 'SP_run') {
-		my $run_id = get_new_run_id;
 		my %options = %{$cmd_ref->{options}};
 		foreach my $name (keys %options) {
-			$options{$name} = eval_string_in_shell($options{$name}, \%variables, $run_id, $indent);
+			$options{$name} = eval_string_in_shell($options{$name}, \%variables, $indent);
 		}
-		$return_value = run_proc($cmd_ref->{proc_name}, $run_id, \%options, $indent);
+		$return_value = run_proc($cmd_ref->{proc_name}, \%options, $indent);
 
 	} elsif ($command eq 'SP_if') {
 		my $yes;
@@ -1088,7 +1088,7 @@ sub run_cmd
 			$yes = ($shell_return->{return_value} == 0) ^ ($cmd_ref->{negative} ne '');
 		} else {
 			$cmd = "SP_if $cmd_ref->{text}";
-			my $s = eval_string_in_shell($cmd_ref->{text}, \%variables, $run_id, $indent);
+			my $s = eval_string_in_shell($cmd_ref->{text}, \%variables, $indent);
 			return undef if not defined $s;
 			$yes = ($s ne '');
 		}
@@ -1104,7 +1104,7 @@ sub run_cmd
 	} elsif ($command eq 'SP_for') {
 		my $run_id = get_new_run_id;
 		my $name = $cmd_ref->{variable};
-		my $value = eval_string_in_shell($cmd_ref->{text}, \%variables, $run_id, $indent);
+		my $value = eval_string_in_shell($cmd_ref->{text}, \%variables, $indent);
 		return undef if not defined $value;
 		foreach my $each_value (split(/\s/, $value)) {
 			$variables{$name} = $each_value;
@@ -1134,16 +1134,20 @@ sub run_cmd
 
 	} else {
 		# For single bash command
-		my $run_id = get_new_run_id;
-		my $shell_return = run_shell(eval_string($command, \%variables), (($proc_name =~ /_sysinfo$/) ? 'sysinfo' : ''), $run_id, $indent);
-		return undef if not defined $shell_return;
-		$return_value = $shell_return->{return_value};
-		if ($return_value != 0) {
-			safe_print "$indent($run_id) returns $return_value\n";
-			foreach my $output_file (@{$outputs_ref}) {
-				if (-e $output_file) {
-					safe_print "$indent($run_id) removes bad output file '$output_file'!\n" if $verbose;
-					unlink $output_file;
+		if ($proc_name =~ /_sysinfo$/) {
+			run_shell(eval_string($command, \%variables), 'sysinfo', 0, '');
+		} else {
+			my $run_id = get_new_run_id;
+			my $shell_return = run_shell(eval_string($command, \%variables), '', $run_id, $indent);
+			return undef if not defined $shell_return;
+			$return_value = $shell_return->{return_value};
+			if ($return_value != 0) {
+				safe_print "$indent($run_id) returns $return_value\n";
+				foreach my $output_file (@{$outputs_ref}) {
+					if (-e $output_file) {
+						safe_print "$indent($run_id) removes bad output file '$output_file'!\n" if $verbose;
+						unlink $output_file;
+					}
 				}
 			}
 		}
@@ -1153,7 +1157,7 @@ sub run_cmd
 
 sub run_proc
 {
-	my ($proc_name, $run_id, $option_ref, $indent) = @_;
+	my ($proc_name, $option_ref, $indent) = @_;
 
 	if (not exists $procedures{$proc_name}) {
 		safe_print "ERROR: Unknown procedure '$proc_name'! Use 'seqpipe -l' to list available procedures.\n";
@@ -1171,25 +1175,31 @@ sub run_proc
 	foreach my $name (keys %{$option_ref}) {
 		$variables{$name} = $option_ref->{$name};
 	}
-
 	if (my @req_vars = check_var($proc_name, \%variables)) {
 		print "ERROR: Option(s) required for procedure '$proc_name':\n   " . join(', ', @req_vars) . "\n";
 		return undef;
 	}
+	
+	# If it is sysinfo, run without other checking
+	if ($proc_name =~ /_sysinfo$/) {
+		run_block($proc_name, \%procedure, '', \%variables, $option_ref);
+		return 0;
+	}
 
+	# Otherwise (not a sysinfo)
 	my $cmd = "SP_run $proc_name";
 	$cmd .= " $_=$option_ref->{$_}" foreach (keys%{$option_ref});
 
 	if (check_for_skip(\%variables, $procedure{requires}, $procedure{inputs}, $procedure{outputs})) {
 		safe_print "$indent(Skip) $cmd\n";
-		return undef;
+		return 0;
 	}
 
+	my $run_id = get_new_run_id;
 	my $start_time = time;
-	if ($proc_name !~ /_sysinfo$/) {
-		safe_print "$indent($run_id) $cmd\n";
-		safe_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
-	}
+	safe_print "$indent($run_id) $cmd\n";
+	safe_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
+
 	my $return_value = run_block($proc_name, \%procedure, $indent, \%variables, $option_ref);
 	return undef if not defined $return_value;
 
@@ -1205,11 +1215,10 @@ sub run_proc
 	}
 
 	# Record the finish time
-	if ($proc_name !~ /_sysinfo$/) {
-		my $end_time = time;
-		safe_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
-			time_string($end_time), time_elapse_string($start_time, $end_time);
-	}
+	my $end_time = time;
+	safe_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
+		time_string($end_time), time_elapse_string($start_time, $end_time);
+
 	return $return_value;
 }
 
@@ -1297,7 +1306,7 @@ sub run_block
 				$vars_ref->{$name} = $ret->{variables}->{$name};
 			}
 		}
-		last if $return_value != 0;
+		last if not defined $return_value or $return_value != 0;
 	}
 	if (scalar @thread_list > 0) {
 		foreach my $thd (@thread_list) {
@@ -1476,16 +1485,18 @@ foreach my $name (keys %procedures) {
 	if ($name =~ /_sysinfo$/) {
 		if ($name eq '_sysinfo' or $procedures{$name}{module_file} eq $procedures{$proc_name}{module_file}) {
 			safe_print "Log sysinfo: $name\n";
-			run_proc $name, 0, {}, '';
+			run_proc $name, {}, '';
 		}
 	}
 }
 
-my $return_value = run_proc($proc_name, 0, \%option_from_cmd, '');
-if ($return_value == 0) {
-	safe_print "Pipeline finished successfully!\n";
-} else {
+my $return_value = run_proc($proc_name, \%option_from_cmd, '');
+if (not defined $return_value) {
+	safe_print "Pipeline finished abnormally!\n";
+} elsif ($return_value != 0) {
 	safe_print "Pipeline finished abnormally with exit value: $return_value!\n";
+} else {
+	safe_print "Pipeline finished successfully!\n";
 }
 close LOG_FILE;
 
