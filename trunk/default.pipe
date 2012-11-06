@@ -26,10 +26,10 @@ function _sysinfo
 
 	echo '===== SeqPipe Version ====='
 	echo 'SeqPipe:'
-	echo    "   "${SEQPIPE_ROOT}/${SEQPIPE}
-	echo -n "      "; ${SEQPIPE_ROOT}/${SEQPIPE} | grep Version
+	echo    "   "${_SEQPIPE_ROOT}/${_SEQPIPE}
+	echo -n "      "; ${_SEQPIPE_ROOT}/${_SEQPIPE} | grep Version
 	echo 'Modules: '
-	ls ${SEQPIPE_ROOT}/*.pipe \
+	ls ${_SEQPIPE_ROOT}/*.pipe \
 		| while read FILE; do \
 			echo    "   $FILE"; \
 			echo -n "      "; \

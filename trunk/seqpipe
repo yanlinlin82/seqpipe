@@ -365,7 +365,10 @@ sub parse_cmd
 			for my $opt (@argv) {
 				die 'ERROR: Invalid option for SP_run!' . $opt if $opt !~ /^(\w+)=(.*)$/;
 				die 'ERROR: Duplicate option for SP_run!' . $opt if exists $options{$1};
-				$options{$1} = $2;
+				my $name = $1;
+				my $value = $2;
+				die "ERROR: Invalid option '$name'! Option name starts with '_' is reserved!\n" if $name =~ /^_/;
+				$options{$name} = $value;
 			}
 			$cmd_ref->{options} = \%options;
 		} else {
@@ -601,7 +604,7 @@ sub load_modules
 {
 	foreach my $file (@_) {
 		if (not exists $global_var{abs_path $file}) {
-			$global_var{abs_path $file} = { SEQPIPE => (basename abs_path $0), SEQPIPE_ROOT => (dirname abs_path $0) };
+			$global_var{abs_path $file} = { _SEQPIPE => (basename abs_path $0), _SEQPIPE_ROOT => (dirname abs_path $0) };
 		}
 		my @lines = load_lines($file, {}, []);
 		while (@lines) {
@@ -697,6 +700,13 @@ sub parse_proc
 				}
 			}
 
+			foreach my $name (keys $var_info{used_var}) {
+				next if exists $var_info{iterator_var}{$name};
+				next if exists $var_info{defined_var}{$name};
+				next if exists $global_var{abs_path $file}{$name};
+				die "ERROR: Invalid option '$name'! Required option can not start with '_'!\n" if $name =~ /^_/;
+			}
+
 			$proc_ref->{requires}     = $proc_info{requires};
 			$proc_ref->{inputs}       = $proc_info{inputs};
 			$proc_ref->{outputs}      = $proc_info{outputs};
@@ -705,7 +715,7 @@ sub parse_proc
 			$proc_ref->{iterator_var} = $var_info{iterator_var};
 			$proc_ref->{used_var}     = $var_info{used_var};
 			$procedures{$proc_name} = $proc_ref;
-			
+
 			%requires = ();
 			%inputs = ();
 			%outputs = ();
@@ -760,6 +770,7 @@ sub show_parameters
 	my @req_vars = ();
 	my %def_vars = ();
 	foreach my $name (sort keys $procedures{$proc_name}{used_var}) {
+		next if $name =~ /^_/;
 		if (exists $procedures{$proc_name}{iterator_var}{$name}) {
 			$def_vars{$name} = "(runtime-evaluate)";
 		} elsif (exists $procedures{$proc_name}{defined_var}{$name}) {
@@ -1391,7 +1402,9 @@ if ($#ARGV < 0) {
 		} else {
 			if ($arg =~ /^(\w+)=(.*)$/) {
 				die "ERROR: duplicated option '$1'!\n" if exists $option_from_cmd{$1};
-				$option_from_cmd{$1} = $2;
+				my $name = $1;
+				$option_from_cmd{$name} = $2;
+				die "ERROR: Invalid option '$name'! Option name starts with '_' is reserved.\n" if $name =~ /^_/;
 			} else {
 				if ($proc_name eq '') {
 					$proc_name = $arg;
