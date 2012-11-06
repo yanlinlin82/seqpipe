@@ -5,8 +5,7 @@
 
 ###########################################################################
 
-#[type="sysinfo"]
-function sysinfo
+function _sysinfo
 {
 	echo '===== System Information ====='
 	echo -n 'System : '; uname -a

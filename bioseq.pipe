@@ -8,8 +8,7 @@ SP_include config.inc
 
 ###########################################################################
 
-#[type="sysinfo"]
-function bioseq_tools_version
+function _bioseq_sysinfo
 {
 	echo -n 'FastQC   : '; fastqc --version | cut -d' ' -f2
 	echo -n 'bwa      : '; bwa |& grep Version | cut -d' ' -f2
@@ -680,7 +679,6 @@ function pindel_call_structure_variants
 		-genotypeMergeOptions UNIQUIFY
 }
 
-#[type="pipeline"]
 #[require="${REFERENCE}"]
 #[input="${FASTQ_1}.fq.gz"]
 #[input="${FASTQ_2}.fq.gz"]
