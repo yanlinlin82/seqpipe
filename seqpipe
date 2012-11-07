@@ -350,6 +350,7 @@ sub parse_cmd
 			if (not exists $var_info_ref->{iterator_var}{$1}) {
 				$var_info_ref->{iterator_var}{$1} = '';
 			}
+			die "ERROR: Variable of SP_for should start with '_'" . parsing_error($l) if $1 !~ /^_/;
 			
 			my $line_ref = shift @{$lines_ref};
 			my $line = $line_ref->{text};
