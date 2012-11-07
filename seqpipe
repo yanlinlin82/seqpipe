@@ -791,6 +791,8 @@ sub show_parameters
 		next if $name =~ /^_/;
 		if (exists $procedures{$proc_name}{iterator_var}{$name}) {
 			$def_vars{$name} = "(runtime-evaluate)";
+		} elsif (exists $opts_ref->{$name}) {
+			$def_vars{$name} = $opts_ref->{$name};
 		} elsif (exists $procedures{$proc_name}{defined_var}{$name}) {
 			$def_vars{$name} = $procedures{$proc_name}{defined_var}{$name};
 		} elsif (exists $global_var{$procedures{$proc_name}{module_file}}{$name}) {
