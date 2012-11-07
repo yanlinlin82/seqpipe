@@ -8,8 +8,6 @@ JAVA_MAX_MEM_SIZE=2G                    # For Java's -Xmx option
 JAVA_GC_THREAD_NUM=2                    # For Java's -XX:ParallelGCThreads option
 JAVA_OPTS="-Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} -Djava.io.tmpdir=${TMP_DIR}"
 
-THREAD_NUM=1                            # For multiple-thread running
-
 # Picard options
 PICARD_ROOT=/rd/build/picard-tools       # Path of picard tools
 MAX_RECORDS_IN_RAM=500000                # For enhance performance of picard

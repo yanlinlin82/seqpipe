@@ -6,6 +6,10 @@
 # Load global parameters
 SP_include config.inc
 
+INPUT_DIR=.
+OUTPUT_DIR=.
+THREAD_NUM=2
+
 ###########################################################################
 
 function _bioseq_sysinfo
@@ -13,6 +17,7 @@ function _bioseq_sysinfo
 	echo -n 'FastQC   : '; fastqc --version | cut -d' ' -f2
 	echo -n 'FastX    : '; fastx_trimmer -h | grep FASTX | sed 's/^.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*$/\1/g'
 	echo -n 'bwa      : '; bwa |& grep Version | cut -d' ' -f2
+	echo -n 'Qualimap : '; qualimap -h | grep '^QualiMap v' | cut -d' ' -f2
 	echo -n 'samtools : '; samtools |& grep Version | cut -d' ' -f2-
 	echo -n 'bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
 	echo -n 'picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
@@ -22,10 +27,8 @@ function _bioseq_sysinfo
 
 ###########################################################################
 
-function fastqc
+function fastqc_check
 {
-	SP_set INPUT_DIR=.
-	SP_set OUTPUT_DIR=.
 	SP_set EXT_NAME=.fq.gz
 
 	#[input="${INPUT_DIR}/${NAME}${EXT_NAME}"]
@@ -35,20 +38,24 @@ function fastqc
 			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT_DIR}/${NAME}.fastqc.zip
 }
 
-function fq_33to64
+function convert_fastq_33to64
 {
+	SP_set EXT_NAME=.fq.gz
+	SP_set INPUT=${NAME}${EXT_NAME}
+	SP_set OUTPUT=${NAME}.q64.fq.gz
+
 	#Check if it is base-33
 	test -n "$(${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
 
-	#[input="${INPUT}"]
-	#[output.final="${OUTPUT}.fq.gz"]
-	${_SEQPIPE_ROOT}/uxcat ${INPUT} \
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output.final="${OUTPUT_DIR}/${OUTPUT}"]
+	${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT}${EXT_NAME} \
 		| perl -e 'while($a=<>){$b=<>;$c=<>;$d=<>;print "$a$b$c"; print($_ eq "\n" ? "\n" : pack("C", unpack("C*",$_)-33+64)) for(split(//,$d));}' \
 		| gzip -9c \
-		> ${OUTPUT}.fq.gz
+		> ${OUTPUT_DIR}/${OUTPUT}
 }
 
-function fq_64to33
+function convert_fastq_64to33
 {
 	#Check if it is base-64
 	test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
@@ -61,7 +68,7 @@ function fq_64to33
 		> ${OUTPUT}.fq.gz
 }
 
-function fq_trim
+function trim_fastq
 {
 	SP_set START_POS=1
 	SP_set _QUAL_OPT=
@@ -80,7 +87,7 @@ function fq_trim
 
 ###########################################################################
 
-function bwa_build
+function bwa_build_index
 {
 	SP_set _ALGORITHM=is
 	SP_if $(ls -lL ${FASTA} | awk '$5>=1e8')
@@ -120,7 +127,7 @@ function bwa_map_pe
 	}
 
 	# This will be skipped if the index files exist.
-	SP_run bwa_build FASTA=${REF}
+	SP_run bwa_build_index FASTA=${REF}
 
 	{{
 		#[require="${REF}" input="${INPUT_DIR}/${FQ_1}" output.temp="${OUTPUT_DIR}/${FQ_1}.sai"]
@@ -173,7 +180,7 @@ function bwa_map_se
 	}
 
 	# This will be skipped if the index files exist.
-	SP_run bwa_build FASTA=${REF}
+	SP_run bwa_build_index FASTA=${REF}
 
 	#[require="${REF}" input="${INPUT_DIR}/${FQ}" output.temp="${OUTPUT_DIR}/${FQ}.sai"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
@@ -202,22 +209,26 @@ function flagstat_bam
 	samtools flagstat ${INPUT_DIR}/${NAME}.bam > ${OUTPUT_DIR}/${NAME}.flagstat.txt
 }
 
-function merge_bam
+function bamqc_check
 {
-	SP_set VALIDATION_STRINGENCY=STRICT
+	SP_set INPUT_DIR=.
+	SP_set OUTPUT_DIR=.
+	
+	SP_set SPECIES=HUMAN
+	SP_if !(echo ${SPECIES} | egrep '^(HUMAN|MOUSE)$')
+	{
+		echo "SPECIES can be only set to HUMAN or MOUSE!"; false
+	}
+	
+	SP_set THREAD_NUM=2
+	SP_set WINDOW_NUM=400
+	SP_set EXT_OPTS=
 
-	#[input="${INPUT_1}.bam" input="${INPUT_2}.bam" output="${OUTPUT}.bam"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
-		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=true \
-		CREATE_MD5_FILE=false \
-		INPUT=${INPUT_1}.bam \
-		INPUT=${INPUT_2}.bam \
-		OUTPUT=${OUTPUT}.bam
-
-	#[require="${OUTPUT}.bai"]
-	mv -vf ${OUTPUT}.bai ${OUTPUT}.bam.bai
+	#[input="${INPUT_DIR}/${NAME}.bam"]
+	#[output.final="${OUTPUT_DIR}/${NAME}.bamqc/index.html"]
+	qualimap bamqc -bam ${INPUT_DIR}/${NAME}.bam -gd ${SPECIES} \
+		-nt ${THREAD_NUM} -nw ${WINDOW_NUM} \
+		-outformat HTML -outdir ${OUTPUT_DIR}/${NAME}.bamqc ${EXT_OPTS}
 }
 
 function sort_bam
@@ -238,6 +249,24 @@ function sort_bam
 
 	#[require="${INPUT}.sorted.bai"]
 	mv -vf ${INPUT}.sorted.bai ${INPUT}.sorted.bam.bai
+}
+
+function merge_bam
+{
+	SP_set VALIDATION_STRINGENCY=STRICT
+
+	#[input="${INPUT_1}.bam" input="${INPUT_2}.bam" output="${OUTPUT}.bam"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=false \
+		INPUT=${INPUT_1}.bam \
+		INPUT=${INPUT_2}.bam \
+		OUTPUT=${OUTPUT}.bam
+
+	#[require="${OUTPUT}.bai"]
+	mv -vf ${OUTPUT}.bai ${OUTPUT}.bam.bai
 }
 
 #[require="${REF}"]
@@ -706,8 +735,8 @@ function DNAseq_analysis
 
 ##### FastQC #####
 	{{
-		SP_run fastqc INPUT_DIR=${INPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME}_1
-		SP_run fastqc INPUT_DIR=${INPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME}_2
+		SP_run fastqc_check INPUT_DIR=${INPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME}_1
+		SP_run fastqc_check INPUT_DIR=${INPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME}_2
 	}}
 
 ##### Read Mapping #####
