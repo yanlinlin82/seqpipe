@@ -30,12 +30,14 @@ function _bioseq_sysinfo
 function fastqc_check
 {
 	SP_set EXT_NAME=.fq.gz
+	SP_set INPUT=${NAME}${EXT_NAME}
+	SP_set OUTPUT=${NAME}.fastqc.zip
 
-	#[input="${INPUT_DIR}/${NAME}${EXT_NAME}"]
-	#[output.final="${OUTPUT_DIR}/${NAME}.fastqc.zip"]
-	fastqc --noextract --nogroup -o ${OUTPUT_DIR}/ ${INPUT_DIR}/${NAME}${EXT_NAME} && \
-		mv -vf ${OUTPUT_DIR}/$(basename ${NAME}${EXT_NAME} \
-			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT_DIR}/${NAME}.fastqc.zip
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output.final="${OUTPUT_DIR}/${OUTPUT}"]
+	fastqc --noextract --nogroup -o $(dirname ${OUTPUT_DIR}/${OUTPUT}) ${INPUT_DIR}/${INPUT} && \
+		mv -vf $(dirname ${OUTPUT_DIR}/${OUTPUT})/$(basename ${INPUT} \
+			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT_DIR}/${OUTPUT}
 }
 
 function convert_fastq_33to64
