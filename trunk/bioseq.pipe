@@ -29,9 +29,10 @@ function _bioseq_sysinfo
 
 function fastqc_check
 {
-	SP_set EXT_NAME=.fq.gz
-	SP_set INPUT=${NAME}${EXT_NAME}
-	SP_set OUTPUT=${NAME}.fastqc.zip
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.fastqc.zip
+	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
 	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
 	fastqc --noextract --nogroup -o $(dirname ${OUTPUT_DIR}/${OUTPUT}) ${INPUT_DIR}/${INPUT} && \
@@ -41,9 +42,10 @@ function fastqc_check
 
 function convert_fastq_33to64
 {
-	SP_set EXT_NAME=.fq.gz
-	SP_set INPUT=${NAME}${EXT_NAME}
-	SP_set OUTPUT=${NAME}.q64.fq.gz
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.q64.fq.gz
+	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
 	# Check if it is base-33
 	#[require="${INPUT_DIR}/${INPUT}"]
@@ -58,9 +60,10 @@ function convert_fastq_33to64
 
 function convert_fastq_64to33
 {
-	SP_set EXT_NAME=.fq.gz
-	SP_set INPUT=${NAME}${EXT_NAME}
-	SP_set OUTPUT=${NAME}.q33.fq.gz
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.q33.fq.gz
+	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
 	# Check if it is base-64
 	#[require="${INPUT_DIR}/${INPUT}"]
@@ -75,9 +78,10 @@ function convert_fastq_64to33
 
 function trim_fastq
 {
-	SP_set EXT_NAME=.fq.gz
-	SP_set INPUT=${NAME}${EXT_NAME}
-	SP_set OUTPUT=${NAME}.trimmed.fq.gz
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.trimmed.fq.gz
+	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
 	SP_set START_POS=1
 	SP_set _QUAL_OPT=
@@ -113,16 +117,44 @@ function bwa_build_index
 
 function bwa_map_pe
 {
-	SP_set INPUT_DIR=.
-	SP_set OUTPUT_DIR=.
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set SAI_EXT_NAME=.sai
+	SP_set OUTPUT_EXT_NAME=.bam
+	SP_set INPUT_1=${NAME}1${INPUT_EXT_NAME}
+	SP_set INPUT_2=${NAME}2${INPUT_EXT_NAME}
+	SP_set SAI_FILE_1=${NAME}1${SAI_EXT_NAME}
+	SP_set SAI_FILE_2=${NAME}2${SAI_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
-	SP_set RGID=${SAMPLE}
-	SP_set RGLB=${RGID}
+	SP_set RGID=${NAME}
+	SP_set RGSM=${NAME}
+	SP_set RGLB=${NAME}
 	SP_set RGPL=illumina
 	SP_set RGCN=BGI
-	SP_set OUTPUT=${SAMPLE}
 
-	SP_set THREAD_NUM=2
+	SP_set _RG=
+	SP_if ${RGID}
+	{
+		SP_set _RG=${_RG}\tID:${RGID}
+
+		SP_if ${RGSM}
+		{
+			SP_set _RG=${_RG}\tSM:${RGSM}
+		}
+		SP_if ${RGLB}
+		{
+			SP_set _RG=${_RG}\tLB:${RGLB}
+		}
+		SP_if ${RGPL}
+		{
+			SP_set _RG=${_RG}\tPL:${RGPL}
+		}
+		SP_if ${_RG}
+		{
+			SP_set _RG=-r "@RG${_RG}"
+		}
+	}
+
 	SP_set MAX_INSERT_SIZE=500
 	SP_set BWA_END_IND=5    # do not put an indel within INT bp towards the ends.
 	SP_set BWA_GAP_EXT=-1   # maximum number of gap extensions, -1 for disabling long gaps.
@@ -131,7 +163,8 @@ function bwa_map_pe
 	SP_set BWA_SAMPE_OPTS=
 
 	SP_set _BWA_ALN_QUAL_OPT=
-	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ_1} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	#[require="${INPUT_DIR}/${INPUT_1}"]
+	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT_1} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
 	{
 		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
 		SP_set _BWA_ALN_QUAL_OPT=-I
@@ -141,50 +174,76 @@ function bwa_map_pe
 	SP_run bwa_build_index FASTA=${REF}
 
 	{{
-		#[require="${REF}" input="${INPUT_DIR}/${FQ_1}" output.temp="${OUTPUT_DIR}/${FQ_1}.sai"]
+		#[require="${REF}" input="${INPUT_DIR}/${INPUT_1}" output.temp="${OUTPUT_DIR}/${SAI_FILE_1}"]
 		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-			${REF} ${INPUT_DIR}/${FQ_1} -f ${OUTPUT_DIR}/${FQ_1}.sai \
+			${REF} ${INPUT_DIR}/${INPUT_1} -f ${OUTPUT_DIR}/${SAI_FILE_1} \
 			${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
 		
-		#[require="${REF}" input="${INPUT_DIR}/${FQ_2}" output.temp="${OUTPUT_DIR}/${FQ_2}.sai"]
+		#[require="${REF}" input="${INPUT_DIR}/${INPUT_2}" output.temp="${OUTPUT_DIR}/${SAI_FILE_2}"]
 		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-			${REF} ${INPUT_DIR}/${FQ_2} -f ${OUTPUT_DIR}/${FQ_2}.sai \
+			${REF} ${INPUT_DIR}/${INPUT_2} -f ${OUTPUT_DIR}/${SAI_FILE_2} \
 			${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
 	}}
 
 	#[require="${REF}"]
-	#[input="${INPUT_DIR}/${FQ_1}" input="${OUTPUT_DIR}/${FQ_1}.sai"]
-	#[input="${INPUT_DIR}/${FQ_2}" input="${OUTPUT_DIR}/${FQ_2}.sai"]
-	#[output="${OUTPUT_DIR}/${OUTPUT}.bam"]
+	#[input="${INPUT_DIR}/${INPUT_1}" input="${OUTPUT_DIR}/${SAI_FILE_1}"]
+	#[input="${INPUT_DIR}/${INPUT_2}" input="${OUTPUT_DIR}/${SAI_FILE_2}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	bwa sampe -P ${REF} -a ${MAX_INSERT_SIZE} \
-		${OUTPUT_DIR}/${FQ_1}.sai ${OUTPUT_DIR}/${FQ_2}.sai \
-		${INPUT_DIR}/${FQ_1} ${INPUT_DIR}/${FQ_2} \
-		-r "@RG\tID:${RGID}\tSM:${SAMPLE}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
-		${BWA_SAMPE_OPTS} \
+		${OUTPUT_DIR}/${SAI_FILE_1} ${OUTPUT_DIR}/${SAI_FILE_2} \
+		${INPUT_DIR}/${INPUT_1} ${INPUT_DIR}/${INPUT_2} \
+		${_RG} ${BWA_SAMPE_OPTS} \
 		| samtools view -Sb - \
-		> ${OUTPUT_DIR}/${OUTPUT}.bam
+		> ${OUTPUT_DIR}/${OUTPUT}
 }
 
 function bwa_map_se
 {
-	SP_set INPUT_DIR=.
-	SP_set OUTPUT_DIR=.
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set SAI_EXT_NAME=.sai
+	SP_set OUTPUT_EXT_NAME=.bam
+	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
+	SP_set SAI_FILE=${NAME}${SAI_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
-	SP_set RGID=${SAMPLE}
-	SP_set RGLB=${RGID}
+	SP_set RGID=${NAME}
+	SP_set RGSM=${NAME}
+	SP_set RGLB=${NAME}
 	SP_set RGPL=illumina
 	SP_set RGCN=BGI
-	SP_set OUTPUT=${SAMPLE}
 
-	SP_set THREAD_NUM=2
+	SP_set _RG=
+	SP_if ${RGID}
+	{
+		SP_set _RG=${_RG}\tID:${RGID}
+
+		SP_if ${RGSM}
+		{
+			SP_set _RG=${_RG}\tSM:${RGSM}
+		}
+		SP_if ${RGLB}
+		{
+			SP_set _RG=${_RG}\tLB:${RGLB}
+		}
+		SP_if ${RGPL}
+		{
+			SP_set _RG=${_RG}\tPL:${RGPL}
+		}
+		SP_if ${_RG}
+		{
+			SP_set _RG=-r "@RG${_RG}"
+		}
+	}
+
 	SP_set BWA_END_IND=5    # do not put an indel within INT bp towards the ends.
 	SP_set BWA_GAP_EXT=-1   # maximum number of gap extensions, -1 for disabling long gaps.
 
 	SP_set BWA_ALN_OPTS=
-	SP_set BWA_SAMPE_OPTS=
+	SP_set BWA_SAMSE_OPTS=
 
 	SP_set _BWA_ALN_QUAL_OPT=
-	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	#[require="${INPUT_DIR}/${INPUT}"]
+	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
 	{
 		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
 		SP_set _BWA_ALN_QUAL_OPT=-I
@@ -193,38 +252,67 @@ function bwa_map_se
 	# This will be skipped if the index files exist.
 	SP_run bwa_build_index FASTA=${REF}
 
-	#[require="${REF}" input="${INPUT_DIR}/${FQ}" output.temp="${OUTPUT_DIR}/${FQ}.sai"]
+	#[require="${REF}" input="${INPUT_DIR}/${INPUT}" output.temp="${OUTPUT_DIR}/${SAI_FILE}"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REF} ${INPUT_DIR}/${FQ} -f ${OUTPUT_DIR}/${FQ}.sai \
+		${REF} ${INPUT_DIR}/${INPUT} -f ${OUTPUT_DIR}/${SAI_FILE} \
 		${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
 
-	#[require="${REF}"]
-	#[input="${INPUT_DIR}/${FQ}" input="${OUTPUT_DIR}/${FQ}.sai"]
-	#[output="${OUTPUT_DIR}/${OUTPUT}.bam"]
-	bwa samse ${REF} ${OUTPUT_DIR}/${FQ}.sai ${INPUT_DIR}/${FQ} \
-		-r "@RG\tID:${RGID}\tSM:${SAMPLE}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
-		${BWA_SAMPE_OPTS} \
+	#[require="${REF}" input="${INPUT_DIR}/${INPUT}" input="${OUTPUT_DIR}/${SAI_FILE}" output="${OUTPUT_DIR}/${OUTPUT}"]
+	bwa samse ${REF} ${OUTPUT_DIR}/${SAI_FILE} ${INPUT_DIR}/${INPUT} ${_RG} ${BWA_SAMSE_OPTS} \
 		| samtools view -Sb - \
-		> ${OUTPUT_DIR}/${OUTPUT}.bam
+		> ${OUTPUT_DIR}/${OUTPUT}
 }
 
 ###########################################################################
 
+function sort_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.sorted.bam
+	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
+
+	SP_set VALIDATION_STRINGENCY=STRICT
+
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/SortSam.jar ${PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=false \
+		SORT_ORDER=coordinate \
+		INPUT=${INPUT_DIR}/${INPUT} \
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT}
+
+	if [ -f $(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/') -a ! -f ${OUTPUT_DIR}/${OUTPUT}.bai ]; then \
+		mv -fv $(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/') ${OUTPUT_DIR}/${OUTPUT}.bai; \
+	fi
+}
+
+function build_bam_index
+{
+	#[input="${BAM}" output="${BAM}.bai"]
+	samtools index ${BAM}
+}
+
 function flagstat_bam
 {
-	SP_set INPUT_DIR=.
-	SP_set OUTPUT_DIR=.
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.flagstat.txt
+	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
-	#[input="${INPUT_DIR}/${NAME}.bam"]
-	#[output="${OUTPUT_DIR}/${NAME}.flagstat.txt"]
-	samtools flagstat ${INPUT_DIR}/${NAME}.bam > ${OUTPUT_DIR}/${NAME}.flagstat.txt
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
+	samtools flagstat ${INPUT_DIR}/${INPUT} > ${OUTPUT_DIR}/${OUTPUT}
 }
 
 function bamqc_check
 {
-	SP_set INPUT_DIR=.
-	SP_set OUTPUT_DIR=.
-	
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.bamqc
+	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
+
 	SP_set SPECIES=HUMAN
 	SP_if !(echo ${SPECIES} | egrep '^(HUMAN|MOUSE)$')
 	{
@@ -235,31 +323,11 @@ function bamqc_check
 	SP_set WINDOW_NUM=400
 	SP_set EXT_OPTS=
 
-	#[input="${INPUT_DIR}/${NAME}.bam"]
-	#[output="${OUTPUT_DIR}/${NAME}.bamqc/index.html"]
-	qualimap bamqc -bam ${INPUT_DIR}/${NAME}.bam -gd ${SPECIES} \
+	#[input="${INPUT_DIR}/${INPUT}" input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}/qualimapReport.html"]
+	qualimap bamqc -bam ${INPUT_DIR}/${INPUT} -gd ${SPECIES} \
 		-nt ${THREAD_NUM} -nw ${WINDOW_NUM} \
-		-outformat HTML -outdir ${OUTPUT_DIR}/${NAME}.bamqc ${EXT_OPTS}
-}
-
-function sort_bam
-{
-	SP_set VALIDATION_STRINGENCY=STRICT
-
-	#[input="${INPUT}.bam"]
-	#[output="${INPUT}.sorted.bam"]
-	#[output="${INPUT}.sorted.bai"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/SortSam.jar ${PICARD_OPTS} \
-		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=true \
-		CREATE_MD5_FILE=false \
-		SORT_ORDER=coordinate \
-		INPUT=${INPUT}.bam \
-		OUTPUT=${INPUT}.sorted.bam
-
-	#[require="${INPUT}.sorted.bai"]
-	mv -vf ${INPUT}.sorted.bai ${INPUT}.sorted.bam.bai
+		-outformat HTML -outdir ${OUTPUT_DIR}/${OUTPUT} ${EXT_OPTS}
 }
 
 function merge_bam
@@ -755,7 +823,7 @@ function DNAseq_analysis
 		REF=${REF} \
 		FQ_1=${INPUT_DIR}/${NAME}_1.fq.gz \
 		FQ_2=${INPUT_DIR}/${NAME}_2.fq.gz \
-		SAMPLE=${SAMPLE} \
+		NAME=${SAMPLE} \
 		MAX_INSERT_SIZE=${MAX_INSERT_SIZE} \
 		OUTPUT=${SAMPLE} \
 		RGID=${RGID} \
@@ -773,7 +841,7 @@ function DNAseq_analysis
 
 	SP_run select_unique_hit_reads INPUT=${SAMPLE}.mapped
 
-	SP_run sort_bam INPUT=${SAMPLE}.mapped.uniq
+	SP_run sort_bam NAME=${SAMPLE}.mapped.uniq
 
 	SP_run mark_duplicate_reads INPUT=${SAMPLE}.mapped.uniq.sorted
 
@@ -790,8 +858,7 @@ function DNAseq_analysis
 ##### Call Structure Variants #####
 	SP_run sort_bam \
 		VALIDATION_STRINGENCY=SILENT \
-		INPUT=${SAMPLE} \
-		OUTPUT=${SAMPLE}.sorted
+		NAME=${SAMPLE}
 
 	SP_run pindel_call_structure_variants \
 		REF=${REF} \
