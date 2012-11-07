@@ -150,8 +150,7 @@ $SIG{'TERM'} = \&kill_signal_handler;
 sub time_string
 {
 	my ($sec, $min, $hour, $mday, $mon, $year) = localtime shift;
-	return sprintf("%04d-%02d-%02d %02d:%02d:%02d",
-		$year + 1900, $mon + 1, $mday, $hour, $min, $sec);
+	return sprintf('%04d-%02d-%02d %02d:%02d:%02d', $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
 }
 
 sub time_elapse_string
@@ -214,7 +213,7 @@ sub bash_line_decode {
 	$line = remove_whitespace_and_comments($line);
 	
 	# Checking format.
-	die "Bad bash line!" if ($line !~ /^((("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)(\s+|$))*/);
+	die 'Bad bash line!' if ($line !~ /^((("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)(\s+|$))*/);
 
 	# Split bash command line to @argv.
 	while ($line =~ /(("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)/g) {
@@ -295,7 +294,6 @@ sub parse_cmd
 		inputs => $cmd_info_ref->{inputs},
 		outputs => $cmd_info_ref->{outputs},
 		temp_outputs => $cmd_info_ref->{temp_outputs},
-		final_outputs => $cmd_info_ref->{final_outputs},
 		var_checking => [] };
 
 	my @argv = bash_line_decode($command);
@@ -396,11 +394,11 @@ sub parse_cmd
 	return $cmd_ref;
 }
 
-sub add_workflow_attribute
+sub check_dependency
 {
-	my ($final_outputs_ref, $proc_info_ref) = @_;
+	my ($outputs_ref, $proc_info_ref) = @_;
 
-	foreach my $output (keys %{$final_outputs_ref}) {
+	foreach my $output (keys %{$outputs_ref}) {
 		my %items = ();
 		if ($proc_info_ref->{requires_of}{$output}) {
 			foreach my $file (@{$proc_info_ref->{requires_of}{$output}}) {
@@ -420,22 +418,13 @@ sub add_workflow_attribute
 				}
 			}
 		}
-		add_workflow_attribute(\%items, $proc_info_ref);
+		check_dependency(\%items, $proc_info_ref);
 	}
-}
-
-sub cmd_nodep
-{
-	my ($cmd_ref) = @_;
-	return 0 if %{$cmd_ref->{requires}};
-	return 0 if %{$cmd_ref->{inputs}};
-	return 0 if %{$cmd_ref->{outputs}};
-	return 1;
 }
 
 sub create_cmd_info
 {
-	return ( requires => {}, inputs => {}, outputs => {}, temp_outputs => {}, final_outputs => {}, var_checking => {} );
+	return ( requires => {}, inputs => {}, outputs => {}, temp_outputs => {}, var_checking => {} );
 }
 
 sub parse_block
@@ -492,42 +481,31 @@ sub parse_block
 
 		if ($line =~ s/\\$//) {
 			$last_line = $line;
-		} elsif ($line =~ /^#\[(command\s+|)(require|input|output(|.temp|.final))=.*\]$/) {
+		} elsif ($line =~ /^#\[(command\s+|)(require|input|output|output\.temp)=.*\]$/) {
 			if ($1 =~ /^command\s+$/ and not $quiet_mode and not $obsolete_warned) {
 				print "WARNING: '#[procedure ...]' and '#[command ...]' are obsolete, use '#[attr=\"...\"]' instead! Found in: $l->{file}($l->{line})\n";
 				$obsolete_warned = 1;
 			}
-			while ($line =~ /(require|input|output(|.temp|.final))="(.*?)"/g) {
-				if ($1 eq "require") {
-					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
-						die "ERROR: Duplicated attribute for require file '$3'!";
+			while ($line =~ /(require|input|output|output\.temp)="(.*?)"/g) {
+				if ($1 eq 'require') {
+					if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
+						die "ERROR: Duplicated attribute for require file '$2'!";
 					}
-					$cmd_info{requires}{$3} = 1;
-				} elsif ($1 eq "input") {
-					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
-						die "ERROR: Duplicated attribute for input file '$3'!";
+					$cmd_info{requires}{$2} = 1;
+				} elsif ($1 eq 'input') {
+					if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
+						die "ERROR: Duplicated attribute for input file '$2'!";
 					}
-					$cmd_info{inputs}{$3} = 1;
-				} elsif ($1 eq "output") {
-					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
-						die "ERROR: Duplicated attribute for output file '$3'!";
+					$cmd_info{inputs}{$2} = 1;
+				} else {
+					if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
+						die "ERROR: Duplicated attribute for output file '$2'!";
 					}
-					$cmd_info{outputs}{$3} = 1;
-				} elsif ($1 eq "output.temp") {
-					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
-						die "ERROR: Duplicated attribute for output file '$3'!";
-					}
-					$cmd_info{outputs}{$3} = 1;
-					$cmd_info{temp_outputs}{$3} = 1;
-				} elsif ($1 eq "output.final") {
-					if (exists $cmd_info{requires}{$3} or exists $cmd_info{inputs}{$3} or exists $cmd_info{outputs}{$3}) {
-						die "ERROR: Duplicated attribute for output file '$3'!";
-					}
-					$cmd_info{outputs}{$3} = 1;
-					$cmd_info{final_outputs}{$3} = 1;
+					$cmd_info{outputs}{$2} = 1;
+					$cmd_info{temp_outputs}{$2} = 1 if $1 eq 'output.temp';
 				}
 			}
-		} elsif ($line !~ /^\s*(#.*|)$/) {
+		} else {
 			my $cmd_ref = parse_cmd($line, $l, $module_file, $lines_ref, \@commands, \%cmd_info, $var_info_ref, $proc_info_ref);
 
 			foreach my $item ($cmd_ref->{command}, keys %{$cmd_info{requires}}, keys %{$cmd_info{inputs}}, keys %{$cmd_info{outputs}}, @{$cmd_ref->{var_checking}}) {
@@ -539,14 +517,14 @@ sub parse_block
 			}
 			
 			push @commands, $cmd_ref;
-			if (keys $cmd_info{temp_outputs}) {
-				foreach my $output (keys $cmd_info{temp_outputs}) {
-					$proc_info_ref->{temp_outputs}{$output} = 1;
+			if (keys %{$cmd_info{temp_outputs}}) {
+				foreach my $file (keys %{$cmd_info{temp_outputs}}) {
+					$proc_info_ref->{temp_outputs}{$file} = '';
 				}
 			}
-			if (keys $cmd_info{final_outputs}) {
-				foreach my $output (keys $cmd_info{final_outputs}) {
-					$proc_info_ref->{final_outputs}{$output} = 1;
+			if (keys %{$cmd_info{outputs}}) {
+				foreach my $file (keys %{$cmd_info{outputs}}) {
+					$proc_info_ref->{outputs}{$file} = '';
 				}
 			}
 			foreach my $output (keys %{$cmd_info{outputs}}) {
@@ -557,7 +535,7 @@ sub parse_block
 		}
 	}
 	if ($last_line ne '') {
-		die "ERROR: Invalid procedure declaration! Last command line not finished!";
+		die 'ERROR: Invalid procedure declaration! Last command line not finished!';
 	}
 
 	foreach my $variable (keys %{$proc_info_ref->{requires}}, keys %{$proc_info_ref->{inputs}}, keys %{$proc_info_ref->{outputs}}) {
@@ -613,9 +591,7 @@ sub parsing_error
 
 sub create_proc_info
 {
-	return ( requires_of => {}, inputs_of => {},
-		requires => {}, inputs => {}, outputs => {},
-		temp_outputs => {}, final_outputs => {} );
+	return ( requires_of => {}, inputs_of => {}, requires => {}, inputs => {}, outputs => {}, temp_outputs => {} );
 }
 
 sub load_modules
@@ -646,7 +622,7 @@ sub parse_proc
 		if ($l->{text} =~ /^#\[/) {
 			next if $l->{text} =~ /^#\[(seqpipe|version)/;
 			if ($l->{text} !~ /^#\[(procedure\s+|)(type|require|input|output)="(.*?)"+\s*\]$/) {
-				die "ERROR: Bad procedure attribute declaration" . parsing_error($l);
+				die 'ERROR: Bad procedure attribute declaration' . parsing_error($l);
 			}
 			if ($1 =~ /^procedure\s+$/ and not $quiet_mode and not $obsolete_warned) {
 				print "WARNING: '#[procedure ...]' and '#[command ...]' are obsolete, use '#[attr=\"...\"]' instead! Found in: $l->{file}($l->{line})\n";
@@ -657,17 +633,17 @@ sub parse_proc
 				$obsolete_warned = 1;
 			}
 			while ($l->{text} =~ /(require|input|output)="(.*?)"/g) {
-				if ($1 eq "require") {
+				if ($1 eq 'require') {
 					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
 						die "ERROR: Duplicated attribute for require file '$2'" . parsing_error($l);
 					}
 					$requires{$2} = 1;
-				} elsif ($1 eq "input") {
+				} elsif ($1 eq 'input') {
 					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
 						die "ERROR: Duplicated attribute for input file '$2'" . parsing_error($l);
 					}
 					$inputs{$2} = 1;
-				} elsif ($1 eq "output") {
+				} elsif ($1 eq 'output') {
 					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
 						die "ERROR: Duplicated attribute for output file '$2'" . parsing_error($l);
 					}
@@ -676,7 +652,7 @@ sub parse_proc
 				next;
 			}
 		} elsif ($l->{text} =~ /^\s*function\s+/) {
-			die "ERROR: Invalid procedure declaration!" if $l->{text} !~ /^function\s+(\w+)\s*(\{|\{\{|)\s*$/;
+			die 'ERROR: Invalid procedure declaration!' if $l->{text} !~ /^function\s+(\w+)\s*(\{|\{\{|)\s*$/;
 			my $proc_name = $1;
 			my $blocking = $2;
 
@@ -700,8 +676,11 @@ sub parse_proc
 			my %var_info = ( defined_var => {}, used_var => {}, iterator_var => {} );
 			my $proc_ref = parse_block($blocking, $file, $lines_ref, \%proc_info, \%var_info);
 
-			if (%{$proc_info{final_outputs}}) {
-				add_workflow_attribute $proc_info{final_outputs}, \%proc_info;
+			if (%{$proc_info{outputs}}) {
+				check_dependency $proc_info{outputs}, \%proc_info;
+				foreach my $file (keys $proc_info{temp_outputs}) {
+					delete $proc_info{outputs}{$file};
+				}
 			}
 			foreach my $file (keys %requires) {
 				$proc_info{requires}{$file} = 1;
@@ -709,7 +688,7 @@ sub parse_proc
 			foreach my $file (keys %inputs) {
 				$proc_info{inputs}{$file} = 1;
 			}
-			foreach my $file (keys %outputs, keys %{$proc_info{final_outputs}}) {
+			foreach my $file (keys %outputs) {
 				$proc_info{outputs}{$file} = 1;
 			}
 			foreach my $name (keys %requires, keys %inputs, keys %outputs) {
@@ -790,7 +769,7 @@ sub show_parameters
 	foreach my $name (sort keys $procedures{$proc_name}{used_var}) {
 		next if $name =~ /^_/;
 		if (exists $procedures{$proc_name}{iterator_var}{$name}) {
-			$def_vars{$name} = "(runtime-evaluate)";
+			$def_vars{$name} = '(runtime-evaluate)';
 		} elsif (exists $opts_ref->{$name}) {
 			$def_vars{$name} = $opts_ref->{$name};
 		} elsif (exists $procedures{$proc_name}{defined_var}{$name}) {
@@ -872,22 +851,16 @@ sub display_block
 				print "\n";
 			}
 
-			foreach my $require (keys %{$cmd_ref->{requires}}) {
-				print "$indent\t#[require=\"$require\"]\n";
+			foreach my $file (keys %{$cmd_ref->{requires}}) {
+				print "$indent\t#[require=\"$file\"]\n";
 			}
-			foreach my $input (keys %{$cmd_ref->{inputs}}) {
-				print "$indent\t#[input=\"$input\"]\n";
+			foreach my $file (keys %{$cmd_ref->{inputs}}) {
+				print "$indent\t#[input=\"$file\"]\n";
 			}
-			foreach my $output (keys %{$cmd_ref->{outputs}}) {
-				if (not exists $cmd_ref->{temp_outputs}{$output} and not exists $cmd_ref->{final_outputs}{$output}) {
-					print "$indent\t#[output=\"$output\"]\n";
-				}
-			}
-			foreach my $temp_output (keys %{$cmd_ref->{temp_outputs}}) {
-				print "$indent\t#[output.temp=\"$temp_output\"]\n";
-			}
-			foreach my $final_output (keys %{$cmd_ref->{final_outputs}}) {
-				print "$indent\t#[output.final=\"$final_output\"]\n";
+			foreach my $file (keys %{$cmd_ref->{outputs}}) {
+				print "$indent\t#[output";
+				print '.temp' if exists $cmd_ref->{temp_outputs}{$file};
+				print "=\"$file\"]\n";
 			}
 		}
 
@@ -990,7 +963,7 @@ sub check_for_skip
 				}
 			} else {
 				my $output_dir = dirname $file;
-				system "mkdir", "-p", $output_dir unless -d $output_dir;
+				system 'mkdir', '-p', $output_dir unless -d $output_dir;
 				return 0;
 			}
 		}
@@ -1017,7 +990,7 @@ sub run_shell
 	my $log_file = '';
 
 	if ($procedure_type eq 'sysinfo') {
-		$command_with_log = "($command) 2>&1 >>" . LOG_DIR . "/sysinfo";
+		$command_with_log = "($command) 2>&1 >>" . LOG_DIR . '/sysinfo';
 	} elsif ($procedure_type eq 'checker') {
 		my $name = LOG_DIR . "/$run_id.check";
 		$command_with_log = "($command) >>/dev/null 2>>/dev/null";
@@ -1148,7 +1121,7 @@ sub run_cmd
 			return undef if not defined $s;
 			$yes = ($s ne '');
 		}
-		safe_print "$indent($run_id) $cmd returns '" . ($yes ? "yes" : "no") . "'\n";
+		safe_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
 		if ($yes) {
 			$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
 		} else {
@@ -1176,7 +1149,7 @@ sub run_cmd
 			my $shell_return = run_shell(eval_string($cmd_ref->{bash}, \%vars, $opts_ref), 'checker', $run_id, $indent);
 			return undef if not defined $shell_return;
 			my $yes = ($shell_return->{ret} == 0) ^ ($cmd_ref->{negative} ne '');
-			safe_print "$indent($run_id) $cmd returns '" . ($yes ? "yes" : "no") . "'\n";
+			safe_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
 			last if (not $yes);
 			$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
 			return undef if not defined $ret;
@@ -1509,11 +1482,11 @@ if (my @req_vars = check_var($proc_name, \%opts)) {
 mkdir LOG_ROOT or die "ERROR: Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
 mkdir LOG_DIR or die "ERROR: Can't create directory '" . LOG_DIR . "'!";
 
-open LOG_FILE, ">>" . LOG_ROOT . "/history.log";
+open LOG_FILE, '>>' . LOG_ROOT . '/history.log';
 safe_print UNIQ_ID . "\t$command_line\n";
 close LOG_FILE;
 
-open LOG_FILE, "| tee -ai " . LOG_DIR . "/log";
+open LOG_FILE, '| tee -ai ' . LOG_DIR . '/log';
 
 safe_print '[' . UNIQ_ID . "] $command_line\n";
 

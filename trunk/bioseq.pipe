@@ -33,7 +33,7 @@ function fastqc_check
 	SP_set INPUT=${NAME}${EXT_NAME}
 	SP_set OUTPUT=${NAME}.fastqc.zip
 
-	#[input="${INPUT_DIR}/${INPUT}" output.final="${OUTPUT_DIR}/${OUTPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
 	fastqc --noextract --nogroup -o $(dirname ${OUTPUT_DIR}/${OUTPUT}) ${INPUT_DIR}/${INPUT} && \
 		mv -vf $(dirname ${OUTPUT_DIR}/${OUTPUT})/$(basename ${INPUT} \
 			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT_DIR}/${OUTPUT}
@@ -49,7 +49,7 @@ function convert_fastq_33to64
 	#[require="${INPUT_DIR}/${INPUT}"]
 	test -n "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
 
-	#[input="${INPUT_DIR}/${INPUT}" output.final="${OUTPUT_DIR}/${OUTPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
 	${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} \
 		| perl -e 'while($a=<>){$b=<>;$c=<>;$d=<>;print "$a$b$c"; print($_ eq "\n" ? "\n" : pack("C", unpack("C*",$_)-33+64)) for(split(//,$d));}' \
 		| gzip -9c \
@@ -66,7 +66,7 @@ function convert_fastq_64to33
 	#[require="${INPUT_DIR}/${INPUT}"]
 	test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
 
-	#[input="${INPUT_DIR}/${INPUT}" output.final="${OUTPUT_DIR}/${OUTPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
 	${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} \
 		| perl -e 'while($a=<>){$b=<>;$c=<>;$d=<>;print "$a$b$c"; print($_ eq "\n" ? "\n" : pack("C", unpack("C*",$_)-64+33)) for(split(//,$d));}' \
 		| gzip -9c \
@@ -89,7 +89,7 @@ function trim_fastq
 		SP_set _QUAL_OPT=-Q33
 	}
 
-	#[input="${INPUT_DIR}/${INPUT}" output.final="${OUTPUT_DIR}/${OUTPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
 	${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} \
 		| fastx_trimmer -f ${START_POS} -l ${END_POS} ${_QUAL_OPT} \
 		| gzip -9c \
@@ -107,7 +107,7 @@ function bwa_build_index
 		SP_set _ALGORITHM=bwtsw
 	}
 
-	#[input="${FASTA}" output.final="${FASTA}.bwt"]
+	#[input="${FASTA}" output="${FASTA}.bwt"]
 	bwa index -a ${_ALGORITHM} ${FASTA}
 }
 
@@ -155,7 +155,7 @@ function bwa_map_pe
 	#[require="${REF}"]
 	#[input="${INPUT_DIR}/${FQ_1}" input="${OUTPUT_DIR}/${FQ_1}.sai"]
 	#[input="${INPUT_DIR}/${FQ_2}" input="${OUTPUT_DIR}/${FQ_2}.sai"]
-	#[output.final="${OUTPUT_DIR}/${OUTPUT}.bam"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bam"]
 	bwa sampe -P ${REF} -a ${MAX_INSERT_SIZE} \
 		${OUTPUT_DIR}/${FQ_1}.sai ${OUTPUT_DIR}/${FQ_2}.sai \
 		${INPUT_DIR}/${FQ_1} ${INPUT_DIR}/${FQ_2} \
@@ -200,7 +200,7 @@ function bwa_map_se
 
 	#[require="${REF}"]
 	#[input="${INPUT_DIR}/${FQ}" input="${OUTPUT_DIR}/${FQ}.sai"]
-	#[output.final="${OUTPUT_DIR}/${OUTPUT}.bam"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bam"]
 	bwa samse ${REF} ${OUTPUT_DIR}/${FQ}.sai ${INPUT_DIR}/${FQ} \
 		-r "@RG\tID:${RGID}\tSM:${SAMPLE}\tLB:${RGLB}\tPL:${RGPL}\tCN:${RGCN}" \
 		${BWA_SAMPE_OPTS} \
@@ -216,7 +216,7 @@ function flagstat_bam
 	SP_set OUTPUT_DIR=.
 
 	#[input="${INPUT_DIR}/${NAME}.bam"]
-	#[output.final="${OUTPUT_DIR}/${NAME}.flagstat.txt"]
+	#[output="${OUTPUT_DIR}/${NAME}.flagstat.txt"]
 	samtools flagstat ${INPUT_DIR}/${NAME}.bam > ${OUTPUT_DIR}/${NAME}.flagstat.txt
 }
 
@@ -236,7 +236,7 @@ function bamqc_check
 	SP_set EXT_OPTS=
 
 	#[input="${INPUT_DIR}/${NAME}.bam"]
-	#[output.final="${OUTPUT_DIR}/${NAME}.bamqc/index.html"]
+	#[output="${OUTPUT_DIR}/${NAME}.bamqc/index.html"]
 	qualimap bamqc -bam ${INPUT_DIR}/${NAME}.bam -gd ${SPECIES} \
 		-nt ${THREAD_NUM} -nw ${WINDOW_NUM} \
 		-outformat HTML -outdir ${OUTPUT_DIR}/${NAME}.bamqc ${EXT_OPTS}
