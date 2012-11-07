@@ -13,9 +13,10 @@ Copyright: 2012, Centre for Bioinformatics, Peking University, China
 Usage: $0 <command> [<options>]
 
 Support commands:
-   show   [ <id> | -<order> ]
-   log    ( <id> | -<order> )
-   cmd    ( <id> | -<order> )
+   id     ( <id> | <order> )
+   show   [ <id> | <order> ]
+   log    ( <id> | <order> )
+   cmd    ( <id> | <order> )
    remove <id>
    upgrade
 
@@ -30,7 +31,19 @@ fi
 
 COMMAND="$1"
 
-if [ "${COMMAND}" == "show" ]; then
+if [ "${COMMAND}" == "id" ]; then
+	ID=$2
+	if [ -z "${ID}" ]; then
+		echo "Usage: $0 id <id>"
+		exit 1
+	elif ( echo ${ID} | egrep '\.' >/dev/null ) then
+		cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"' | cut -f1
+	elif ( echo ${ID} | egrep '^-[0-9]' >/dev/null ) then
+		tail ${SEQPIPE_LOG} -n $(echo ${ID} | sed 's/^.*([0-9]+).*/\\1/g') | head -n1 | cut -f1
+	else
+		head ${SEQPIPE_LOG} -n ${ID} | tail -n1 | cut -f1
+	fi
+elif [ "${COMMAND}" == "show" ]; then
 	ID=$2
 	if [ -z "${ID}" ]; then
 		cat ${SEQPIPE_LOG}
