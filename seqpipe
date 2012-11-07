@@ -830,10 +830,12 @@ sub show_parameters
 			printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
 		}
 	}
-	if (%{$procedures{$proc_name}{temp_outputs}}) {
-		print "\nTemporary file(s):\n";
-		foreach my $text (sort keys %{$procedures{$proc_name}{temp_outputs}}) {
-			printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+	if ($help_mode == 2) {
+		if (%{$procedures{$proc_name}{temp_outputs}}) {
+			print "\nTemporary file(s):\n";
+			foreach my $text (sort keys %{$procedures{$proc_name}{temp_outputs}}) {
+				printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+			}
 		}
 	}
 	print "\n";
