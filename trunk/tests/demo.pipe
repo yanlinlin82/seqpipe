@@ -60,9 +60,9 @@ function demo_SP_set
 
 function demo_SP_for
 {
-	SP_for X=abc *.gz {1..5} $((3+4))
+	SP_for _X=abc *.gz {1..5} $((3+4))
 	{
-		echo ${X}
+		echo ${_X}
 	}
 }
 
