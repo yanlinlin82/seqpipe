@@ -253,14 +253,18 @@ sub eval_string
 	}
 
 	# Replace variables
-	while ($string =~ /\${(\w+)}/) {
-		my $var_name = $1;
-		if (exists $opts_ref->{$var_name}) { # Options can overwrite variables
-			$string =~ s/\${$var_name}/$opts_ref->{$var_name}/g;
-		} elsif (exists $vars_ref->{$var_name}) {
-			$string =~ s/\${$var_name}/$vars_ref->{$var_name}/g;
-		} else {
-			$string =~ s/\${$var_name}//g;
+	my %exclude = ();
+	search: while ($string =~ /\${(\w+)}/g) {
+		my $name = $1;
+		while ($string =~ /\${$name}/) {
+			if (exists $opts_ref->{$name}) { # Options can overwrite variables
+				$string =~ s/\${$name}/$opts_ref->{$name}/g;
+			} elsif (exists $vars_ref->{$name}) {
+				$string =~ s/\${$name}/$vars_ref->{$name}/g;
+			} else {
+				$exclude{$name} = '';
+				goto search;
+			}
 		}
 	}
 	return $string;
@@ -305,6 +309,7 @@ sub parse_cmd
 				# Treat the first SP_set as the initial value of the variable.
 				$var_info_ref->{defined_var}{$1} = $2;
 			}
+			push @{$cmd_ref->{var_checking}}, $cmd_ref->{text};
 		} elsif ($argv[0] eq 'SP_if') {
 			$cmd_ref->{command} = 'SP_if';
 			if ($command =~ /^SP_if\s*(|!)\s*\((.*)\)\s*$/) {
@@ -755,12 +760,13 @@ sub print_usage
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
 Version: 0.3.3 ($Rev$)
+Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
 Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
 
 Options:
-   -h          Show this help, or its usage when procedure name given.
+   -h / -H     Show this or procedure usage. -H for more details.
    -m <file>   Load procedure module file, this option can be used many times.
    -l          List current available procedures.
    -t <int>    Max thread number, 0 for unlimited. default: ' . $max_thread_number . '
@@ -776,10 +782,10 @@ Options:
 
 sub show_parameters
 {
-	my ($proc_name) = @_;
+	my ($proc_name, $opts_ref) = @_;
 	return if $proc_name eq '';
 
-	my @req_vars = ();
+	my %req_vars = ();
 	my %def_vars = ();
 	foreach my $name (sort keys $procedures{$proc_name}{used_var}) {
 		next if $name =~ /^_/;
@@ -790,25 +796,44 @@ sub show_parameters
 		} elsif (exists $global_var{$procedures{$proc_name}{module_file}}{$name}) {
 			$def_vars{$name} = $global_var{$procedures{$proc_name}{module_file}}{$name};
 		} else {
-			push @req_vars, $name;
+			$req_vars{$name} = '';
 		}
 	}
 	print "\nParameters for procedure '$proc_name':\n";
-	foreach my $name (@req_vars) {
-		printf "   %-30s Required\n", $name;
+	foreach my $name (sort keys %req_vars) {
+		printf "   %-30s  Required\n", $name;
 	}
-	foreach my $name (sort keys %def_vars) {
-		printf "   %-30s Def: %s\n", $name, $def_vars{$name};
+	if ($help_mode == 2) {
+		print "\n";
+		foreach my $name (sort keys %def_vars) {
+			printf "   %-30s  Default: %s\n", $name, $def_vars{$name};
+		}
 	}
 
-	my @requires = sort keys %{$procedures{$proc_name}{requires}};
-	my @inputs = sort keys %{$procedures{$proc_name}{inputs}};
-	my @outputs = sort keys %{$procedures{$proc_name}{outputs}};
-	my @temp_outputs = sort keys %{$procedures{$proc_name}{temp_outputs}};
-	print join("\n   ", ("\nRequire file(s):", @requires)) . "\n" if @requires;
-	print join("\n   ", ("\nInput file(s):",   @inputs))   . "\n" if @inputs;
-	print join("\n   ", ("\nOutput file(s):",  @outputs))  . "\n" if @outputs;
-	print join("\n   ", ("\nTemporary file(s):", @temp_outputs))  . "\n" if @temp_outputs;
+	if (%{$procedures{$proc_name}{requires}}) {
+		print "\nRequire file(s):\n";
+		foreach my $text (sort keys %{$procedures{$proc_name}{requires}}) {
+			printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+		}
+	}
+	if (%{$procedures{$proc_name}{inputs}}) {
+		print "\nInput file(s):\n";
+		foreach my $text (sort keys %{$procedures{$proc_name}{inputs}}) {
+			printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+		}
+	}
+	if (%{$procedures{$proc_name}{outputs}}) {
+		print "\nOutput file(s):\n";
+		foreach my $text (sort keys %{$procedures{$proc_name}{outputs}}) {
+			printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+		}
+	}
+	if (%{$procedures{$proc_name}{temp_outputs}}) {
+		print "\nTemporary file(s):\n";
+		foreach my $text (sort keys %{$procedures{$proc_name}{temp_outputs}}) {
+			printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+		}
+	}
 	print "\n";
 }
 
@@ -1363,6 +1388,8 @@ if ($#ARGV < 0) {
 	while (my $arg = shift @ARGV) {
 		if ($arg eq '-h') {
 			$help_mode = 1;
+		} elsif ($arg eq '-H') {
+			$help_mode = 2;
 		} elsif ($arg eq '-m') {
 			if ($#ARGV < 0) {
 				print "ERROR: missing argument for option '$arg'!\n";
@@ -1457,7 +1484,7 @@ if ($help_mode) {
 	if ($proc_name eq '') {
 		print_usage;
 	} else {
-		show_parameters $proc_name;
+		show_parameters $proc_name, \%opts;
 	}
 	exit 1;
 }
