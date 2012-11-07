@@ -46,7 +46,7 @@ function convert_fastq_33to64
 	SP_set INPUT=${NAME}${EXT_NAME}
 	SP_set OUTPUT=${NAME}.q64.fq.gz
 
-	#Check if it is base-33
+	# Check if it is base-33
 	test -n "$(${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
 
 	#[input="${INPUT_DIR}/${INPUT}"]
@@ -59,7 +59,7 @@ function convert_fastq_33to64
 
 function convert_fastq_64to33
 {
-	#Check if it is base-64
+	# Check if it is base-64
 	test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
 
 	#[input="${INPUT}"]

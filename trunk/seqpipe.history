@@ -15,6 +15,7 @@ Usage: $0 <command> [<options>]
 Support commands:
    list
    show <id>
+   log <id>
    remove <id>
    upgrade
 
@@ -36,8 +37,22 @@ elif [ "${COMMAND}" == "show" ]; then
 	if [ -z "${ID}" ]; then
 		echo "Usage: $0 show <id>"
 		exit 1
+	elif ( echo ${ID} | egrep '^-[0-9]' >/dev/null ) then
+		tail ${SEQPIPE_LOG} -n $(echo ${ID} | sed 's/^.*([0-9]+).*/\\1/g') | head -n1
+	else
+		cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"'
 	fi
-	cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"'
+elif [ "${COMMAND}" == "log" ]; then
+	ID=$2
+	if [ -z "${ID}" ]; then
+		echo "Usage: $0 log <id>"
+		exit 1
+	else
+		if ( echo ${ID} | egrep '^-[0-9]' >/dev/null ) then
+			ID=$(tail ${SEQPIPE_LOG} -n $(echo ${ID} | sed 's/^.*([0-9]+).*/\\1/g') | head -n1 | cut -f1)
+		fi
+		cat ${SEQPIPE_DIR}/${ID}/log
+	fi
 elif [ "${COMMAND}" == "remove" ]; then
 	ID=$2
 	if [ -z "${ID}" ]; then
