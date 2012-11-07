@@ -11,6 +11,7 @@ SP_include config.inc
 function _bioseq_sysinfo
 {
 	echo -n 'FastQC   : '; fastqc --version | cut -d' ' -f2
+	echo -n 'FastX    : '; fastx_trimmer -h | grep FASTX | sed 's/^.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*$/\1/g'
 	echo -n 'bwa      : '; bwa |& grep Version | cut -d' ' -f2
 	echo -n 'samtools : '; samtools |& grep Version | cut -d' ' -f2-
 	echo -n 'bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
@@ -60,15 +61,32 @@ function fq_64to33
 		> ${OUTPUT}.fq.gz
 }
 
+function fq_trim
+{
+	SP_set START_POS=1
+	SP_set _QUAL_OPT=
+	SP_if (test -n "$(${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	{
+		SP_set _QUAL_OPT=-Q33
+	}
+
+	#[input="${INPUT}"]
+	#[output.final="${OUTPUT}.fq.gz"]
+	${_SEQPIPE_ROOT}/uxcat ${INPUT} \
+		| fastx_trimmer -f ${START_POS} -l ${END_POS} ${_QUAL_OPT} \
+		| gzip -9c \
+		> ${OUTPUT}.fq.gz
+}
+
 ###########################################################################
 
 function bwa_build
 {
-	SP_set _ALGORITHM="is"
+	SP_set _ALGORITHM=is
 	SP_if $(ls -lL ${FASTA} | awk '$5>=1e8')
 	{
 		# Treat >=100MB .fasta file as long genome, use '-a bwtsw' instead of '-a is'
-		SP_set _ALGORITHM="bwtsw"
+		SP_set _ALGORITHM=bwtsw
 	}
 
 	#[input="${FASTA}" output.final="${FASTA}.bwt"]
@@ -77,43 +95,43 @@ function bwa_build
 
 function bwa_map_pe
 {
-	SP_set INPUT_DIR="."
-	SP_set OUTPUT_DIR="."
+	SP_set INPUT_DIR=.
+	SP_set OUTPUT_DIR=.
 
-	SP_set RGID="${SAMPLE}"
-	SP_set RGLB="${RGID}"
-	SP_set RGPL="illumina"
-	SP_set RGCN="BGI"
-	SP_set OUTPUT="${SAMPLE}"
+	SP_set RGID=${SAMPLE}
+	SP_set RGLB=${RGID}
+	SP_set RGPL=illumina
+	SP_set RGCN=BGI
+	SP_set OUTPUT=${SAMPLE}
 
 	SP_set THREAD_NUM=2
 	SP_set MAX_INSERT_SIZE=500
-	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
-	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
+	SP_set BWA_END_IND=5    # do not put an indel within INT bp towards the ends.
+	SP_set BWA_GAP_EXT=-1   # maximum number of gap extensions, -1 for disabling long gaps.
 
-	SP_set BWA_ALN_OPTS=""
-	SP_set BWA_SAMPE_OPTS=""
+	SP_set BWA_ALN_OPTS=
+	SP_set BWA_SAMPE_OPTS=
 
-	SP_set BWA_ALN_QUAL_OPTS=""
+	SP_set _BWA_ALN_QUAL_OPT=
 	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ_1} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
 	{
 		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
-		SP_set BWA_ALN_QUAL_OPTS="-I"
+		SP_set _BWA_ALN_QUAL_OPT=-I
 	}
 
 	# This will be skipped if the index files exist.
-	SP_run bwa_build FASTA="${REF}"
+	SP_run bwa_build FASTA=${REF}
 
 	{{
 		#[require="${REF}" input="${INPUT_DIR}/${FQ_1}" output.temp="${OUTPUT_DIR}/${FQ_1}.sai"]
 		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 			${REF} ${INPUT_DIR}/${FQ_1} -f ${OUTPUT_DIR}/${FQ_1}.sai \
-			${BWA_ALN_QUAL_OPTS} ${BWA_ALN_OPTS}
+			${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
 		
 		#[require="${REF}" input="${INPUT_DIR}/${FQ_2}" output.temp="${OUTPUT_DIR}/${FQ_2}.sai"]
 		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 			${REF} ${INPUT_DIR}/${FQ_2} -f ${OUTPUT_DIR}/${FQ_2}.sai \
-			${BWA_ALN_QUAL_OPTS} ${BWA_ALN_OPTS}
+			${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
 	}}
 
 	#[require="${REF}"]
@@ -131,36 +149,36 @@ function bwa_map_pe
 
 function bwa_map_se
 {
-	SP_set INPUT_DIR="."
-	SP_set OUTPUT_DIR="."
+	SP_set INPUT_DIR=.
+	SP_set OUTPUT_DIR=.
 
-	SP_set RGID="${SAMPLE}"
-	SP_set RGLB="${RGID}"
-	SP_set RGPL="illumina"
-	SP_set RGCN="BGI"
-	SP_set OUTPUT="${SAMPLE}"
+	SP_set RGID=${SAMPLE}
+	SP_set RGLB=${RGID}
+	SP_set RGPL=illumina
+	SP_set RGCN=BGI
+	SP_set OUTPUT=${SAMPLE}
 
 	SP_set THREAD_NUM=2
-	SP_set BWA_END_IND="5"    # do not put an indel within INT bp towards the ends.
-	SP_set BWA_GAP_EXT="-1"   # maximum number of gap extensions, -1 for disabling long gaps.
+	SP_set BWA_END_IND=5    # do not put an indel within INT bp towards the ends.
+	SP_set BWA_GAP_EXT=-1   # maximum number of gap extensions, -1 for disabling long gaps.
 
-	SP_set BWA_ALN_OPTS=""
-	SP_set BWA_SAMPE_OPTS=""
+	SP_set BWA_ALN_OPTS=
+	SP_set BWA_SAMPE_OPTS=
 
-	SP_set BWA_ALN_QUAL_OPTS=""
+	SP_set _BWA_ALN_QUAL_OPT=
 	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${FQ} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
 	{
 		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
-		SP_set BWA_ALN_QUAL_OPTS="-I"
+		SP_set _BWA_ALN_QUAL_OPT=-I
 	}
 
 	# This will be skipped if the index files exist.
-	SP_run bwa_build FASTA="${REF}"
+	SP_run bwa_build FASTA=${REF}
 
 	#[require="${REF}" input="${INPUT_DIR}/${FQ}" output.temp="${OUTPUT_DIR}/${FQ}.sai"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REF} ${INPUT_DIR}/${FQ} -f ${OUTPUT_DIR}/${FQ}.sai \
-		${BWA_ALN_QUAL_OPTS} ${BWA_ALN_OPTS}
+		${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
 
 	#[require="${REF}"]
 	#[input="${INPUT_DIR}/${FQ}" input="${OUTPUT_DIR}/${FQ}.sai"]
