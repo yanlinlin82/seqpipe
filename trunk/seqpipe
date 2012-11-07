@@ -274,7 +274,7 @@ sub check_var
 
 sub parse_cmd
 {
-	my ($command, $module_file, $lines_ref, $commands_ref, $cmd_info_ref, $var_info_ref, $proc_info_ref) = @_;
+	my ($command, $l, $module_file, $lines_ref, $commands_ref, $cmd_info_ref, $var_info_ref, $proc_info_ref) = @_;
 
 	my $cmd_ref = { command => $command,
 		requires => $cmd_info_ref->{requires},
@@ -370,6 +370,13 @@ sub parse_cmd
 				die "ERROR: Invalid option '$name'! Option name starts with '_' is reserved!\n" if $name =~ /^_/;
 				$options{$name} = $value;
 			}
+			my %vars = %{$global_var{abs_path $module_file}};
+			foreach my $name (keys %options) {
+				$vars{$name} = $options{$name};
+			}
+			if (my @req_vars = check_var($cmd_ref->{proc_name}, \%vars)) {
+				die "ERROR: Option(s) required for procedure '$cmd_ref->{proc_name}':\n   " . join(', ', @req_vars) . "\n" . parsing_error($l);
+			}
 			$cmd_ref->{options} = \%options;
 		} else {
 			die "ERROR: Invalid primitive line '$argv[0]'!\n";
@@ -418,7 +425,7 @@ sub cmd_nodep
 
 sub create_cmd_info
 {
-	return ( requires => {}, inputs => {}, outputs => {}, temp_outputs => {}, final_outputs => {} );
+	return ( requires => {}, inputs => {}, outputs => {}, temp_outputs => {}, final_outputs => {}, var_checking => {} );
 }
 
 sub parse_block
@@ -510,7 +517,7 @@ sub parse_block
 				}
 			}
 		} elsif ($line !~ /^\s*(#.*|)$/) {
-			my $cmd_ref = parse_cmd($line, $module_file, $lines_ref, \@commands, \%cmd_info, $var_info_ref, $proc_info_ref);
+			my $cmd_ref = parse_cmd($line, $l, $module_file, $lines_ref, \@commands, \%cmd_info, $var_info_ref, $proc_info_ref);
 
 			foreach my $item ($cmd_ref->{command}, keys %{$cmd_info{requires}}, keys %{$cmd_info{inputs}}, keys %{$cmd_info{outputs}}, @{$cmd_ref->{var_checking}}) {
 				while ($item =~ /\${(\w+)}/g) {

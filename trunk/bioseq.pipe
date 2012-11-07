@@ -23,9 +23,9 @@ function _bioseq_sysinfo
 
 function fastqc
 {
-	SP_set INPUT_DIR="."
-	SP_set OUTPUT_DIR="."
-	SP_set EXT_NAME=".fq.gz"
+	SP_set INPUT_DIR=.
+	SP_set OUTPUT_DIR=.
+	SP_set EXT_NAME=.fq.gz
 
 	#[input="${INPUT_DIR}/${NAME}${EXT_NAME}"]
 	#[output.final="${OUTPUT_DIR}/${NAME}.fastqc.zip"]
@@ -225,7 +225,7 @@ function sort_bam
 	mv -vf ${INPUT}.sorted.bai ${INPUT}.sorted.bam.bai
 }
 
-#[require="${REFERENCE}"]
+#[require="${REF}"]
 #[input="${INPUT}.bam"]
 #[output="${INPUT}.reordered.bam"]
 function reorder_bam
@@ -241,7 +241,7 @@ function reorder_bam
 		CREATE_MD5_FILE=false \
 		INPUT=${INPUT}.bam \
 		OUTPUT=${INPUT}.reordered.bam \
-		REFERENCE=${REFERENCE}
+		REF=${REF}
 
 	# Rename index file if sorted
 	[ -f ${INPUT}.reordered.bai ] && mv -vf ${INPUT}.reordered.bai ${INPUT}.reordered.bam.bai
@@ -318,23 +318,23 @@ function remove_duplicate_reads
 #[output="${INPUT}.mpileup.bz2"]
 function samtools_mpileup
 {
-	SP_set REFERENCE="${REFERENCE}"
+	SP_set REF="${REF}"
 	SP_set SAMTOOLS_OPTS=""
-	SP_if ${REFERENCE}
+	SP_if ${REF}
 	{
-		SP_set SAMTOOLS_OPTS="${SAMTOOLS_OPTS} -f ${REFERENCE}"
+		SP_set SAMTOOLS_OPTS="${SAMTOOLS_OPTS} -f ${REF}"
 	}
 
 	samtools mpileup ${SAMTOOLS_OPTS} ${INPUT}.bam | bzip2 -9c > ${INPUT}.mpileup.bz2
 }
 
-#[require="${REFERENCE}"]
+#[require="${REF}"]
 #[input="${INPUT}.bam"]
 #[input="${INPUT}.bam.bai"]
 #[output="${OUTPUT}.samtools.vcf"]
 function samtools_call_variants
 {
-	samtools mpileup -f ${REFERENCE} ${INPUT}.bam -u \
+	samtools mpileup -f ${REF} ${INPUT}.bam -u \
 		| bcftools view -vcg - \
 		> ${OUTPUT}.samtools.vcf
 }
@@ -386,7 +386,7 @@ function picard_set_read_group
 	fi
 }
 
-#[require="${REFERENCE}"]
+#[require="${REF}"]
 #[require="${GATK_VCF_DBSNP}"]
 #[input="${INPUT}.bam"]
 #[output="${INPUT}.realign.fixmate.bam"]
@@ -394,24 +394,24 @@ function gatk_indel_realign
 {
 	SP_set VALIDATION_STRINGENCY="STRICT"
 
-	#[require="${REFERENCE}"]
+	#[require="${REF}"]
 	#[input="${INPUT}.bam"]
 	#[output="${INPUT}.intervals"]
 	java ${JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T RealignerTargetCreator \
-		-R ${REFERENCE} \
+		-R ${REF} \
 		-I ${INPUT}.bam \
 		-o ${INPUT}.intervals \
 		-known ${GATK_VCF_DBSNP} \
 		--num_threads ${THREAD_NUM}
 
-	#[require="${REFERENCE}"]
+	#[require="${REF}"]
 	#[input="${INPUT}.bam"]
 	#[input="${INPUT}.intervals"]
 	#[output="${INPUT}.realign.bam"]
 	java ${JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T IndelRealigner \
-		-R ${REFERENCE} \
+		-R ${REF} \
 		-I ${INPUT}.bam \
 		-targetIntervals ${INPUT}.intervals \
 		-o ${INPUT}.realign.bam
@@ -437,20 +437,20 @@ function gatk_indel_realign
 	rm -vf ${INPUT}.realign.ba{m,i}
 }
 
-#[require="${REFERENCE}"]
+#[require="${REF}"]
 #[require="${GATK_VCF_DBSNP}"]
 #[input="${INPUT}.bam"]
 #[output="${INPUT}.recal.bam"]
 function gatk_recalibrate
 {
-	#[require="${REFERENCE}"]
+	#[require="${REF}"]
 	#[require="${GATK_VCF_DBSNP}"]
 	#[input="${INPUT}.bam"]
 	#[output="${INPUT}.recal"]
 	java ${JAVA_OPTS} \
 		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T CountCovariates \
-		-R ${REFERENCE} \
+		-R ${REF} \
 		-I ${INPUT}.bam \
 		-knownSites ${GATK_VCF_DBSNP} \
 		-cov ReadGroupCovariate \
@@ -460,14 +460,14 @@ function gatk_recalibrate
 		-recalFile ${INPUT}.recal \
 		--num_threads ${THREAD_NUM}
 	
-	#[require="${REFERENCE}"]
+	#[require="${REF}"]
 	#[input="${INPUT}.bam"]
 	#[input="${INPUT}.recal"]
 	#[output="${INPUT}.recal.bam"]
 	java ${JAVA_OPTS} \
 		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T TableRecalibration \
-		-R ${REFERENCE} \
+		-R ${REF} \
 		-I ${INPUT}.bam \
 		-recalFile ${INPUT}.recal \
 		-o ${INPUT}.recal.bam
@@ -479,7 +479,7 @@ function gatk_recalibrate
 	rm -vf ${INPUT}.recal
 }
 
-#[require="${REFERENCE}"]
+#[require="${REF}"]
 #[require="${GATK_VCF_DBSNP}"]
 #[input="${INPUT}.bam"]
 #[output="${OUTPUT}.vcf"]
@@ -489,14 +489,14 @@ function gatk_genotype
 	SP_set STAND_EMIT_CONF=10
 	SP_set MIN_BASE_QUALITY_SCORE=20
 
-	#[require="${REFERENCE}"]
+	#[require="${REF}"]
 	#[require="${GATK_VCF_DBSNP}"]
 	#[input="${INPUT}.bam"]
 	#[output="${OUTPUT}.vcf"]
 	java ${JAVA_OPTS} \
 		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T UnifiedGenotyper \
-		-R ${REFERENCE} \
+		-R ${REF} \
 		-I ${INPUT}.bam \
 		-glm BOTH \
 		--min_base_quality_score ${MIN_BASE_QUALITY_SCORE} \
@@ -507,7 +507,7 @@ function gatk_genotype
 		--num_threads ${THREAD_NUM}
 }
 
-#[require="${REFERENCE}"]
+#[require="${REF}"]
 #[input="${INPUT}.vcf"]
 #[output="${INPUT}.filtered.vcf"]
 function gatk_filter_variants
@@ -517,24 +517,24 @@ function gatk_filter_variants
 
 ##### Select Different Types of Variants #####
 	{{
-		#[require="${REFERENCE}"]
+		#[require="${REF}"]
 		#[input="${INPUT}.vcf"]
 		#[output="${INPUT}.snp.vcf"]
 		java ${JAVA_OPTS} \
 			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 			-T SelectVariants \
-			-R ${REFERENCE} \
+			-R ${REF} \
 			--variant ${INPUT}.vcf \
 			-selectType SNP -selectType MNP \
 			-o ${INPUT}.snp.vcf
 
-		#[require="${REFERENCE}"]
+		#[require="${REF}"]
 		#[input="${INPUT}.vcf"]
 		#[output="${INPUT}.indel.vcf"]
 		java ${JAVA_OPTS} \
 			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 			-T SelectVariants \
-			-R ${REFERENCE} \
+			-R ${REF} \
 			--variant ${INPUT}.vcf \
 			-selectType INDEL \
 			-o ${INPUT}.indel.vcf
@@ -542,26 +542,26 @@ function gatk_filter_variants
 
 ##### Filter Variants #####
 	{{
-		#[require="${REFERENCE}"]
+		#[require="${REF}"]
 		#[input="${INPUT}.snp.vcf"]
 		#[output="${INPUT}.snp.filtered.vcf"]
 		java ${JAVA_OPTS} \
 			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 			-T VariantFiltration \
-			-R ${REFERENCE} \
+			-R ${REF} \
 			--variant ${INPUT}.snp.vcf \
 			--filterExpression "${FILTER_EXPRESSION}" \
 			--filterName "${FILTER_NAME}" \
 			--clusterWindowSize 10 \
 			-o ${INPUT}.snp.filtered.vcf
 
-		#[require="${REFERENCE}"]
+		#[require="${REF}"]
 		#[input="${INPUT}.indel.vcf"]
 		#[output="${INPUT}.indel.filtered.vcf"]
 		java ${JAVA_OPTS} \
 			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 			-T VariantFiltration \
-			-R ${REFERENCE} \
+			-R ${REF} \
 			--variant ${INPUT}.snp.vcf \
 			--filterExpression "${FILTER_EXPRESSION}" \
 			--filterName "${FILTER_NAME}" \
@@ -576,14 +576,14 @@ function gatk_filter_variants
 	java ${JAVA_OPTS} \
 		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T CombineVariants \
-		-R ${REFERENCE} \
+		-R ${REF} \
 		--variant:SNP ${INPUT}.snp.filtered.vcf \
 		--variant:INDEL ${INPUT}.indel.filtered.vcf \
 		-o ${INPUT}.filtered.vcf \
 		-genotypeMergeOptions UNIQUIFY
 }
 
-#[require="${REFERENCE}"]
+#[require="${REF}"]
 #[require="${GATK_VCF_DBSNP}"]
 #[input="${INPUT}.bam"]
 #[output="${OUTPUT}.gatk.vcf"]
@@ -592,76 +592,76 @@ function gatk_call_variants
 	SP_set VALIDATION_STRINGENCY="STRICT"
 
 	SP_run gatk_indel_realign \
-		REFERENCE=${REFERENCE} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
+		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
 		INPUT=${INPUT} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY}
 
 	SP_run gatk_recalibrate \
-		REFERENCE=${REFERENCE} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
+		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
 		INPUT=${INPUT}.realign.fixmate
 
 	SP_run gatk_genotype \
-		REFERENCE=${REFERENCE} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
+		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
 		INPUT=${INPUT}.realign.fixmate.recal \
 		OUTPUT=${OUTPUT}
 
 	SP_run gatk_filter_variants \
-		REFERENCE=${REFERENCE} \
+		REF=${REF} \
 		INPUT=${OUTPUT}
 
 	#[require="${OUTPUT}.filtered.vcf"]
 	mv -vf ${OUTPUT}.filtered.vcf ${OUTPUT}.gatk.vcf
 }
 
-#[require="${REFERENCE}"]
+#[require="${REF}"]
 #[input="${INPUT}.bam"]
 #[require="${INPUT}.bam.bai"]
 #[output="${OUTPUT}.pindel.vcf"]
 function pindel_call_structure_variants
 {
-	SP_set REFERENCE_NAME=$(basename ${REFERENCE} | sed 's,\.[^.]*$,,')
-	SP_set REFERENCE_DATE=$(stat ${REFERENCE} | grep Modify | awk '{print $2}' | sed 's,-,,g')
+	SP_set REF_NAME=$(basename ${REF} | sed 's,\.[^.]*$,,')
+	SP_set REF_DATE=$(stat ${REF} | grep Modify | awk '{print $2}' | sed 's,-,,g')
 
 ##### Call Structure Variants #####
-	#[require="${REFERENCE}"]
+	#[require="${REF}"]
 	#[input="${INPUT}.bam"]
 	#[output="${OUTPUT}_D"]
 	#[output="${OUTPUT}_SI"]
 	#[output="${OUTPUT}_INV"]
 	#[output="${OUTPUT}_TD"]
-	pindel -f ${REFERENCE} \
+	pindel -f ${REF} \
 		-i <(echo "${INPUT}.bam ${INSERT_SIZE} ${SAMPLE}") \
 		-l -k -s -c ALL -o ${OUTPUT}
 
 ##### Convert to VCF #####
 	{{
-		#[require="${REFERENCE}"]
+		#[require="${REF}"]
 		#[input="${OUTPUT}_D"]
 		#[output="${OUTPUT}_D.vcf"]
-		pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
 			-p ${OUTPUT}_D -v ${OUTPUT}_D.vcf
 
-		#[require="${REFERENCE}"]
+		#[require="${REF}"]
 		#[input="${OUTPUT}_SI"]
 		#[output="${OUTPUT}_SI.vcf"]
-		pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
 			-p ${OUTPUT}_SI -v ${OUTPUT}_SI.vcf
 		
-		#[require="${REFERENCE}"]
+		#[require="${REF}"]
 		#[input="${OUTPUT}_INV"]
 		#[output="${OUTPUT}_INV.vcf"]
-		pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
 			-p ${OUTPUT}_INV -v ${OUTPUT}_INV.vcf
 		
-		#[require="${REFERENCE}"]
+		#[require="${REF}"]
 		#[input="${OUTPUT}_TD"]
 		#[output="${OUTPUT}_TD.vcf"]
-		pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
 			-p ${OUTPUT}_TD -v ${OUTPUT}_TD.vcf
 	}}
 
 ##### Combine Variants #####
-	#[require="${REFERENCE}"]
+	#[require="${REF}"]
 	#[input="${OUTPUT}_D.vcf"]
 	#[input="${OUTPUT}_SI.vcf"]
 	#[input="${OUTPUT}_INV.vcf"]
@@ -670,7 +670,7 @@ function pindel_call_structure_variants
 	java ${JAVA_OPTS} \
 		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T CombineVariants \
-		-R ${REFERENCE} \
+		-R ${REF} \
 		--variant:D ${OUTPUT}_D.vcf \
 		--variant:SI ${OUTPUT}_SI.vcf \
 		--variant:INV ${OUTPUT}_INV.vcf \
@@ -679,37 +679,40 @@ function pindel_call_structure_variants
 		-genotypeMergeOptions UNIQUIFY
 }
 
-#[require="${REFERENCE}"]
-#[input="${FASTQ_1}.fq.gz"]
-#[input="${FASTQ_2}.fq.gz"]
-#[output="${SAMPLE}.samtools.vcf"]
-#[output="${SAMPLE}.gatk.vcf"]
-#[output="${SAMPLE}.pindel.vcf"]
-#[output="${SAMPLE}.summary.txt"]
+#[require="${REF}"]
+#[input="${INPUT_DIR}/${NAME}_1.fq.gz"]
+#[input="${INPUT_DIR}/${NAME}_2.fq.gz"]
+#[output="${OUTPUT_DIR}/${SAMPLE}.samtools.vcf"]
+#[output="${OUTPUT_DIR}/${SAMPLE}.gatk.vcf"]
+#[output="${OUTPUT_DIR}/${SAMPLE}.pindel.vcf"]
+#[output="${OUTPUT_DIR}/${SAMPLE}.summary.txt"]
 function DNAseq_analysis
 {
+	SP_set INPUT_DIR=.
+	SP_set OUTPUT_DIR=.
+
+	SP_set MAX_INSERT_SIZE=500
 	SP_set RGID="${RGID}"
 	SP_set RGLB="${RGLB}"
 	SP_set RGPL="${RGPL}"
 	SP_set RGCN="${RGCN}"
-	SP_set MAX_INSERT_SIZE=500
 
 ##### FastQC #####
 	{{
-		SP_run fastqc INPUT_FASTQ=${FASTQ_1}.fq.gz OUTPUT=${FASTQ_1}
-		SP_run fastqc INPUT_FASTQ=${FASTQ_2}.fq.gz OUTPUT=${FASTQ_2}
+		SP_run fastqc INPUT_DIR=${INPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME}_1
+		SP_run fastqc INPUT_DIR=${INPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME}_2
 	}}
 
 ##### Read Mapping #####
-	SP_run bwa_map_se \
-		REF=${REFERENCE} \
-		FQ_1=${FASTQ_1}.fq.gz \
-		FQ_2=${FASTQ_2}.fq.gz \
+	SP_run bwa_map_pe \
+		REF=${REF} \
+		FQ_1=${INPUT_DIR}/${NAME}_1.fq.gz \
+		FQ_2=${INPUT_DIR}/${NAME}_2.fq.gz \
+		SAMPLE=${SAMPLE} \
 		MAX_INSERT_SIZE=${MAX_INSERT_SIZE} \
 		OUTPUT=${SAMPLE} \
 		RGID=${RGID} \
 		RGLB=${RGLB} \
-		SAMPLE_NAME=${SAMPLE} \
 		RGPL=${RGPL} \
 		RGCN=${RGCN}
 
@@ -728,12 +731,12 @@ function DNAseq_analysis
 	SP_run mark_duplicate_reads INPUT=${SAMPLE}.mapped.uniq.sorted
 
 	SP_run samtools_call_variants \
-		REFERENCE=${REFERENCE} \
+		REF=${REF} \
 		INPUT=${SAMPLE}.mapped.uniq.sorted.mkdup \
 		OUTPUT=${SAMPLE}
 
 	SP_run gatk_call_variants \
-		REFERENCE=${REFERENCE} \
+		REF=${REF} \
 		INPUT=${SAMPLE}.mapped.uniq.sorted.mkdup \
 		OUTPUT=${SAMPLE}
 
@@ -744,8 +747,8 @@ function DNAseq_analysis
 		OUTPUT=${SAMPLE}.sorted
 
 	SP_run pindel_call_structure_variants \
-		REFERENCE=${REFERENCE} \
-		SAMPLE_NAME=${SAMPLE} \
+		REF=${REF} \
+		SAMPLE=${SAMPLE} \
 		INSERT_SIZE=${INSERT_SIZE} \
 		INPUT=${SAMPLE}.sorted \
 		OUTPUT=${SAMPLE}
