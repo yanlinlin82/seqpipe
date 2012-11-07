@@ -806,9 +806,11 @@ sub show_parameters
 		printf "   %-30s  Required\n", $name;
 	}
 	if ($help_mode == 2) {
-		print "\n";
-		foreach my $name (sort keys %def_vars) {
-			printf "   %-30s  Default: %s\n", $name, $def_vars{$name};
+		if (%def_vars) {
+			print "\n";
+			foreach my $name (sort keys %def_vars) {
+				printf "   %-30s  Default: %s\n", $name, $def_vars{$name};
+			}
 		}
 	}
 
