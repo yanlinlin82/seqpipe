@@ -190,23 +190,23 @@ function bwa_map_se
 		> ${OUTPUT_DIR}/${OUTPUT}.bam
 }
 
-#[input="${INPUT_1}.bam"]
-#[input="${INPUT_2}.bam"]
-#[output="${OUTPUT}.bam"]
+###########################################################################
+
+function flagstat_bam
+{
+	SP_set INPUT_DIR=.
+	SP_set OUTPUT_DIR=.
+
+	#[input="${INPUT_DIR}/${NAME}.bam"]
+	#[output.final="${OUTPUT_DIR}/${NAME}.flagstat.txt"]
+	samtools flagstat ${INPUT_DIR}/${NAME}.bam > ${OUTPUT_DIR}/${NAME}.flagstat.txt
+}
+
 function merge_bam
 {
-	SP_set VALIDATION_STRINGENCY="STRICT"
-	SP_set INPUT_3="${INPUT_3}"
-	SP_set MORE_INPUT_FILES=""
-	SP_if ${INPUT_3}
-	{
-		SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_3}.bam"
-	}
+	SP_set VALIDATION_STRINGENCY=STRICT
 
-	#[input="${INPUT_1}.bam"]
-	#[input="${INPUT_2}.bam"]
-	#[output="${OUTPUT}.bam"]
-	#[output="${OUTPUT}.bai"]
+	#[input="${INPUT_1}.bam" input="${INPUT_2}.bam" output="${OUTPUT}.bam"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
@@ -214,18 +214,15 @@ function merge_bam
 		CREATE_MD5_FILE=false \
 		INPUT=${INPUT_1}.bam \
 		INPUT=${INPUT_2}.bam \
-		${MORE_INPUT_FILES} \
 		OUTPUT=${OUTPUT}.bam
 
 	#[require="${OUTPUT}.bai"]
 	mv -vf ${OUTPUT}.bai ${OUTPUT}.bam.bai
 }
 
-#[input="${INPUT}.bam"]
-#[output="${INPUT}.sorted.bam"]
 function sort_bam
 {
-	SP_set VALIDATION_STRINGENCY="STRICT"
+	SP_set VALIDATION_STRINGENCY=STRICT
 
 	#[input="${INPUT}.bam"]
 	#[output="${INPUT}.sorted.bam"]
@@ -263,14 +260,6 @@ function reorder_bam
 
 	# Rename index file if sorted
 	[ -f ${INPUT}.reordered.bai ] && mv -vf ${INPUT}.reordered.bai ${INPUT}.reordered.bam.bai
-}
-
-#[input="${INPUT}.bam"]
-#[output="${INPUT}.flagstat.txt"]
-function flagstat_bam
-{
-	#[input="${INPUT}.bam" output="${INPUT}.flagstat.txt"]
-	samtools flagstat ${INPUT}.bam > ${INPUT}.flagstat.txt
 }
 
 #[input="${INPUT}.bam"]
