@@ -1,3 +1,13 @@
+2012-11-09  v0.4.0 (r194)
+* Support new syntax: '{{', '}}', 'SP_if', 'SP_set', 'SP_for', 'SP_while'.
+* Support multi-line command in inline mode.
+* Improve log filename and format.
+* Improve qsub support.
+* Cancel test mode, strict mode and default-pipeline-disabling.
+* Improve dependency checking and option name parsing.
+* Enable to set max thread number.
+* Improve bioseq pipelines (including GATK 2.0 supports).
+
 2012-10-24  v0.3.3 (r127)
 * Support history manipulating (by script seqpipe.history).
 * Fix bug in processing comment sign ('#') in command lines merging.
