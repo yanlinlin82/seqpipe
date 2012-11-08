@@ -1,20 +1,45 @@
 #!/bin/bash
 
-function test_all
+function test_inline
 {
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -e true;  [ $? -eq 0 ]
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -e false; [ $? -ne 0 ]
+}
 
+function test_demo
+{
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_set
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if COND=false
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_for
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_while
+}
+
+function test_bioseq
+{
+	${_SEQPIPE_ROOT}/${_SEQPIPE} fastqc_check NAME=r1
+	${_SEQPIPE_ROOT}/${_SEQPIPE} fastqc_check NAME=r2
+
+	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_33to64 NAME=r1
+	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_33to64 NAME=r2
+	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_64to33 NAME=r1 INPUT_EXT_NAME=.q64.fq.gz
+	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_64to33 NAME=r2 INPUT_EXT_NAME=.q64.fq.gz
 
 	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_pe REF=MT.fa NAME=r
 	${_SEQPIPE_ROOT}/${_SEQPIPE} sort_bam NAME=r
 	${_SEQPIPE_ROOT}/${_SEQPIPE} reorder_bam REF=MT.fa NAME=r.sorted
 	${_SEQPIPE_ROOT}/${_SEQPIPE} mkdup_bam NAME=r.sorted
 	${_SEQPIPE_ROOT}/${_SEQPIPE} rmdup_bam NAME=r.sorted
+
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_se REF=MT.fa NAME=r1
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_se REF=MT.fa NAME=r2
+	${_SEQPIPE_ROOT}/${_SEQPIPE} merge_bam NAME_1=r1 NAME_2=r2 NAME=s
+
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bamqc_check NAME=r.sorted
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bamqc_check NAME=s.sorted
+
+	${_SEQPIPE_ROOT}/${_SEQPIPE} gatk_indel_realign REF=MT.fa NAME=r.sorted
+
+	${_SEQPIPE_ROOT}/${_SEQPIPE} pindel_call_structure_variants REF=MT.fa NAME=r.sorted
 }
