@@ -46,6 +46,7 @@ my @blocks = ();
 
 # Global variables (which are defined outside procedures in .pipe files).
 my %global_var = ();
+my %global_var_deps = ();
 
 # Count how many commands have been run so far.
 my $run_counter :shared = 0;
@@ -600,6 +601,7 @@ sub load_modules
 	foreach my $file (@_) {
 		if (not exists $global_var{$file}) {
 			$global_var{$file} = { _SEQPIPE => (basename abs_path $0), _SEQPIPE_ROOT => APP_ROOT };
+			$global_var_deps{$file} = {};
 		}
 		my @lines = load_lines($file, {}, []);
 		while (@lines) {
@@ -608,6 +610,16 @@ sub load_modules
 	}
 	printf "All %d module file(s) loaded, including %d procedure(s).\n",
 		scalar @_, scalar keys %procedures if $verbose;
+}
+
+sub detect_cyclic_deps
+{
+	my ($file, $name, $depended) = @_;
+	return 1 if exists $global_var_deps{$file}{$depended}{$name};
+	foreach (keys %{$global_var_deps{$file}{$depended}}) {
+		return 1 if detect_cyclic_deps($file, $name, $_);
+	}
+	return 0;
 }
 
 sub parse_proc
@@ -725,12 +737,14 @@ sub parse_proc
 			if (exists $global_var{$file}{$name}) {
 				die "ERROR: Redeclaration of global variable '$name' for '$file'" . parsing_error($l);
 			}
-			while ($value =~ /\${(\w+)}/g) {
-				if (not exists $global_var{$file}{$1}) {
-					die "ERROR: Undetermined global variable '$name' for '$file'" .parsing_error($l);
-				}
-			}
 			$global_var{$file}{$name} = $value;
+			$global_var_deps{$file}{$name} = {};
+			while ($value =~ /\${(\w+)}/g) {
+				if (detect_cyclic_deps($file, $name, $1)) {
+					die "ERROR: Cyclic dependency deteced between '$name' and '$1'" .parsing_error($l);
+				}
+				$global_var_deps{$file}{$name}{$1} = 1;
+			}
 		}
 	}
 }
@@ -765,10 +779,16 @@ sub show_parameters
 	my ($proc_name, $opts_ref) = @_;
 	return if $proc_name eq '';
 
+	my $file = $procedures{$proc_name}{module_file};
+	my @used_vars = keys $procedures{$proc_name}{used_var};
 	my %req_vars = ();
 	my %def_vars = ();
-	foreach my $name (sort keys $procedures{$proc_name}{used_var}) {
+	while (my $name = shift @used_vars) {
 		next if $name =~ /^_/;
+		next if exists $req_vars{$name};
+		next if exists $def_vars{$name};
+		push @used_vars, keys $global_var_deps{$file}{$name};
+
 		if (exists $procedures{$proc_name}{iterator_var}{$name}) {
 			$def_vars{$name} = '(runtime-evaluate)';
 		} elsif (exists $opts_ref->{$name}) {
@@ -776,7 +796,7 @@ sub show_parameters
 		} elsif (exists $procedures{$proc_name}{defined_var}{$name}) {
 			$def_vars{$name} = $procedures{$proc_name}{defined_var}{$name};
 		} elsif (exists $global_var{$procedures{$proc_name}{module_file}}{$name}) {
-			$def_vars{$name} = $global_var{$procedures{$proc_name}{module_file}}{$name};
+			$def_vars{$name} = $global_var{$file}{$name};
 		} else {
 			$req_vars{$name} = '';
 		}
