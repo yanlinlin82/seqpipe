@@ -197,27 +197,27 @@ sub bash_line_encode {
 	return join(' ', @argv);
 };
 
-sub remove_whitespace_and_comments
+sub split_command_and_comment
 {
 	my ($line) = @_;
-	# Remove leading whitespaces and tailing comments.
-	$line =~ s/^\s*(((("\\.|[^"]*"|'[^']*'|[^\s'"#]+)+)(\s+|$))*)(#.*|)$/$1/;
-	# Remove ending whitespaces.
-	$line =~ s/\s*$//;
-	return $line;
+
+	# Split bash command and tailing comments.
+	return undef if $line !~ /^(("[^"]*"|'[^']*'|[^\s'"#]+|\s+)*)(#.*|)$/;
+	my $command = $1;
+	my $comment = $3;
+	return [$command, $comment];
 }
 
 sub bash_line_decode {
-	my ($line) = @_;
-	my @argv = ();
+	my ($string) = @_;
 
-	$line = remove_whitespace_and_comments($line);
-	
-	# Checking format.
-	die 'Bad bash line!' if ($line !~ /^((("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)(\s+|$))*/);
+	my $ret = split_command_and_comment($string);
+	die 'Bad bash line!' if not defined $ret;
+	my ($command, $comment) = @{$ret};
 
 	# Split bash command line to @argv.
-	while ($line =~ /(("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)/g) {
+	my @argv = ();
+	while ($command =~ /(("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)/g) {
 		push @argv, $1;
 	}
 
@@ -245,29 +245,36 @@ sub eval_string
 {
 	my ($string, $vars_ref, $opts_ref) = @_;
 
-	$string = remove_whitespace_and_comments($string);
+	my $ret = split_command_and_comment($string);
+	if (not defined $ret) {
+		print "WARNING: parse string failed '$string'\n";
+		return '';
+	}
+	my ($text, $comment) = @{$ret};
+	$text =~ s/\s*$//g;
+	$text =~ s/^\s*//g;
 
 	# Remove quot marks
-	if ($string =~ /^\s*\"(.*)\"\s*$/) {
-		$string = $1;
+	if ($text =~ /^\s*\"(.*)\"\s*$/) {
+		$text = $1;
 	}
 
 	# Replace variables
 	my %exclude = ();
-	search: while ($string =~ /\${(\w+)}/g) {
+	search: while ($text =~ /\${(\w+)}/g) {
 		my $name = $1;
-		while ($string =~ /\${$name}/) {
+		while ($text =~ /\${$name}/) {
 			if (exists $opts_ref->{$name}) { # Options can overwrite variables
-				$string =~ s/\${$name}/$opts_ref->{$name}/g;
+				$text =~ s/\${$name}/$opts_ref->{$name}/g;
 			} elsif (exists $vars_ref->{$name}) {
-				$string =~ s/\${$name}/$vars_ref->{$name}/g;
+				$text =~ s/\${$name}/$vars_ref->{$name}/g;
 			} else {
 				$exclude{$name} = '';
 				goto search;
 			}
 		}
 	}
-	return $string;
+	return $text;
 }
 
 ############################################################
@@ -468,9 +475,10 @@ sub parse_block
 			next;
 		}
 
-		# Skip comment line and empty line
-		$line = remove_whitespace_and_comments($line);
-		next if $line eq '';
+		my $ret = split_command_and_comment($line);
+		print "Parse failed!" if not defined $ret;
+		my ($text, $comment) = @{$ret};
+		$line = $text;
 
 		if ($last_line eq '') {
 			$line =~ s/^\s+//g;
@@ -483,28 +491,30 @@ sub parse_block
 
 		if ($line =~ s/\\$//) {
 			$last_line = $line;
-		} elsif ($line =~ /^#\[(command\s+|)(require|input|output|output\.temp)=.*\]$/) {
-			if ($1 =~ /^command\s+$/ and not $quiet_mode and not $obsolete_warned) {
-				print "WARNING: '#[procedure ...]' and '#[command ...]' are obsolete, use '#[attr=\"...\"]' instead! Found in: $l->{file}($l->{line})\n";
-				$obsolete_warned = 1;
-			}
-			while ($line =~ /(require|input|output|output\.temp)="(.*?)"/g) {
-				if ($1 eq 'require') {
-					if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
-						die "ERROR: Duplicated attribute for require file '$2'!";
+		} elsif ($line =~ /^\s*$/) {
+			if ($comment =~ /^#\[(command\s+|)(require|input|output|output\.temp)=.*\]$/) {
+				if ($1 =~ /^command\s+$/ and not $quiet_mode and not $obsolete_warned) {
+					print "WARNING: '#[procedure ...]' and '#[command ...]' are obsolete, use '#[attr=\"...\"]' instead! Found in: $l->{file}($l->{line})\n";
+					$obsolete_warned = 1;
+				}
+				while ($comment =~ /(require|input|output|output\.temp)="(.*?)"/g) {
+					if ($1 eq 'require') {
+						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
+							die "ERROR: Duplicated attribute for require file '$2'!";
+						}
+						$cmd_info{requires}{$2} = 1;
+					} elsif ($1 eq 'input') {
+						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
+							die "ERROR: Duplicated attribute for input file '$2'!";
+						}
+						$cmd_info{inputs}{$2} = 1;
+					} else {
+						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
+							die "ERROR: Duplicated attribute for output file '$2'!";
+						}
+						$cmd_info{outputs}{$2} = 1;
+						$cmd_info{temp_outputs}{$2} = 1 if $1 eq 'output.temp';
 					}
-					$cmd_info{requires}{$2} = 1;
-				} elsif ($1 eq 'input') {
-					if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
-						die "ERROR: Duplicated attribute for input file '$2'!";
-					}
-					$cmd_info{inputs}{$2} = 1;
-				} else {
-					if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
-						die "ERROR: Duplicated attribute for output file '$2'!";
-					}
-					$cmd_info{outputs}{$2} = 1;
-					$cmd_info{temp_outputs}{$2} = 1 if $1 eq 'output.temp';
 				}
 			}
 		} else {
@@ -732,7 +742,12 @@ sub parse_proc
 
 		} elsif ($l->{text} =~ /^\s*(\w+)=(.*)$/) {
 			my $name = $1;
-			my $value = remove_whitespace_and_comments($2);
+			my $ret = split_command_and_comment($2);
+			die "ERROR: Parse failed for global variable '$name'" .parsing_error($l) if not defined($ret);
+
+			my ($value, $comment) = @{$ret};
+			$value =~ s/^\s*//g;
+			$value =~ s/\s*$//g;
 			$value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
 			if (exists $global_var{$file}{$name}) {
 				die "ERROR: Redeclaration of global variable '$name' for '$file'" . parsing_error($l);
