@@ -769,7 +769,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.3.3 ($Rev$)
+Version: 0.4.0 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 

@@ -1,6 +1,6 @@
 SeqPipe (a SEQuencing data analsysis PIPEline framework)
 
-Version: 0.2.8 ($Rev$)
+Version: 0.4.0 ($Rev$)
 Author: Linlin Yan (yanll@mail.cbi.pku.edu.cn)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
@@ -27,15 +27,12 @@ programs' version and options, executing date and time, successful or not,
 etc.
    (3) In addition to presenting the standard pipelines, it should be easy
 to change some of its parameters to form new pipelines.
-   (4) When pipeline was aborted, it is easy to continue the procedures by
-skip finished steps automatically.
+   (4) When pipeline was somehow aborted, it should be easy to continue the
+procedures by skipping already finished steps automatically.
    (5) Parallel mode are easily to be used.
 
    GNU bash is chosen for pipeline itself, while Perl is used to create a
 shell explainer for the pipeline.
-
-   (1) For clear declaration, condition statements and loop statements are
-supported (by GNU itself) but not recommended.
 
 ---------------------------------------------------------------------------
 
@@ -43,11 +40,16 @@ supported (by GNU itself) but not recommended.
 
    "${SP_ROOT}" stands for the root directory of project SeqPipe.
 
-   ${SP_ROOT}/doc/            Directory for documents, including this file.
-
    ${SP_ROOT}/seqpipe         Main and the only program, written by Perl.
 
-   ${SP_ROOT}/default.pipe    Default pipeline declaration.
+   ${SP_ROOT}/doc/            Directory for documents, including this file.
+
+   ${SP_ROOT}/default.pipe    Default pipeline, to record system basic info.
+
+   ${SP_ROOT}/bioseq.pipe     Pipeline declaration.
+
+   ${SP_ROOT}/config.inc.tpl  Template for config.inc, in which user can
+                                customize global options.
 
    ${SP_ROOT}/tests/          Test demo script and data files.
 
@@ -59,20 +61,21 @@ supported (by GNU itself) but not recommended.
 
    A pipeline module file consists of one or more procedures, which are
 written as GNU bash functions. The module files could be loaded by '-m'
-option. By default, SeqPipe will load 'default.pipe' automatically.
+option. By default, SeqPipe will load all '*.pipe' in ${SP_ROOT} directory
+automatically.
 
    Procedures could be listed by SeqPipe when type command 'seqpipe -l'.
 
 3.2. Procedure Declaration
 
-   Comments (format as '#[type name="value" ...]') could be added right
+   Comments (format as '#[name="value" ...]') could be added right
 before the function declarations or each command in the functions to
 decleare attributes (such as requires, inputs and outputs).
 
-#[procedure ...]
+#[...]
 function procedure_name_XXX
 {
-	#[command ...]
+	#[...]
 	command_to_run options
 	...
 }
@@ -105,33 +108,33 @@ command.
    Supported attributes for procedures and commands are: "require",
 "input", "output". For example:
 
-#[procedure require="hg19.fa"]
-#[procedure input="1.fq" input="2.fq"]
-#[procedure output="out.bam"]
+#[require="hg19.fa"]
+#[input="1.fq" input="2.fq"]
+#[output="out.bam"]
 function bwa_read_mapping
 {
-	#[command input="MT.fa" output="MT.fa.bwt"]
+	#[input="MT.fa" output="MT.fa.bwt"]
 	bwa index MT.fa
 
-	#[command require="MT.fa" input="1.fq.gz" output="1.fq.gz.sai"]
+	#[require="MT.fa" input="1.fq.gz" output="1.fq.gz.sai"]
 	bwa aln MT.fa 1.fq.gz > 1.fq.gz.sai
-	#[command require="MT.fa" input="2.fq.gz" output="2.fq.gz.sai"]
+	#[require="MT.fa" input="2.fq.gz" output="2.fq.gz.sai"]
 	bwa aln MT.fa 2.fq.gz > 2.fq.gz.sai
 
-	#[command require="MT.fa"]
-	#[command input="1.fq.gz" input="1.fq.gz.sai"]
-	#[command input="2.fq.gz" input="2.fq.gz.sai"]
-	#[command output="out.bam"]
+	#[require="MT.fa"]
+	#[input="1.fq.gz" input="1.fq.gz.sai"]
+	#[input="2.fq.gz" input="2.fq.gz.sai"]
+	#[output="out.bam"]
 	bwa sampe MT.fa 1.fq.gz.sai 2.fq.gz.sai 1.fq.gz 2.fq.gz \
 		| samtools view -Sb - > out.bam
 }
 
    Those comments (attributes) could be written together in a single line,
 like this:
-  #[procedure input="1.fq" input="2.fq"]
+  #[input="1.fq" input="2.fq"]
 or written each attribute in separated line, like this:
-  #[procedure input="1.fq"]
-  #[procedure input="2.fq"]
+  #[input="1.fq"]
+  #[input="2.fq"]
 The meanings are exact the same.
 
 Then, SeqPipe will skip previous finished steps according to those
@@ -145,13 +148,7 @@ SeqPipe will remove its output files to avoid those unfinished files
 mislead the judgement of command skipping when run SeqPipe again. However,
 output attributes of procedure
 
-3.4. Attributes (Procedure Types)
-
-   For procedure, there is another attribute: #[procedure type="xxx"]. The
-available procedure type are: "stage", "pipeline", "sysinfo", "checker",
-"evaluator".
-
-3.5. Variables
+3.4. Variables
 
    Variables are the format '${XXXX}'. You can change some characters to
 variables in you procedure to make it easy to re-use. For example:
@@ -171,17 +168,19 @@ function bwa_read_mapping
 $ seqpipe -m test.pipe bwa_read_mapping bwa_read_mapping \
 	REFERENCE=MT.fa FASTQ_1=1.fq.gz FASTQ_2=2.fq.gz OUTPUT=out.bam
 
-3.6. Global Variables
+3.5. Global Variables
 
    Outside those functions, you can declaration global variables as the
 format: NAME=VALUE (no space beside the equal mark).
 
-3.7. Primitives
+3.6. Primitives
 
    There are a few primitives in SeqPipe:
       SP_set
       SP_run
       SP_if / SP_else
+      SP_for
+      SP_while
 
 ---------------------------------------------------------------------------
 
