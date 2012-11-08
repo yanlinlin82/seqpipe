@@ -542,7 +542,7 @@ function rmdup_bam
 function samtools_call_variants
 {
 	SP_set INPUT_EXT_NAME=.bam
-	SP_set OUTPUT_EXT_NAME=.bcf
+	SP_set OUTPUT_EXT_NAME=.samtools.vcf
 
 	SP_set MIN_QUAL=1  # To remove multi-mapped reads (whose MAPQ == 0)
 
@@ -551,7 +551,7 @@ function samtools_call_variants
 	#[input="${INPUT_DIR}/${INPUT}.bai"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	samtools mpileup -f ${REF} ${INPUT_DIR}/${INPUT} -q ${MIN_QUAL} -u \
-		| bcftools view -vcgb - \
+		| bcftools view -vcg - \
 		> ${OUTPUT_DIR}/${OUTPUT}
 }
 
@@ -654,48 +654,6 @@ function gatk_indel_realign
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
 }
 
-function gatk_recalibrate
-{
-	#[require="${REF}"]
-	#[require="${GATK_VCF_DBSNP}"]
-	#[input="${INPUT}.bam"]
-	#[output="${INPUT}.recal"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
-		-T CountCovariates \
-		-R ${REF} \
-		-I ${INPUT}.bam \
-		-knownSites ${GATK_VCF_DBSNP} \
-		-cov ReadGroupCovariate \
-		-cov QualityScoreCovariate \
-		-cov CycleCovariate \
-		-cov DinucCovariate \
-		-recalFile ${INPUT}.recal \
-		--num_threads ${THREAD_NUM}
-	
-	#[require="${REF}"]
-	#[input="${INPUT}.bam"]
-	#[input="${INPUT}.recal"]
-	#[output="${INPUT}.recal.bam"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
-		-T TableRecalibration \
-		-R ${REF} \
-		-I ${INPUT}.bam \
-		-recalFile ${INPUT}.recal \
-		-o ${INPUT}.recal.bam
-
-	#[require="${INPUT}.recal.bai"]
-	mv -vf ${INPUT}.recal.bai ${INPUT}.recal.bam.bai
-
-	#[require="${INPUT}.recal.bam"]
-	rm -vf ${INPUT}.recal
-}
-
-#[require="${REF}"]
-#[require="${GATK_VCF_DBSNP}"]
-#[input="${INPUT}.bam"]
-#[output="${OUTPUT}.vcf"]
 function gatk_genotype
 {
 	SP_set STAND_CALL_CONF=30
@@ -718,6 +676,41 @@ function gatk_genotype
 		-stand_emit_conf ${STAND_EMIT_CONF} \
 		-o ${OUTPUT}.vcf \
 		--num_threads ${THREAD_NUM}
+}
+
+function gatk_recalibrate
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set RECAL_EXT_NAME=.recal
+	SP_set OUTPUT_EXT_NAME=.recal.bam
+	SP_set RECAL_NAME=${NAME}
+	SP_set RECAL=${RECAL_NAME}${RECAL_EXT_NAME}
+
+	#[require="${REF}"]
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output.temp="${OUTPUT_DIR}/${RECAL}"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+		-T BaseRecalibrator \
+		-R ${REF} \
+		-I ${INPUT_DIR}/${INPUT} \
+		-knownSites ${GATK_VCF_DBSNP} \
+		-o ${OUTPUT_DIR}/${RECAL} \
+		--num_threads ${THREAD_NUM}
+
+	#[require="${REF}"]
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${OUTPUT_DIR}/${RECAL}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	java ${JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+		-T ApplyRecalibration \
+		-R ${REF} \
+		-I ${INPUT_DIR}/${INPUT} \
+		-knownSites ${GATK_VCF_DBSNP} \
+		-o ${OUTPUT_DIR}/${RECAL}
 }
 
 #[require="${REF}"]
@@ -796,21 +789,15 @@ function gatk_filter_variants
 		-genotypeMergeOptions UNIQUIFY
 }
 
-#[require="${REF}"]
-#[require="${GATK_VCF_DBSNP}"]
-#[input="${INPUT}.bam"]
-#[output="${OUTPUT}.gatk.vcf"]
 function gatk_call_variants
 {
-	SP_set VALIDATION_STRINGENCY="STRICT"
-
 	SP_run gatk_indel_realign \
 		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
 		NAME=${INPUT}
 
 	SP_run gatk_recalibrate \
 		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
-		INPUT=${INPUT}.realign.fixmate
+		NAME=${INPUT}.realign.fixmate
 
 	SP_run gatk_genotype \
 		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
@@ -825,79 +812,99 @@ function gatk_call_variants
 	mv -vf ${OUTPUT}.filtered.vcf ${OUTPUT}.gatk.vcf
 }
 
-#[require="${REF}"]
-#[input="${INPUT}.bam"]
-#[require="${INPUT}.bam.bai"]
-#[output="${OUTPUT}.pindel.vcf"]
 function pindel_call_structure_variants
 {
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.pindel.vcf
+	SP_set PINDEL_EXT_NAME=.pindel
+	SP_set PINDEL_RESULT=${NAME}${PINDEL_EXT_NAME}
+
 	SP_set REF_NAME=$(basename ${REF} | sed 's,\.[^.]*$,,')
 	SP_set REF_DATE=$(stat ${REF} | grep Modify | awk '{print $2}' | sed 's,-,,g')
 
-##### Call Structure Variants #####
+	# Call structure variants by Pindel
 	#[require="${REF}"]
-	#[input="${INPUT}.bam"]
-	#[output="${OUTPUT}_D"]
-	#[output="${OUTPUT}_SI"]
-	#[output="${OUTPUT}_INV"]
-	#[output="${OUTPUT}_TD"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI"]
 	pindel -f ${REF} \
-		-i <(echo "${INPUT}.bam ${INSERT_SIZE} ${SAMPLE}") \
-		-l -k -s -c ALL -o ${OUTPUT}
+		-i <(echo "${INPUT_DIR}/${INPUT} ${INSERT_SIZE} ${NAME}") \
+		-l -k -s -c ALL -o ${OUTPUT_DIR}/${PINDEL_RESULT}/sv
 
-##### Convert to VCF #####
+	# Convert Pindel result to VCF files
 	{{
 		#[require="${REF}"]
-		#[input="${OUTPUT}_D"]
-		#[output="${OUTPUT}_D.vcf"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf"]
 		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
-			-p ${OUTPUT}_D -v ${OUTPUT}_D.vcf
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf
 
 		#[require="${REF}"]
-		#[input="${OUTPUT}_SI"]
-		#[output="${OUTPUT}_SI.vcf"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf"]
 		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
-			-p ${OUTPUT}_SI -v ${OUTPUT}_SI.vcf
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf
+
+		#[require="${REF}"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf"]
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf
 		
 		#[require="${REF}"]
-		#[input="${OUTPUT}_INV"]
-		#[output="${OUTPUT}_INV.vcf"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf"]
 		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
-			-p ${OUTPUT}_INV -v ${OUTPUT}_INV.vcf
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf
 		
 		#[require="${REF}"]
-		#[input="${OUTPUT}_TD"]
-		#[output="${OUTPUT}_TD.vcf"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf"]
 		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
-			-p ${OUTPUT}_TD -v ${OUTPUT}_TD.vcf
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf
+		
+		#[require="${REF}"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf"]
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf
 	}}
 
-##### Combine Variants #####
+	# Combine different types of the structure variants
 	#[require="${REF}"]
-	#[input="${OUTPUT}_D.vcf"]
-	#[input="${OUTPUT}_SI.vcf"]
-	#[input="${OUTPUT}_INV.vcf"]
-	#[input="${OUTPUT}_TD.vcf"]
-	#[output="${INPUT}.pindel.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf.idx"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.idx"]
 	java ${JAVA_OPTS} \
 		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
 		-T CombineVariants \
 		-R ${REF} \
-		--variant:D ${OUTPUT}_D.vcf \
-		--variant:SI ${OUTPUT}_SI.vcf \
-		--variant:INV ${OUTPUT}_INV.vcf \
-		--variant:TD ${OUTPUT}_TD.vcf \
-		-o ${OUTPUT}.pindel.vcf \
+		--variant:BP ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf \
+		--variant:D ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf \
+		--variant:SI ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf \
+		--variant:INV ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf \
+		--variant:TD ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf \
+		--variant:LI ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf \
+		-o ${OUTPUT_DIR}/${OUTPUT} \
 		-genotypeMergeOptions UNIQUIFY
 }
 
-#[require="${REF}"]
-#[input="${INPUT_DIR}/${NAME}_1.fq.gz"]
-#[input="${INPUT_DIR}/${NAME}_2.fq.gz"]
-#[output="${OUTPUT_DIR}/${SAMPLE}.samtools.vcf"]
-#[output="${OUTPUT_DIR}/${SAMPLE}.gatk.vcf"]
-#[output="${OUTPUT_DIR}/${SAMPLE}.pindel.vcf"]
-#[output="${OUTPUT_DIR}/${SAMPLE}.summary.txt"]
 function DNAseq_analysis
 {
 	SP_set INPUT_DIR=.
@@ -949,12 +956,12 @@ function DNAseq_analysis
 		VALIDATION_STRINGENCY=SILENT \
 		NAME=${SAMPLE}
 
-	SP_run pindel_call_structure_variants \
-		REF=${REF} \
-		SAMPLE=${SAMPLE} \
-		INSERT_SIZE=${INSERT_SIZE} \
-		INPUT=${SAMPLE}.sorted \
-		OUTPUT=${SAMPLE}
+#	SP_run pindel_call_structure_variants \
+#		REF=${REF} \
+#		SAMPLE=${SAMPLE} \
+#		INSERT_SIZE=${INSERT_SIZE} \
+#		INPUT=${SAMPLE}.sorted \
+#		OUTPUT=${SAMPLE}
 
 ##### Report Summary Counts #####
 	( \
