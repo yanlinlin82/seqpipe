@@ -787,7 +787,9 @@ sub show_parameters
 		next if $name =~ /^_/;
 		next if exists $req_vars{$name};
 		next if exists $def_vars{$name};
-		push @used_vars, keys $global_var_deps{$file}{$name};
+		if (exists $global_var_deps{$file}{$name}) {
+			push @used_vars, keys $global_var_deps{$file}{$name};
+		}
 
 		if (exists $procedures{$proc_name}{iterator_var}{$name}) {
 			$def_vars{$name} = '(runtime-evaluate)';
