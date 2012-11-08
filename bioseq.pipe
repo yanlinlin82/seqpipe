@@ -31,6 +31,23 @@ function _bioseq_sysinfo
 	echo -n 'pindel   : '; pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
 }
 
+function bioseq_system_check
+{
+	which fastqc
+	which fastx_trimmer
+	which bwa
+	which qualimap
+	which samtools
+	which bcftools
+	which java
+	which pindel
+	ls ${PICARD_ROOT}/ViewSam.jar
+	ls ${GATK_ROOT}/GenomeAnalysisTK.jar
+	ls ${GATK_VCF_DBSNP}
+	ls ${GATK_VCF_HAPMAP}
+	ls ${GATK_VCF_OMNI}
+}
+
 ###########################################################################
 
 function fastqc_check
@@ -300,7 +317,7 @@ function sort_bam
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/SortSam.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/SortSam.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false SORT_ORDER=coordinate \
 		INPUT=${INPUT_DIR}/${INPUT} \
@@ -370,7 +387,7 @@ function merge_bam
 	#[input="${INPUT_DIR}/${INPUT_2}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
 		INPUT=${INPUT_DIR}/${INPUT_1} \
@@ -397,7 +414,7 @@ function merge_bam_3
 	#[input="${INPUT_DIR}/${INPUT_3}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
 		INPUT=${INPUT_DIR}/${INPUT_1} \
@@ -427,7 +444,7 @@ function merge_bam_4
 	#[input="${INPUT_DIR}/${INPUT_4}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
 		INPUT=${INPUT_DIR}/${INPUT_1} \
@@ -448,7 +465,7 @@ function build_fasta_dict
 
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/CreateSequenceDictionary.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/CreateSequenceDictionary.jar ${_PICARD_OPTS} \
 		REFERENCE=${INPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT}
 }
 
@@ -471,7 +488,7 @@ function reorder_bam
 	#[input="${INPUT_DIR}/${INPUT}.bai"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/ReorderSam.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/ReorderSam.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
 		REFERENCE=${REF} INPUT=${INPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
@@ -499,7 +516,7 @@ function mkdup_bam
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
 	#[output="${OUTPUT_DIR}/${METRICS}"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
 		INPUT=${INPUT_DIR}/${INPUT} \
@@ -530,7 +547,7 @@ function rmdup_bam
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
 	#[output="${OUTPUT_DIR}/${METRICS}"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
 		INPUT=${INPUT} OUTPUT=${OUTPUT} METRICS_FILE=${METRICS} \
@@ -595,7 +612,7 @@ function set_bam_rg
 	#[input="${INPUT_DIR}/${INPUT}.bai"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/AddOrReplaceReadGroups.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/AddOrReplaceReadGroups.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
 		INPUT=${INPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT} ${_RG} \
@@ -618,7 +635,7 @@ function gatk_indel_realign
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[input="${INPUT_DIR}/${INPUT}.bai]
 	#[output.temp="${OUTPUT_DIR}/${INTERVALS}"]
-	java ${JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T RealignerTargetCreator \
 		-R ${REF} -I ${INPUT_DIR}/${INPUT} -o ${OUTPUT_DIR}/${INTERVALS} \
 		-known ${GATK_VCF_DBSNP} \
@@ -632,7 +649,7 @@ function gatk_indel_realign
 	#[input="${OUTPUT_DIR}/${INTERVALS}"]
 	#[output.temp="${OUTPUT_DIR}/${REALIGN}"]
 	#[output.temp="${OUTPUT_DIR}/${REALIGN}.bai"]
-	java ${JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T IndelRealigner \
 		-R ${REF} -I ${INPUT_DIR}/${INPUT} \
 		-targetIntervals ${OUTPUT_DIR}/${INTERVALS} \
@@ -646,7 +663,7 @@ function gatk_indel_realign
 	#[input="${OUTPUT_DIR}/${REALIGN}.bai"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
-	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/FixMateInformation.jar ${PICARD_OPTS} \
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/FixMateInformation.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
 		INPUT=${OUTPUT_DIR}/${REALIGN} OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
@@ -664,8 +681,8 @@ function gatk_genotype
 	#[require="${GATK_VCF_DBSNP}"]
 	#[input="${INPUT}.bam"]
 	#[output="${OUTPUT}.vcf"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+	java ${_JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T UnifiedGenotyper \
 		-R ${REF} \
 		-I ${INPUT}.bam \
@@ -690,8 +707,8 @@ function gatk_recalibrate
 	#[require="${GATK_VCF_DBSNP}"]
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[output.temp="${OUTPUT_DIR}/${RECAL}"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+	java ${_JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T BaseRecalibrator \
 		-R ${REF} \
 		-I ${INPUT_DIR}/${INPUT} \
@@ -704,8 +721,8 @@ function gatk_recalibrate
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[input="${OUTPUT_DIR}/${RECAL}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+	java ${_JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T ApplyRecalibration \
 		-R ${REF} \
 		-I ${INPUT_DIR}/${INPUT} \
@@ -726,8 +743,8 @@ function gatk_filter_variants
 		#[require="${REF}"]
 		#[input="${INPUT}.vcf"]
 		#[output="${INPUT}.snp.vcf"]
-		java ${JAVA_OPTS} \
-			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+		java ${_JAVA_OPTS} \
+			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 			-T SelectVariants \
 			-R ${REF} \
 			--variant ${INPUT}.vcf \
@@ -737,8 +754,8 @@ function gatk_filter_variants
 		#[require="${REF}"]
 		#[input="${INPUT}.vcf"]
 		#[output="${INPUT}.indel.vcf"]
-		java ${JAVA_OPTS} \
-			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+		java ${_JAVA_OPTS} \
+			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 			-T SelectVariants \
 			-R ${REF} \
 			--variant ${INPUT}.vcf \
@@ -751,8 +768,8 @@ function gatk_filter_variants
 		#[require="${REF}"]
 		#[input="${INPUT}.snp.vcf"]
 		#[output="${INPUT}.snp.filtered.vcf"]
-		java ${JAVA_OPTS} \
-			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+		java ${_JAVA_OPTS} \
+			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 			-T VariantFiltration \
 			-R ${REF} \
 			--variant ${INPUT}.snp.vcf \
@@ -764,8 +781,8 @@ function gatk_filter_variants
 		#[require="${REF}"]
 		#[input="${INPUT}.indel.vcf"]
 		#[output="${INPUT}.indel.filtered.vcf"]
-		java ${JAVA_OPTS} \
-			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+		java ${_JAVA_OPTS} \
+			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 			-T VariantFiltration \
 			-R ${REF} \
 			--variant ${INPUT}.snp.vcf \
@@ -779,8 +796,8 @@ function gatk_filter_variants
 	#[input="${INPUT}.snp.filtered.vcf"]
 	#[input="${INPUT}.indel.filtered.vcf"]
 	#[output="${INPUT}.filtered.vcf"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+	java ${_JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T CombineVariants \
 		-R ${REF} \
 		--variant:SNP ${INPUT}.snp.filtered.vcf \
@@ -891,8 +908,8 @@ function pindel_call_structure_variants
 	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf.idx"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.idx"]
-	java ${JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${GATK_OPTS} \
+	java ${_JAVA_OPTS} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T CombineVariants \
 		-R ${REF} \
 		--variant:BP ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf \
