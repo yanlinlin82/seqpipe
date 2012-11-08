@@ -556,22 +556,6 @@ function rmdup_bam
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
 }
 
-function samtools_call_variants
-{
-	SP_set INPUT_EXT_NAME=.bam
-	SP_set OUTPUT_EXT_NAME=.samtools.vcf
-
-	SP_set MIN_QUAL=1  # To remove multi-mapped reads (whose MAPQ == 0)
-
-	#[require="${REF}"]
-	#[input="${INPUT_DIR}/${INPUT}"]
-	#[input="${INPUT_DIR}/${INPUT}.bai"]
-	#[output="${OUTPUT_DIR}/${OUTPUT}"]
-	samtools mpileup -f ${REF} ${INPUT_DIR}/${INPUT} -q ${MIN_QUAL} -u \
-		| bcftools view -vcg - \
-		> ${OUTPUT_DIR}/${OUTPUT}
-}
-
 function set_bam_rg
 {
 	SP_set INPUT_EXT_NAME=.bam
@@ -620,18 +604,69 @@ function set_bam_rg
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
 }
 
-function gatk_indel_realign
+function fixmate_bam
 {
 	SP_set INPUT_EXT_NAME=.bam
-	SP_set INTERVALS_EXT_NAME=.intervals
-	SP_set REALIGN_EXT_NAME=.realign.bam
-	SP_set OUTPUT_EXT_NAME=.realign.fixmate.bam
-	SP_set INTERVALS_NAME=${NAME}
-	SP_set INTERVALS=${INTERVALS_NAME}${INTERVALS_EXT_NAME}
-	SP_set REALIGN_NAME=${NAME}
-	SP_set REALIGN=${REALIGN_NAME}${REALIGN_EXT_NAME}
+	SP_set OUTPUT_EXT_NAME=.fixmate.bam
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${OUTPUT_DIR}/${INPUT}"]
+	#[input="${OUTPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/FixMateInformation.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${OUTPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function samtools_call_variants
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.samtools.vcf
+
+	SP_set MIN_QUAL=1  # To remove multi-mapped reads (whose MAPQ == 0)
 
 	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	samtools mpileup -f ${REF} ${INPUT_DIR}/${INPUT} -q ${MIN_QUAL} -u \
+		| bcftools view -vcg - \
+		> ${OUTPUT_DIR}/${OUTPUT}
+}
+
+function gatk_reduce_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.reduced.bam
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T ReduceReads -R ${REF} -I ${INPUT_DIR}/${INPUT} -o ${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function gatk_realign_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.realign.bam
+	SP_set INTERVALS_EXT_NAME=.intervals
+	SP_set INTERVALS_NAME=${NAME}
+	SP_set INTERVALS=${INTERVALS_NAME}${INTERVALS_EXT_NAME}
+
+	#[require="${REF}"]
+	#[require="${GATK_VCF_DBSNP}"]
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[input="${INPUT_DIR}/${INPUT}.bai]
 	#[output.temp="${OUTPUT_DIR}/${INTERVALS}"]
@@ -641,61 +676,24 @@ function gatk_indel_realign
 		-known ${GATK_VCF_DBSNP} \
 		--num_threads ${THREAD_NUM}
 
-	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${REALIGN} | sed 's/\(\.bam\|\)$/.bai/')
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
 	#[require="${REF}"]
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[input="${INPUT_DIR}/${INPUT}.bai"]
 	#[input="${OUTPUT_DIR}/${INTERVALS}"]
-	#[output.temp="${OUTPUT_DIR}/${REALIGN}"]
-	#[output.temp="${OUTPUT_DIR}/${REALIGN}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
 	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T IndelRealigner \
 		-R ${REF} -I ${INPUT_DIR}/${INPUT} \
 		-targetIntervals ${OUTPUT_DIR}/${INTERVALS} \
-		-o ${OUTPUT_DIR}/${REALIGN} \
-	&& \
-	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${REALIGN}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${REALIGN}.bai; fi
-	
-	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
-
-	#[input="${OUTPUT_DIR}/${REALIGN}"]
-	#[input="${OUTPUT_DIR}/${REALIGN}.bai"]
-	#[output="${OUTPUT_DIR}/${OUTPUT}"]
-	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
-	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/FixMateInformation.jar ${_PICARD_OPTS} \
-		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
-		INPUT=${OUTPUT_DIR}/${REALIGN} OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+		-o ${OUTPUT_DIR}/${OUTPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
 }
 
-function gatk_genotype
-{
-	SP_set STAND_CALL_CONF=30
-	SP_set STAND_EMIT_CONF=10
-	SP_set MIN_BASE_QUALITY_SCORE=20
-
-	#[require="${REF}"]
-	#[require="${GATK_VCF_DBSNP}"]
-	#[input="${INPUT}.bam"]
-	#[output="${OUTPUT}.vcf"]
-	java ${_JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
-		-T UnifiedGenotyper \
-		-R ${REF} \
-		-I ${INPUT}.bam \
-		-glm BOTH \
-		--min_base_quality_score ${MIN_BASE_QUALITY_SCORE} \
-		--dbsnp ${GATK_VCF_DBSNP} \
-		-stand_call_conf ${STAND_CALL_CONF} \
-		-stand_emit_conf ${STAND_EMIT_CONF} \
-		-o ${OUTPUT}.vcf \
-		--num_threads ${THREAD_NUM}
-}
-
-function gatk_recalibrate
+function gatk_recal_bam
 {
 	SP_set INPUT_EXT_NAME=.bam
 	SP_set RECAL_EXT_NAME=.recal
@@ -707,126 +705,90 @@ function gatk_recalibrate
 	#[require="${GATK_VCF_DBSNP}"]
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[output.temp="${OUTPUT_DIR}/${RECAL}"]
-	java ${_JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T BaseRecalibrator \
 		-R ${REF} \
-		-I ${INPUT_DIR}/${INPUT} \
 		-knownSites ${GATK_VCF_DBSNP} \
-		-o ${OUTPUT_DIR}/${RECAL} \
-		--num_threads ${THREAD_NUM}
+		-I ${INPUT_DIR}/${INPUT} \
+		-o ${OUTPUT_DIR}/${RECAL}
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
 	#[require="${REF}"]
 	#[require="${GATK_VCF_DBSNP}"]
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[input="${OUTPUT_DIR}/${RECAL}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
-	java ${_JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
-		-T ApplyRecalibration \
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T PrintReads \
 		-R ${REF} \
 		-I ${INPUT_DIR}/${INPUT} \
-		-knownSites ${GATK_VCF_DBSNP} \
-		-o ${OUTPUT_DIR}/${RECAL}
+		-BQSR ${OUTPUT_DIR}/${RECAL} \
+		-o ${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
 }
 
-#[require="${REF}"]
-#[input="${INPUT}.vcf"]
-#[output="${INPUT}.filtered.vcf"]
-function gatk_filter_variants
+function gatk_genotype
 {
-	SP_set FILTER_NAME="Filter"
-	SP_set FILTER_EXPRESSION="(AB ?: 0) > 0.75 || QUAL < 50.0 || DP < 10 || DP > 360 || (SB ?: -1) > -0.1 || MQ0 >= 4"
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.vcf
 
-##### Select Different Types of Variants #####
-	{{
-		#[require="${REF}"]
-		#[input="${INPUT}.vcf"]
-		#[output="${INPUT}.snp.vcf"]
-		java ${_JAVA_OPTS} \
-			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
-			-T SelectVariants \
-			-R ${REF} \
-			--variant ${INPUT}.vcf \
-			-selectType SNP -selectType MNP \
-			-o ${INPUT}.snp.vcf
+	SP_set STAND_CALL_CONF=30
+	SP_set STAND_EMIT_CONF=10
+	SP_set MIN_BASE_QUALITY_SCORE=20
 
-		#[require="${REF}"]
-		#[input="${INPUT}.vcf"]
-		#[output="${INPUT}.indel.vcf"]
-		java ${_JAVA_OPTS} \
-			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
-			-T SelectVariants \
-			-R ${REF} \
-			--variant ${INPUT}.vcf \
-			-selectType INDEL \
-			-o ${INPUT}.indel.vcf
-	}}
-
-##### Filter Variants #####
-	{{
-		#[require="${REF}"]
-		#[input="${INPUT}.snp.vcf"]
-		#[output="${INPUT}.snp.filtered.vcf"]
-		java ${_JAVA_OPTS} \
-			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
-			-T VariantFiltration \
-			-R ${REF} \
-			--variant ${INPUT}.snp.vcf \
-			--filterExpression "${FILTER_EXPRESSION}" \
-			--filterName "${FILTER_NAME}" \
-			--clusterWindowSize 10 \
-			-o ${INPUT}.snp.filtered.vcf
-
-		#[require="${REF}"]
-		#[input="${INPUT}.indel.vcf"]
-		#[output="${INPUT}.indel.filtered.vcf"]
-		java ${_JAVA_OPTS} \
-			-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
-			-T VariantFiltration \
-			-R ${REF} \
-			--variant ${INPUT}.snp.vcf \
-			--filterExpression "${FILTER_EXPRESSION}" \
-			--filterName "${FILTER_NAME}" \
-			--clusterWindowSize 10 \
-			-o ${INPUT}.indel.filtered.vcf
-	}}
-
-##### Combine Variants #####
-	#[input="${INPUT}.snp.filtered.vcf"]
-	#[input="${INPUT}.indel.filtered.vcf"]
-	#[output="${INPUT}.filtered.vcf"]
-	java ${_JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
-		-T CombineVariants \
+	#[require="${REF}"]
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T UnifiedGenotyper \
 		-R ${REF} \
-		--variant:SNP ${INPUT}.snp.filtered.vcf \
-		--variant:INDEL ${INPUT}.indel.filtered.vcf \
-		-o ${INPUT}.filtered.vcf \
-		-genotypeMergeOptions UNIQUIFY
+		-I ${INPUT_DIR}/${INPUT} \
+		-o ${OUTPUT_DIR}/${OUTPUT} \
+		-glm BOTH \
+		--min_base_quality_score ${MIN_BASE_QUALITY_SCORE} \
+		--dbsnp ${GATK_VCF_DBSNP} \
+		-stand_call_conf ${STAND_CALL_CONF} \
+		-stand_emit_conf ${STAND_EMIT_CONF} \
+		--num_threads ${THREAD_NUM}
 }
 
 function gatk_call_variants
 {
-	SP_run gatk_indel_realign \
-		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
-		NAME=${INPUT}
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT_DIR}/${NAME}.bam"]
+	#[input="${INPUT_DIR}/${NAME}.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.bam.bai"]
+	SP_run gatk_realign_bam REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} NAME=${NAME}
 
-	SP_run gatk_recalibrate \
-		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
-		NAME=${INPUT}.realign.fixmate
+	#[input="${OUTPUT_DIR}/${NAME}.realign.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam.bai"]
+	SP_run fixmate_bam NAME=${NAME}.realign
 
-	SP_run gatk_genotype \
-		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
-		INPUT=${INPUT}.realign.fixmate.recal \
-		OUTPUT=${OUTPUT}
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam.bai"]
+	SP_run gatk_recal_bam REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} NAME=${NAME}.realign.fixmate
 
-	SP_run gatk_filter_variants \
-		REF=${REF} \
-		INPUT=${OUTPUT}
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam.bai"]
+	SP_run gatk_reduce_bam REF=${REF} NAME=${NAME}.realign.fixmate.recal
 
-	#[require="${OUTPUT}.filtered.vcf"]
-	mv -vf ${OUTPUT}.filtered.vcf ${OUTPUT}.gatk.vcf
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam.bai"]
+	#[output="${OUTPUT_DIR}/${NAME}.gatk.vcf"]
+	SP_run gatk_genotype REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
+		NAME=${NAME} INPUT_EXT_NAME=.realign.fixmate.recal.reduced.bam OUTPUT_EXT_NAME=.gatk.vcf
 }
 
 function pindel_call_structure_variants
@@ -908,8 +870,7 @@ function pindel_call_structure_variants
 	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf.idx"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}.idx"]
-	java ${_JAVA_OPTS} \
-		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T CombineVariants \
 		-R ${REF} \
 		--variant:BP ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf \
@@ -924,69 +885,16 @@ function pindel_call_structure_variants
 
 function DNAseq_analysis
 {
-	SP_set INPUT_DIR=.
-	SP_set OUTPUT_DIR=.
+	SP_set INSERT_SIZE=500
 
-	SP_set MAX_INSERT_SIZE=500
-	SP_set RGID="${RGID}"
-	SP_set RGLB="${RGLB}"
-	SP_set RGPL="${RGPL}"
-	SP_set RGCN="${RGCN}"
+	SP_run bwa_map_pe REF=${REF} NAME=${NAME}
 
-##### Read Mapping #####
-	SP_run bwa_map_pe \
-		REF=${REF} \
-		FQ_1=${INPUT_DIR}/${NAME}_1.fq.gz \
-		FQ_2=${INPUT_DIR}/${NAME}_2.fq.gz \
-		NAME=${SAMPLE} \
-		MAX_INSERT_SIZE=${MAX_INSERT_SIZE} \
-		OUTPUT=${SAMPLE} \
-		RGID=${RGID} \
-		RGLB=${RGLB} \
-		RGPL=${RGPL} \
-		RGCN=${RGCN}
+	SP_run sort_bam NAME=${NAME}
+	SP_run mkdup_bam NAME=${NAME}.sorted
 
-##### Call Variants #####
 	{{
-		#[input="${SAMPLE}.bam" output="${SAMPLE}.mapped.bam"]
-		samtools view ${SAMPLE}.bam -F 4 -b > ${SAMPLE}.mapped.bam
-		#[input="${SAMPLE}.bam" output="${SAMPLE}.unmapped.bam"]
-		samtools view ${SAMPLE}.bam -f 4 -b > ${SAMPLE}.unmapped.bam
+		SP_run samtools_call_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam
+		SP_run gatk_call_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam
+		SP_run pindel_call_structure_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam INSERT_SIZE=${INSERT_SIZE}
 	}}
-
-	SP_run sort_bam NAME=${SAMPLE}.mapped
-
-	SP_run mkdup_bam NAME=${SAMPLE}.mapped.sorted
-
-	SP_run samtools_call_variants \
-		REF=${REF} \
-		NAME=${SAMPLE}.mapped.sorted.mkdup \
-		OUTPUT_NAME=${SAMPLE}
-
-	SP_run gatk_call_variants \
-		REF=${REF} \
-		INPUT=${SAMPLE}.mapped.sorted.mkdup \
-		OUTPUT=${SAMPLE}
-
-##### Call Structure Variants #####
-	SP_run sort_bam \
-		VALIDATION_STRINGENCY=SILENT \
-		NAME=${SAMPLE}
-
-#	SP_run pindel_call_structure_variants \
-#		REF=${REF} \
-#		SAMPLE=${SAMPLE} \
-#		INSERT_SIZE=${INSERT_SIZE} \
-#		INPUT=${SAMPLE}.sorted \
-#		OUTPUT=${SAMPLE}
-
-##### Report Summary Counts #####
-	( \
-		echo -n 'Total reads  : '; unzip -p ${FASTQ_1}.fastqc.zip '*/fastqc_data.txt' | grep 'Total Sequences' | cut -f2 | awk '{print $1+$1}'; \
-		echo -n 'Mapped reads : '; samtools view -c ${SAMPLE}.mapped.bam; \
-		echo -n 'Non-Duplicate: '; samtools flagstat ${SAMPLE}.mapped.sorted.mkdup.bam | head -n2 | awk '{print $1}' | paste - - | awk '{print $1-$2}'; \
-		echo -n 'Variants (gatk)    :'; cat ${SAMPLE}.gatk.vcf | grep -v ^# | wc -l; \
-		echo -n 'Variants (samtools):'; cat ${SAMPLE}.samtools.vcf | grep -v ^# | wc -l; \
-		echo -n 'Variants (pindel)  :'; cat ${SAMPLE}.pindel.vcf | grep -v ^# | wc -l; \
-	) > ${SAMPLE}.summary.txt
 }
