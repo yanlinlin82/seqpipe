@@ -7,7 +7,11 @@
 SP_include config.inc
 
 INPUT_DIR=.
-OUTPUT_DIR=.
+OUTPUT_DIR=${INPUT_DIR}
+INPUT_NAME=${NAME}
+OUTPUT_NAME=${NAME}
+INPUT=${INPUT_NAME}${INPUT_EXT_NAME}
+OUTPUT=${OUTPUT_NAME}${OUTPUT_EXT_NAME}
 THREAD_NUM=2
 
 ###########################################################################
@@ -31,21 +35,18 @@ function fastqc_check
 {
 	SP_set INPUT_EXT_NAME=.fq.gz
 	SP_set OUTPUT_EXT_NAME=.fastqc.zip
-	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
-	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
+	SP_set _TEMP_FILE=$(dirname ${OUTPUT_DIR}/${OUTPUT})/$(basename ${INPUT} | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g')
 
 	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
-	fastqc --noextract --nogroup -o $(dirname ${OUTPUT_DIR}/${OUTPUT}) ${INPUT_DIR}/${INPUT} && \
-		mv -vf $(dirname ${OUTPUT_DIR}/${OUTPUT})/$(basename ${INPUT} \
-			| sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT_DIR}/${OUTPUT}
+	fastqc --noextract --nogroup -o $(dirname ${OUTPUT_DIR}/${OUTPUT}) ${INPUT_DIR}/${INPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT} ]; then mv ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}; fi
 }
 
 function convert_fastq_33to64
 {
 	SP_set INPUT_EXT_NAME=.fq.gz
 	SP_set OUTPUT_EXT_NAME=.q64.fq.gz
-	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
-	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
 	# Check if it is base-33
 	#[require="${INPUT_DIR}/${INPUT}"]
@@ -62,8 +63,6 @@ function convert_fastq_64to33
 {
 	SP_set INPUT_EXT_NAME=.fq.gz
 	SP_set OUTPUT_EXT_NAME=.q33.fq.gz
-	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
-	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
 	# Check if it is base-64
 	#[require="${INPUT_DIR}/${INPUT}"]
@@ -80,8 +79,6 @@ function trim_fastq
 {
 	SP_set INPUT_EXT_NAME=.fq.gz
 	SP_set OUTPUT_EXT_NAME=.trimmed.fq.gz
-	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
-	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
 	SP_set START_POS=1
 	SP_set _QUAL_OPT=
@@ -104,15 +101,20 @@ function trim_fastq
 
 function bwa_build_index
 {
+	SP_set INPUT_EXT_NAME=.fasta
+	SP_set OUTPUT_EXT_NAME=${INPUT_EXT_NAME}.bwt
+
 	SP_set _ALGORITHM=is
-	SP_if $(ls -lL ${FASTA} | awk '$5>=1e8')
+	SP_if $(ls -lL ${INPUT_DIR}/${INPUT} | awk '$5>=2e9')
 	{
-		# Treat >=100MB .fasta file as long genome, use '-a bwtsw' instead of '-a is'
+		# Treat >=2GB .fasta file as long genome, use '-a bwtsw' instead of '-a is'
 		SP_set _ALGORITHM=bwtsw
 	}
 
-	#[input="${FASTA}" output="${FASTA}.bwt"]
-	bwa index -a ${_ALGORITHM} ${FASTA}
+	test "${INPUT_DIR}/${INPUT}.bwt" == "${OUTPUT_DIR}/${OUTPUT}"
+
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
+	bwa index -a ${_ALGORITHM} ${INPUT_DIR}/${INPUT}
 }
 
 function bwa_map_pe
@@ -171,7 +173,9 @@ function bwa_map_pe
 	}
 
 	# This will be skipped if the index files exist.
-	SP_run bwa_build_index FASTA=${REF}
+	SP_set _REF_FILE=$(basename ${REF})
+	SP_set _REF_DIR=$(dirname ${REF})
+	SP_run bwa_build_index INPUT_DIR=${_REF_DIR} NAME=${_REF_FILE} INPUT_EXT_NAME=
 
 	{{
 		#[require="${REF}" input="${INPUT_DIR}/${INPUT_1}" output.temp="${OUTPUT_DIR}/${SAI_FILE_1}"]
@@ -200,11 +204,10 @@ function bwa_map_pe
 function bwa_map_se
 {
 	SP_set INPUT_EXT_NAME=.fq.gz
-	SP_set SAI_EXT_NAME=.sai
 	SP_set OUTPUT_EXT_NAME=.bam
-	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
-	SP_set SAI_FILE=${NAME}${SAI_EXT_NAME}
-	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
+	SP_set SAI_EXT_NAME=.sai
+	SP_set SAI_NAME=${NAME}
+	SP_set SAI_FILE=${SAI_NAME}${SAI_EXT_NAME}
 
 	SP_set RGID=${NAME}
 	SP_set RGSM=${NAME}
@@ -250,7 +253,9 @@ function bwa_map_se
 	}
 
 	# This will be skipped if the index files exist.
-	SP_run bwa_build_index FASTA=${REF}
+	SP_set _REF_FILE=$(basename ${REF})
+	SP_set _REF_DIR=$(dirname ${REF})
+	SP_run bwa_build_index INPUT_DIR=${_REF_DIR} NAME=${_REF_FILE} INPUT_EXT_NAME=
 
 	#[require="${REF}" input="${INPUT_DIR}/${INPUT}" output.temp="${OUTPUT_DIR}/${SAI_FILE}"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
@@ -269,12 +274,13 @@ function sort_bam
 {
 	SP_set INPUT_EXT_NAME=.bam
 	SP_set OUTPUT_EXT_NAME=.sorted.bam
-	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
-	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
-	SP_set VALIDATION_STRINGENCY=STRICT
+	SP_set VALIDATION_STRINGENCY=SILENT
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+	
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}" output="${OUTPUT_DIR}/${OUTPUT}.bai"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/SortSam.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
 		COMPRESSION_LEVEL=9 \
@@ -282,25 +288,26 @@ function sort_bam
 		CREATE_MD5_FILE=false \
 		SORT_ORDER=coordinate \
 		INPUT=${INPUT_DIR}/${INPUT} \
-		OUTPUT=${OUTPUT_DIR}/${OUTPUT}
-
-	if [ -f $(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/') -a ! -f ${OUTPUT_DIR}/${OUTPUT}.bai ]; then \
-		mv -fv $(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/') ${OUTPUT_DIR}/${OUTPUT}.bai; \
-	fi
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
 }
 
 function build_bam_index
 {
-	#[input="${BAM}" output="${BAM}.bai"]
-	samtools index ${BAM}
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=${INPUT_EXT_NAME}.bai
+
+	test "${INPUT_DIR}/${INPUT}.bai" == "${OUTPUT_DIR}/${OUTPUT}"
+
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
+	samtools index ${INPUT_DIR}/${INPUT}
 }
 
 function flagstat_bam
 {
 	SP_set INPUT_EXT_NAME=.bam
 	SP_set OUTPUT_EXT_NAME=.flagstat.txt
-	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
-	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
 	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
 	samtools flagstat ${INPUT_DIR}/${INPUT} > ${OUTPUT_DIR}/${OUTPUT}
@@ -310,8 +317,6 @@ function bamqc_check
 {
 	SP_set INPUT_EXT_NAME=.bam
 	SP_set OUTPUT_EXT_NAME=.bamqc
-	SP_set INPUT=${NAME}${INPUT_EXT_NAME}
-	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
 	SP_set SPECIES=HUMAN
 	SP_if !(echo ${SPECIES} | egrep '^(HUMAN|MOUSE)$')
@@ -332,126 +337,192 @@ function bamqc_check
 
 function merge_bam
 {
-	SP_set VALIDATION_STRINGENCY=STRICT
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.sorted.bam
+	SP_set INPUT_1=${NAME_1}${INPUT_EXT_NAME}
+	SP_set INPUT_2=${NAME_2}${INPUT_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
 
-	#[input="${INPUT_1}.bam" input="${INPUT_2}.bam" output="${OUTPUT}.bam"]
+	SP_set VALIDATION_STRINGENCY=SILENT
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT_DIR}/${INPUT_1}"]
+	#[input="${INPUT_DIR}/${INPUT_2}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=true \
-		CREATE_MD5_FILE=false \
-		INPUT=${INPUT_1}.bam \
-		INPUT=${INPUT_2}.bam \
-		OUTPUT=${OUTPUT}.bam
-
-	#[require="${OUTPUT}.bai"]
-	mv -vf ${OUTPUT}.bai ${OUTPUT}.bam.bai
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT_DIR}/${INPUT_1} \
+		INPUT=${INPUT_DIR}/${INPUT_2} \
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
 }
 
-#[require="${REF}"]
-#[input="${INPUT}.bam"]
-#[output="${INPUT}.reordered.bam"]
+function merge_bam_3
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.sorted.bam
+	SP_set INPUT_1=${NAME_1}${INPUT_EXT_NAME}
+	SP_set INPUT_2=${NAME_2}${INPUT_EXT_NAME}
+	SP_set INPUT_3=${NAME_3}${INPUT_EXT_NAME}
+
+	SP_set VALIDATION_STRINGENCY=SILENT
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT_DIR}/${INPUT_1}"]
+	#[input="${INPUT_DIR}/${INPUT_2}"]
+	#[input="${INPUT_DIR}/${INPUT_3}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT_DIR}/${INPUT_1} \
+		INPUT=${INPUT_DIR}/${INPUT_2} \
+		INPUT=${INPUT_DIR}/${INPUT_3} \
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
+}
+
+function merge_bam_4
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.sorted.bam
+	SP_set INPUT_1=${NAME_1}${INPUT_EXT_NAME}
+	SP_set INPUT_2=${NAME_2}${INPUT_EXT_NAME}
+	SP_set INPUT_3=${NAME_3}${INPUT_EXT_NAME}
+	SP_set INPUT_4=${NAME_4}${INPUT_EXT_NAME}
+
+	SP_set VALIDATION_STRINGENCY=SILENT
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT_DIR}/${INPUT_1}"]
+	#[input="${INPUT_DIR}/${INPUT_2}"]
+	#[input="${INPUT_DIR}/${INPUT_3}"]
+	#[input="${INPUT_DIR}/${INPUT_4}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT_DIR}/${INPUT_1} \
+		INPUT=${INPUT_DIR}/${INPUT_2} \
+		INPUT=${INPUT_DIR}/${INPUT_3} \
+		INPUT=${INPUT_DIR}/${INPUT_4} \
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
+}
+
+function build_fasta_dict
+{
+	SP_set INPUT_EXT_NAME=.fasta
+	SP_set OUTPUT_EXT_NAME=.dict
+
+	test "$(echo ${INPUT_DIR}/${INPUT} | sed 's/\(\.fa|\.fasta\)$//')" == "$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\.dict$//')"
+
+	#[input="${INPUT_DIR}/${INPUT}" output="${OUTPUT_DIR}/${OUTPUT}"]
+	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/CreateSequenceDictionary.jar ${PICARD_OPTS} \
+		REFERENCE=${INPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT}
+}
+
 function reorder_bam
 {
-	SP_set VALIDATION_STRINGENCY="STRICT"
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.reordered.bam
+	
+	SP_set VALIDATION_STRINGENCY=SILENT
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
 
-	#[input="${INPUT}.bam"]
-	#[output="${INPUT}.reordered.bam"]
+	SP_set _REF_FILE=$(basename ${REF})
+	SP_set _REF_DIR=$(dirname ${REF})
+	SP_run build_fasta_dict INPUT_DIR=${_REF_DIR} NAME=${_REF_FILE} INPUT_EXT_NAME=
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	# This procedure requires input bam is sorted, although PICARD ReorderSam dosn't.
+	#[input="${INPUT_DIR}/${INPUT}" input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}" output="${OUTPUT_DIR}/${OUTPUT}.bai"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/ReorderSam.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=true \
-		CREATE_MD5_FILE=false \
-		INPUT=${INPUT}.bam \
-		OUTPUT=${INPUT}.reordered.bam \
-		REF=${REF}
-
-	# Rename index file if sorted
-	[ -f ${INPUT}.reordered.bai ] && mv -vf ${INPUT}.reordered.bai ${INPUT}.reordered.bam.bai
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		REFERENCE=${REF} INPUT=${INPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
 }
 
-#[input="${INPUT}.bam"]
-#[output="${INPUT}.uniq.bam"]
-#[output="${INPUT}.non_uniq.bam"]
-function select_unique_hit_reads
+function mkdup_bam
 {
-	samtools view -h ${INPUT}.bam | tee \
-		>(egrep '^@|XT:A:U' | samtools view -Sb - > ${INPUT}.uniq.bam) \
-		| egrep -v 'XT:A:U' | samtools view -Sb - > ${INPUT}.non_uniq.bam
-}
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.mkdup.bam
+	SP_set METRICS_EXT_NAME=.mkdup.metrics
+	SP_set METRICS_NAME=${NAME}
+	SP_set METRICS=${METRICS_NAME}${METRICS_EXT_NAME}
 
-#[input="${INPUT}.bam"]
-#[output="${INPUT}.mkdup.bam"]
-function mark_duplicate_reads
-{
-	SP_set ASSUME_SORTED="false"
-	SP_set VALIDATION_STRINGENCY="STRICT"
+	SP_set ASSUME_SORTED=false
+	test "${ASSUME_SORTED}" == "false" -o "${ASSUME_SORTED}" == "true"
 
-	#[input="${INPUT}.bam"]
-	#[output="${INPUT}.mkdup.bam"]
-	#[output="${INPUT}.mkdup.metrics"]
+	SP_set VALIDATION_STRINGENCY=SILENT
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT}" input="${INPUT}.bai"]
+	#[output="${OUTPUT}" output="${OUTPUT}.bai" output="${METRICS}"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=true \
-		CREATE_MD5_FILE=false \
-		INPUT=${INPUT}.bam \
-		OUTPUT=${INPUT}.mkdup.bam \
-		METRICS_FILE=${INPUT}.mkdup.metrics \
-		REMOVE_DUPLICATES=false
-
-	#[require="${INPUT}.mkdup.bai"]
-	mv -vf ${INPUT}.mkdup.bai ${INPUT}.mkdup.bam.bai
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT} OUTPUT=${OUTPUT} METRICS_FILE=${METRICS} \
+		REMOVE_DUPLICATES=false \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
 }
 
-#[input="${INPUT}.bam"]
-#[output="${INPUT}.rmdup.bam"]
-function remove_duplicate_reads
+function rmdup_bam
 {
-	SP_set ASSUME_SORTED="false"
-	SP_set VALIDATION_STRINGENCY="STRICT"
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.rmdup.bam
+	SP_set METRICS_EXT_NAME=.rmdup.metrics
+	SP_set METRICS_NAME=${NAME}
+	SP_set METRICS=${METRICS_NAME}${METRICS_EXT_NAME}
 
-	#[input="${INPUT}.bam"]
-	#[output="${INPUT}.rmdup.bam"]
-	#[output="${INPUT}.rmdup.metrics"]
+	SP_set ASSUME_SORTED=false
+	test "${ASSUME_SORTED}" == "false" -o "${ASSUME_SORTED}" == "true"
+
+	SP_set VALIDATION_STRINGENCY=SILENT
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT}" input="${INPUT}.bai"]
+	#[output="${OUTPUT}" output="${OUTPUT}.bai" output="${METRICS}"]
 	java ${JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 \
-		CREATE_INDEX=true \
-		CREATE_MD5_FILE=false \
-		INPUT=${INPUT}.bam \
-		OUTPUT=${INPUT}.rmdup.bam \
-		METRICS_FILE=${INPUT}.rmdup.metrics \
-		REMOVE_DUPLICATES=true
-
-	#[require="${INPUT}.rmdup.bai"]
-	mv -vf ${INPUT}.rmdup.bai ${INPUT}.rmdup.bam.bai
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT} OUTPUT=${OUTPUT} METRICS_FILE=${METRICS} \
+		REMOVE_DUPLICATES=true \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
 }
 
-#[input="${INPUT}.bam"]
-#[input="${INPUT}.bam.bai"]
-#[output="${INPUT}.mpileup.bz2"]
-function samtools_mpileup
-{
-	SP_set REF="${REF}"
-	SP_set SAMTOOLS_OPTS=""
-	SP_if ${REF}
-	{
-		SP_set SAMTOOLS_OPTS="${SAMTOOLS_OPTS} -f ${REF}"
-	}
-
-	samtools mpileup ${SAMTOOLS_OPTS} ${INPUT}.bam | bzip2 -9c > ${INPUT}.mpileup.bz2
-}
-
-#[require="${REF}"]
-#[input="${INPUT}.bam"]
-#[input="${INPUT}.bam.bai"]
-#[output="${OUTPUT}.samtools.vcf"]
 function samtools_call_variants
 {
-	samtools mpileup -f ${REF} ${INPUT}.bam -u \
-		| bcftools view -vcg - \
-		> ${OUTPUT}.samtools.vcf
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.bcf
+
+	#[require="${REF}" input="${INPUT_DIR}/${INPUT}" input="${INPUT_DIR}/${INPUT}.bai" output="${OUTPUT_DIR}/${OUTPUT}"]
+	samtools mpileup -f ${REF} ${INPUT_DIR}/${INPUT} -u \
+		| bcftools view -vcgb - \
+		> ${OUTPUT_DIR}${OUTPUT}
 }
 
 #[input="${INPUT}.bam"]
@@ -812,12 +883,6 @@ function DNAseq_analysis
 	SP_set RGPL="${RGPL}"
 	SP_set RGCN="${RGCN}"
 
-##### FastQC #####
-	{{
-		SP_run fastqc_check INPUT_DIR=${INPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME}_1
-		SP_run fastqc_check INPUT_DIR=${INPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME}_2
-	}}
-
 ##### Read Mapping #####
 	SP_run bwa_map_pe \
 		REF=${REF} \
@@ -839,20 +904,18 @@ function DNAseq_analysis
 		samtools view ${SAMPLE}.bam -f 4 -b > ${SAMPLE}.unmapped.bam
 	}}
 
-	SP_run select_unique_hit_reads INPUT=${SAMPLE}.mapped
+	SP_run sort_bam NAME=${SAMPLE}.mapped
 
-	SP_run sort_bam NAME=${SAMPLE}.mapped.uniq
-
-	SP_run mark_duplicate_reads INPUT=${SAMPLE}.mapped.uniq.sorted
+	SP_run mkdup_bam NAME=${SAMPLE}.mapped.sorted
 
 	SP_run samtools_call_variants \
 		REF=${REF} \
-		INPUT=${SAMPLE}.mapped.uniq.sorted.mkdup \
-		OUTPUT=${SAMPLE}
+		NAME=${SAMPLE}.mapped.sorted.mkdup \
+		OUTPUT_NAME=${SAMPLE}
 
 	SP_run gatk_call_variants \
 		REF=${REF} \
-		INPUT=${SAMPLE}.mapped.uniq.sorted.mkdup \
+		INPUT=${SAMPLE}.mapped.sorted.mkdup \
 		OUTPUT=${SAMPLE}
 
 ##### Call Structure Variants #####
@@ -871,19 +934,9 @@ function DNAseq_analysis
 	( \
 		echo -n 'Total reads  : '; unzip -p ${FASTQ_1}.fastqc.zip '*/fastqc_data.txt' | grep 'Total Sequences' | cut -f2 | awk '{print $1+$1}'; \
 		echo -n 'Mapped reads : '; samtools view -c ${SAMPLE}.mapped.bam; \
-		echo -n 'Unique reads : '; samtools view -c ${SAMPLE}.mapped.uniq.bam; \
-		echo -n 'Non-Duplicate: '; samtools flagstat ${SAMPLE}.mapped.uniq.sorted.mkdup.bam | head -n2 | awk '{print $1}' | paste - - | awk '{print $1-$2}'; \
+		echo -n 'Non-Duplicate: '; samtools flagstat ${SAMPLE}.mapped.sorted.mkdup.bam | head -n2 | awk '{print $1}' | paste - - | awk '{print $1-$2}'; \
 		echo -n 'Variants (gatk)    :'; cat ${SAMPLE}.gatk.vcf | grep -v ^# | wc -l; \
 		echo -n 'Variants (samtools):'; cat ${SAMPLE}.samtools.vcf | grep -v ^# | wc -l; \
 		echo -n 'Variants (pindel)  :'; cat ${SAMPLE}.pindel.vcf | grep -v ^# | wc -l; \
 	) > ${SAMPLE}.summary.txt
-
-##### Remove Intermediate Files #####
-	#[require="${SAMPLE}.mapped.uniq.bam"]
-	#[require="${SAMPLE}.mapped.non_uniq.bam"]
-	rm -vf ${SAMPLE}.mapped.bam
-	#[require="${SAMPLE}.mapped.uniq.sorted.bam"]
-	rm -vf ${SAMPLE}.mapped.uniq.bam
-	#[require="${SAMPLE}.mapped.uniq.sorted.mkdup.bam"]
-	rm -vf ${SAMPLE}.mapped.uniq.sorted.bam{,.bai}
 }
