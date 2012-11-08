@@ -1,0 +1,20 @@
+#!/bin/bash
+
+function test_all
+{
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -e true;  [ $? -eq 0 ]
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -e false; [ $? -ne 0 ]
+
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_set
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if COND=false
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_for
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_while
+
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_pe REF=MT.fa NAME=r
+	${_SEQPIPE_ROOT}/${_SEQPIPE} sort_bam NAME=r
+	${_SEQPIPE_ROOT}/${_SEQPIPE} reorder_bam REF=MT.fa NAME=r.sorted
+	${_SEQPIPE_ROOT}/${_SEQPIPE} mkdup_bam NAME=r.sorted
+	${_SEQPIPE_ROOT}/${_SEQPIPE} rmdup_bam NAME=r.sorted
+}
