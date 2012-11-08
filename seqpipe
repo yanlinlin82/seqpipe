@@ -389,6 +389,7 @@ sub parse_cmd
 				die 'ERROR: Invalid option for SP_run!' . $opt if $opt !~ /^(\w+)=(.*)$/;
 				die 'ERROR: Duplicate option for SP_run!' . $opt if exists $cmd_ref->{options}{$1};
 				$cmd_ref->{options}{$1} = $2;
+				push @{$cmd_ref->{var_checking}}, $2;
 				my $name = $1;
 				die "ERROR: Invalid option '$name'! Option name starts with '_' is reserved!\n" if $name =~ /^_/;
 			}
@@ -834,26 +835,50 @@ sub show_parameters
 	if (%{$procedures{$proc_name}{requires}}) {
 		print "\nRequire file(s):\n";
 		foreach my $text (sort keys %{$procedures{$proc_name}{requires}}) {
-			printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+			my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+			if (length($eval_text) > 30) {
+				print "   $eval_text\n";
+				printf "   %-30s  Definition: %s\n", '', $text;
+			} else {
+				printf "   %-30s  Definition: %s\n", $eval_text, $text;
+			}
 		}
 	}
 	if (%{$procedures{$proc_name}{inputs}}) {
 		print "\nInput file(s):\n";
 		foreach my $text (sort keys %{$procedures{$proc_name}{inputs}}) {
-			printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+			my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+			if (length($eval_text) > 30) {
+				print "   $eval_text\n";
+				printf "   %-30s  Definition: %s\n", '', $text;
+			} else {
+				printf "   %-30s  Definition: %s\n", $eval_text, $text;
+			}
 		}
 	}
 	if (%{$procedures{$proc_name}{outputs}}) {
 		print "\nOutput file(s):\n";
 		foreach my $text (sort keys %{$procedures{$proc_name}{outputs}}) {
-			printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+			my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+			if (length($eval_text) > 30) {
+				print "   $eval_text\n";
+				printf "   %-30s  Definition: %s\n", '', $text;
+			} else {
+				printf "   %-30s  Definition: %s\n", $eval_text, $text;
+			}
 		}
 	}
 	if ($help_mode == 2) {
 		if (%{$procedures{$proc_name}{temp_outputs}}) {
 			print "\nTemporary file(s):\n";
 			foreach my $text (sort keys %{$procedures{$proc_name}{temp_outputs}}) {
-				printf "   %-30s  Definition: %s\n", eval_string($text, \%def_vars, $opts_ref), $text;
+				my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+				if (length($eval_text) > 30) {
+					print "   $eval_text\n";
+					printf "   %-30s  Definition: %s\n", '', $text;
+				} else {
+					printf "   %-30s  Definition: %s\n", $eval_text, $text;
+				}
 			}
 		}
 	}
