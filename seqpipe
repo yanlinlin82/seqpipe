@@ -702,7 +702,7 @@ sub parse_proc
 
 			if (%{$proc_info{outputs}}) {
 				check_dependency $proc_info{outputs}, \%proc_info;
-				foreach my $file (keys $proc_info{temp_outputs}) {
+				foreach my $file (keys %{$proc_info{temp_outputs}}) {
 					delete $proc_info{outputs}{$file};
 				}
 			}
@@ -721,7 +721,7 @@ sub parse_proc
 				}
 			}
 
-			foreach my $name (keys $var_info{used_var}) {
+			foreach my $name (keys %{$var_info{used_var}}) {
 				next if exists $var_info{iterator_var}{$name};
 				next if exists $var_info{defined_var}{$name};
 				next if exists $global_var{$file}{$name};
@@ -796,7 +796,7 @@ sub show_parameters
 	return if $proc_name eq '';
 
 	my $file = $procedures{$proc_name}{module_file};
-	my @used_vars = keys $procedures{$proc_name}{used_var};
+	my @used_vars = keys %{$procedures{$proc_name}{used_var}};
 	my %req_vars = ();
 	my %def_vars = ();
 	while (my $name = shift @used_vars) {
@@ -804,7 +804,7 @@ sub show_parameters
 		next if exists $req_vars{$name};
 		next if exists $def_vars{$name};
 		if (exists $global_var_deps{$file}{$name}) {
-			push @used_vars, keys $global_var_deps{$file}{$name};
+			push @used_vars, keys %{$global_var_deps{$file}{$name}};
 		}
 
 		if (exists $procedures{$proc_name}{iterator_var}{$name}) {
