@@ -757,38 +757,40 @@ function gatk_genotype
 
 function gatk_call_variants
 {
-	#[require="${GATK_VCF_DBSNP}"]
-	#[input="${INPUT_DIR}/${NAME}.bam"]
-	#[input="${INPUT_DIR}/${NAME}.bam.bai"]
-	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.bam"]
-	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.bam.bai"]
-	SP_run gatk_realign_bam REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} NAME=${NAME}
-
-	#[input="${OUTPUT_DIR}/${NAME}.realign.bam"]
-	#[input="${OUTPUT_DIR}/${NAME}.realign.bam.bai"]
-	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam"]
-	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam.bai"]
-	SP_run fixmate_bam NAME=${NAME}.realign
+	SP_set EX_NAME=
 
 	#[require="${GATK_VCF_DBSNP}"]
-	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam"]
-	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam.bai"]
-	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam"]
-	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam.bai"]
-	SP_run gatk_recal_bam REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} NAME=${NAME}.realign.fixmate
+	#[input="${INPUT_DIR}/${NAME}${EX_NAME}.bam"]
+	#[input="${INPUT_DIR}/${NAME}${EX_NAME}.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.bam.bai"]
+	SP_run gatk_realign_bam REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} NAME=${NAME}${EX_NAME}
 
-	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam"]
-	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam.bai"]
-	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam"]
-	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam.bai"]
-	SP_run gatk_reduce_bam REF=${REF} NAME=${NAME}.realign.fixmate.recal
+	#[input="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.bam.bai"]
+	SP_run fixmate_bam NAME=${NAME}${EX_NAME}.realign
 
 	#[require="${GATK_VCF_DBSNP}"]
-	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam"]
-	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam.bai"]
+	#[input="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.recal.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.recal.bam.bai"]
+	SP_run gatk_recal_bam REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} NAME=${NAME}${EX_NAME}.realign.fixmate
+
+	#[input="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.recal.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.recal.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.recal.reduced.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.recal.reduced.bam.bai"]
+	SP_run gatk_reduce_bam REF=${REF} NAME=${NAME}${EX_NAME}.realign.fixmate.recal
+
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.recal.reduced.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}${EX_NAME}.realign.fixmate.recal.reduced.bam.bai"]
 	#[output="${OUTPUT_DIR}/${NAME}.gatk.vcf"]
 	SP_run gatk_genotype REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
-		NAME=${NAME} INPUT_EXT_NAME=.realign.fixmate.recal.reduced.bam OUTPUT_EXT_NAME=.gatk.vcf
+		NAME=${NAME} INPUT_EXT_NAME=${EX_NAME}.realign.fixmate.recal.reduced.bam OUTPUT_EXT_NAME=.gatk.vcf
 }
 
 function pindel_call_structure_variants
@@ -885,16 +887,26 @@ function pindel_call_structure_variants
 
 function DNAseq_analysis
 {
+	SP_set INPUT_EXT_NAME=.fq.gz
 	SP_set INSERT_SIZE=500
 
-	SP_run bwa_map_pe REF=${REF} NAME=${NAME}
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${NAME}1${INPUT_EXT_NAME}"]
+	#[input="${INPUT_DIR}/${NAME}2${INPUT_EXT_NAME}"]
+	#[output="${OUTPUT_DIR}/${NAME}.bam"]
+	SP_run bwa_map_pe REF=${REF} NAME=${NAME} INPUT_EXT_NAME=${INPUT_EXT_NAME}
 
 	SP_run sort_bam NAME=${NAME}
 	SP_run mkdup_bam NAME=${NAME}.sorted
 
 	{{
+		#[output="${OUTPUT_DIR}/${NAME}.samtools.vcf"]
 		SP_run samtools_call_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam
-		SP_run gatk_call_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam
+
+		#[output="${OUTPUT_DIR}/${NAME}.gatk.vcf"]
+		SP_run gatk_call_variants REF=${REF} NAME=${NAME} EX_NAME=.sorted.mkdup
+		
+		#[output="${OUTPUT_DIR}/${NAME}.pindel.vcf"]
 		SP_run pindel_call_structure_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam INSERT_SIZE=${INSERT_SIZE}
 	}}
 }
