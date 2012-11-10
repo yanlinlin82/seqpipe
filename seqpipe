@@ -361,14 +361,15 @@ sub parse_cmd
 			if (not exists $var_info_ref->{iterator_var}{$3}) {
 				$var_info_ref->{iterator_var}{$3} = '';
 			}
-			die "ERROR: Variable of SP_for/SP_for_parallel should start with '_'" . parsing_error($l) if $3 !~ /^_/;
+			die "ERROR: Variable of $cmd_ref->{command} should start with '_'" . parsing_error($l) if $3 !~ /^_/;
 			
 			my $line_ref = shift @{$lines_ref};
 			my $line = $line_ref->{text};
-			die 'ERROR: Invalid format for SP_for!' if $line !~ /^\s*(\{|\{\{)\s*$/;
+			die "ERROR: Invalid format for $cmd_ref->{command}!" if $line !~ /^\s*(\{|\{\{)\s*$/;
 			my $blocking = $1;
 			push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
 			$cmd_ref->{block} = scalar @blocks - 1;
+
 		} elsif ($argv[0] eq 'SP_while') {
 			die 'ERROR: Invalid option for SP_while!' if $command !~ /^\s*SP_while\s*(|!)\s*\((.*)\)\s*$/;
 			$cmd_ref->{command} = 'SP_while';
@@ -382,6 +383,7 @@ sub parse_cmd
 			my $blocking = $1;
 			push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
 			$cmd_ref->{block} = scalar @blocks - 1;
+
 		} elsif ($argv[0] eq 'SP_run') {
 			$cmd_ref->{command} = shift @argv;
 			$cmd_ref->{proc_name} = shift @argv;
@@ -1201,7 +1203,7 @@ sub run_cmd
 		my $name = $cmd_ref->{variable};
 		my $value = eval_string_in_shell($cmd_ref->{text}, \%vars, $opts_ref, $indent);
 		return undef if not defined $value;
-		if ($command eq 'SP_for') {
+		if ($command eq 'SP_for' or $max_thread_number == 1) {
 			foreach my $each_value (split(/\s+/, $value)) {
 				$vars{$name} = $each_value;
 				$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
@@ -1228,13 +1230,6 @@ sub run_cmd
 			return undef if not defined $ret;
 		}
 
-	} elsif ($command eq 'SP_for_parallel') {
-		my $run_id = get_new_run_id;
-		my $name = $cmd_ref->{variable};
-		my $value = eval_string_in_shell($cmd_ref->{text}, \%vars, $opts_ref, $indent);
-		return undef if not defined $value;
-		{
-		}
 	} elsif ($command eq 'SP_while') {
 		my $run_id = get_new_run_id;
 		my $cmd = "SP_while $cmd_ref->{negative}($cmd_ref->{bash})";
