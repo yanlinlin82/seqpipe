@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#[version="0.4.0 ($Id$)"]
+#[version="0.4.1 ($Id$)"]
 #
 
 # Load global parameters
@@ -904,7 +904,7 @@ function DNAseq_analysis
 		SP_run samtools_call_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam
 
 		#[output="${OUTPUT_DIR}/${NAME}.gatk.vcf"]
-		SP_run gatk_call_variants REF=${REF} NAME=${NAME} EX_NAME=.sorted.mkdup
+		SP_run gatk_call_variants REF=${REF} NAME=${NAME} EX_NAME=.sorted.mkdup GATK_VCF_DBSNP=${GATK_VCF_DBSNP}
 		
 		#[output="${OUTPUT_DIR}/${NAME}.pindel.vcf"]
 		SP_run pindel_call_structure_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam INSERT_SIZE=${INSERT_SIZE}
