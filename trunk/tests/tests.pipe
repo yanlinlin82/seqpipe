@@ -1,9 +1,26 @@
 #!/bin/bash
 
+function foo_failed_in_parallel
+{{
+	true
+	false
+}}
+
+function test_failed_in_parallel
+{
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m test.pipe foo_failed_in_parallel; [ $? -ne 0 ]
+}
+
 function test_inline
 {
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -e true;  [ $? -eq 0 ]
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -e false; [ $? -ne 0 ]
+}
+
+function test
+{
+	SP_run test_inline
+	SP_run test_failed_in_parallel
 }
 
 function test_demo
