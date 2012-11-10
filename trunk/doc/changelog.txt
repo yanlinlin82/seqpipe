@@ -1,8 +1,11 @@
-2012-11-10  v0.4.1 (r198)
+2012-11-12  v0.4.2 (r201)
+* Support 'SP_else_if'.
+
+2012-11-10  v0.4.1 (r199)
 * Support 'SP_for_parallel'.
 
 2012-11-09  v0.4.0 (r194)
-* Support new syntax: '{{', '}}', 'SP_if', 'SP_set', 'SP_for', 'SP_while'.
+* Support new syntax: '{{', '}}', 'SP_if', 'SP_else', 'SP_set', 'SP_for', 'SP_while'.
 * Support multi-line command in inline mode.
 * Improve log filename and format.
 * Improve qsub support.

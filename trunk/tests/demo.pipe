@@ -47,6 +47,30 @@ function demo_SP_if
 	}
 }
 
+function demo_SP_else_if
+{
+	SP_set C1=false
+	SP_set C2=false
+	SP_set C3=false
+
+	SP_if (${C1})
+	{
+		echo C1
+	}
+	SP_else_if (${C2})
+	{
+		echo C2
+	}
+	SP_else_if (${C3})
+	{
+		echo C3
+	}
+	SP_else
+	{
+		echo C4
+	}
+}
+
 function demo_SP_set
 {
 	SP_set X=abc *.gz {1..5} $((3+4))
