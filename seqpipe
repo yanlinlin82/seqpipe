@@ -1241,17 +1241,17 @@ sub run_cmd
 		} else {
 			my @threads = ();
 			foreach my $each_value (split(/\s+/, $value)) {
-				my %new_vars = %vars;
-				$new_vars{$name} = $each_value;
+				my %thd_vars = %vars;
+				$thd_vars{$name} = $each_value;
 				push @threads, threads->create(\&run_block,
-					$proc_name, $blocks[$cmd_ref->{block}], $indent, \%new_vars, $opts_ref);
+					$proc_name, $blocks[$cmd_ref->{block}], $indent, \%thd_vars, $opts_ref);
 			}
 			foreach my $thd (@threads) {
-				my $new_ret = $thd->join();
-				if (not defined $new_ret) {
+				my $thd_ret = $thd->join();
+				if (not defined $thd_ret) {
 					undef $ret;
-				} elsif (defined $ret and $ret == 0) {
-					$ret = $new_ret;
+				} elsif ($thd_ret != 0) {
+					$ret = $thd_ret if defined $ret;
 				}
 			}
 			return undef if not defined $ret;
@@ -1458,14 +1458,14 @@ sub run_block
 	}
 	if (scalar @thread_list > 0) {
 		foreach my $thd (@thread_list) {
-			my $ret = $thd->join();
-			if (not defined $ret) {
+			my $thd_ret = $thd->join();
+			if (not defined $thd_ret) {
 				undef $ret;
-			} elsif ($ret->{ret} != 0) {
-				$ret = $ret->{ret} if defined $ret;
+			} elsif ($thd_ret->{ret} != 0) {
+				$ret = $thd_ret->{ret} if defined $ret;
 			} else {
-				foreach my $name (keys %{$ret->{vars}}) {
-					$vars_ref->{$name} = $ret->{vars}->{$name};
+				foreach my $name (keys %{$thd_ret->{vars}}) {
+					$vars_ref->{$name} = $thd_ret->{vars}->{$name};
 				}
 			}
 		}
