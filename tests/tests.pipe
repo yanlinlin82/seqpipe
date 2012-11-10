@@ -9,10 +9,19 @@ function test_inline
 function test_demo
 {
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 3
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 4
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 1
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 0
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_set
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if COND=false
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_else_if
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_else_if C2=true
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_else_if C3=true
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_else_if C1=true C2=true
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_for
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_for_parallel
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_while
 }
 

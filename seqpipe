@@ -319,12 +319,12 @@ sub parse_cmd
 			push @{$cmd_ref->{var_checking}}, $cmd_ref->{text};
 		} elsif ($argv[0] eq 'SP_if') {
 			$cmd_ref->{command} = 'SP_if';
+			$cmd_ref->{condition} = [];
 			if ($command =~ /^SP_if\s*(|!)\s*\((.*)\)\s*$/) {
-				$cmd_ref->{negative} = $1;
-				$cmd_ref->{bash} = $2;
+				push @{$cmd_ref->{condition}}, { command => 'SP_if', negative => $1, bash => $2 };
 				push @{$cmd_ref->{var_checking}}, $2;
 			} elsif ($command =~ /^SP_if\s+(.*)\s*$/) {
-				$cmd_ref->{text} = $1;
+				push @{$cmd_ref->{condition}}, { command => 'SP_if', text => $1 };
 				push @{$cmd_ref->{var_checking}}, $1;
 			} else {
 				die 'ERROR: Invalid format for SP_if!';
@@ -335,20 +335,43 @@ sub parse_cmd
 			die 'ERROR: Invalid format for SP_if' . parsing_error($line_ref) if $line !~ /^\s*(\{|\{\{)\s*$/;
 			my $blocking = $1;
 			push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
-			$cmd_ref->{block} = scalar @blocks - 1;
+			$cmd_ref->{condition}[-1]{block} = scalar @blocks - 1;
 
 			while (@{$lines_ref})
 			{
 				next if $lines_ref->[0]->{text} =~ /^\s*#.*$/;
-				last if $lines_ref->[0]->{text} !~ /^\s*SP_else\s*$/;
-				shift @{$lines_ref};
-				$line_ref = shift @{$lines_ref};
-				my $line = $line_ref->{text};
-				die 'ERROR: Invalid option for SP_else!' if $line !~ /^\s*(\{|\{\{)\s*$/;
-				my $blocking = $1;
-				push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
-				$cmd_ref->{else_block} = scalar @blocks - 1;
-				last;
+				if ($lines_ref->[0]->{text} =~ /^\s*SP_else_if/) {
+					$line_ref = shift @{$lines_ref};
+					my $line = $line_ref->{text};
+					if ($line =~ /^\s*SP_else_if\s*(|!)\s*\((.*)\)\s*$/) {
+						push @{$cmd_ref->{condition}}, { command => 'SP_else_if', negative => $1, bash => $2 };
+						push @{$cmd_ref->{var_checking}}, $2;
+					} elsif ($line =~ /^\s*SP_else_if\s+(.*)\s*$/) {
+						push @{$cmd_ref->{condition}}, { command => 'SP_else_if', text => $1 };
+						push @{$cmd_ref->{var_checking}}, $1;
+					} else {
+						die 'ERROR: Invalid format for SP_else_if!';
+					}
+
+					$line_ref = shift @{$lines_ref};
+					$line = $line_ref->{text};
+					die 'ERROR: Invalid format for SP_else_if' . parsing_error($line_ref) if $line !~ /^\s*(\{|\{\{)\s*$/;
+					$blocking = $1;
+					push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
+					$cmd_ref->{condition}[-1]{block} = scalar @blocks - 1;
+
+				} elsif ($lines_ref->[0]->{text} =~ /^\s*SP_else\s*$/) {
+					shift @{$lines_ref};
+					$line_ref = shift @{$lines_ref};
+					my $line = $line_ref->{text};
+					die 'ERROR: Invalid option for SP_else!' if $line !~ /^\s*(\{|\{\{)\s*$/;
+					my $blocking = $1;
+					push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
+					$cmd_ref->{else_block} = scalar @blocks - 1;
+					last;
+				} else {
+					last;
+				}
 			}
 		} elsif ($argv[0] eq 'SP_for' or $argv[0] eq 'SP_for_parallel') {
 			if ($command !~ /^\s*(SP_for(_parallel|))\s+(\w+)=(.*)$/) {
@@ -774,7 +797,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.4.1 ($Rev$)
+Version: 0.4.2 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
@@ -941,12 +964,14 @@ sub display_block
 			print " $_=$cmd_ref->{options}->{$_}" foreach (keys %{$cmd_ref->{options}});
 			print "\n";
 		} elsif ($cmd_ref->{command} eq 'SP_if') {
-			if (exists $cmd_ref->{bash}) {
-				print "$indent\tSP_if $cmd_ref->{negative}($cmd_ref->{bash})\n";
-			} else {
-				print "$indent\tSP_if $cmd_ref->{text}\n";
+			foreach my $cond_ref (@{$cmd_ref->{condition}}) {
+				if (exists $cond_ref->{bash}) {
+					print "$indent\t$cond_ref->{command} $cond_ref->{negative}($cond_ref->{bash})\n";
+				} else {
+					print "$indent\t$cond_ref->{command} $cond_ref->{text}\n";
+				}
+				display_block($blocks[$cond_ref->{block}], $indent . "\t");
 			}
-			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
 			if (exists $cmd_ref->{else_block}) {
 				print "$indent\tSP_else\n";
 				display_block($blocks[$cmd_ref->{else_block}], $indent . "\t");
@@ -1178,24 +1203,26 @@ sub run_cmd
 		my $yes;
 		my $cmd;
 		my $run_id = get_new_run_id;
-		if (exists $cmd_ref->{bash}) {
-			$cmd = "SP_if $cmd_ref->{negative}($cmd_ref->{bash})";
-			my $shell_return = run_shell(eval_string($cmd_ref->{bash}, \%vars, $opts_ref), 'checker', $run_id, $indent);
-			return undef if not defined $shell_return;
-			$yes = ($shell_return->{ret} == 0) ^ ($cmd_ref->{negative} ne '');
-		} else {
-			$cmd = "SP_if $cmd_ref->{text}";
-			my $s = eval_string_in_shell($cmd_ref->{text}, \%vars, $opts_ref, $indent);
-			return undef if not defined $s;
-			$yes = ($s ne '');
-		}
-		safe_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
-		if ($yes) {
-			$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
-		} else {
-			if (exists $cmd_ref->{else_block}) {
-				$ret = run_block($proc_name, $blocks[$cmd_ref->{else_block}], $indent, \%vars, $opts_ref);
+		foreach my $cond_ref (@{$cmd_ref->{condition}}) {
+			if (exists $cond_ref->{bash}) {
+				$cmd = "$cond_ref->{command} $cond_ref->{negative}($cond_ref->{bash})";
+				my $shell_return = run_shell(eval_string($cond_ref->{bash}, \%vars, $opts_ref), 'checker', $run_id, $indent);
+				return undef if not defined $shell_return;
+				$yes = ($shell_return->{ret} == 0) ^ ($cond_ref->{negative} ne '');
+			} else {
+				$cmd = "$cond_ref->{command} $cond_ref->{text}";
+				my $s = eval_string_in_shell($cond_ref->{text}, \%vars, $opts_ref, $indent);
+				return undef if not defined $s;
+				$yes = ($s ne '');
 			}
+			safe_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+			if ($yes) {
+				$ret = run_block($proc_name, $blocks[$cond_ref->{block}], $indent, \%vars, $opts_ref);
+				last;
+			}
+		}
+		if (not $yes and exists $cmd_ref->{else_block}) {
+			$ret = run_block($proc_name, $blocks[$cmd_ref->{else_block}], $indent, \%vars, $opts_ref);
 		}
 
 	} elsif ($command eq 'SP_for' or $command eq 'SP_for_parallel') {
