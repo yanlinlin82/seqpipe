@@ -350,16 +350,18 @@ sub parse_cmd
 				$cmd_ref->{else_block} = scalar @blocks - 1;
 				last;
 			}
-		} elsif ($argv[0] eq 'SP_for') {
-			die 'ERROR: Invalid option for SP_for!' if $command !~ /^\s*SP_for\s+(\w+)=(.*)$/;
-			$cmd_ref->{command} = 'SP_for';
-			$cmd_ref->{variable} = $1;
-			$cmd_ref->{text} = $2;
-			push @{$cmd_ref->{var_checking}}, $2;
-			if (not exists $var_info_ref->{iterator_var}{$1}) {
-				$var_info_ref->{iterator_var}{$1} = '';
+		} elsif ($argv[0] eq 'SP_for' or $argv[0] eq 'SP_for_parallel') {
+			if ($command !~ /^\s*(SP_for(_parallel|))\s+(\w+)=(.*)$/) {
+				die "ERROR: Invalid option for $1!";
 			}
-			die "ERROR: Variable of SP_for should start with '_'" . parsing_error($l) if $1 !~ /^_/;
+			$cmd_ref->{command} = $1;
+			$cmd_ref->{variable} = $3;
+			$cmd_ref->{text} = $4;
+			push @{$cmd_ref->{var_checking}}, $4;
+			if (not exists $var_info_ref->{iterator_var}{$3}) {
+				$var_info_ref->{iterator_var}{$3} = '';
+			}
+			die "ERROR: Variable of SP_for/SP_for_parallel should start with '_'" . parsing_error($l) if $3 !~ /^_/;
 			
 			my $line_ref = shift @{$lines_ref};
 			my $line = $line_ref->{text};
@@ -770,7 +772,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.4.0 ($Rev$)
+Version: 0.4.1 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
@@ -947,8 +949,8 @@ sub display_block
 				print "$indent\tSP_else\n";
 				display_block($blocks[$cmd_ref->{else_block}], $indent . "\t");
 			}
-		} elsif ($cmd_ref->{command} eq 'SP_for') {
-			print "$indent\tSP_for $cmd_ref->{variable}=$cmd_ref->{text}\n";
+		} elsif ($cmd_ref->{command} eq 'SP_for' or $cmd_ref->{command} eq 'SP_for_parallel') {
+			print "$indent\t$cmd_ref->{command} $cmd_ref->{variable}=$cmd_ref->{text}\n";
 			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
 		} elsif ($cmd_ref->{command} eq 'SP_while') {
 			print "$indent\tSP_while $cmd_ref->{negative}($cmd_ref->{bash})\n";
@@ -1194,18 +1196,45 @@ sub run_cmd
 			}
 		}
 
-	} elsif ($command eq 'SP_for') {
+	} elsif ($command eq 'SP_for' or $command eq 'SP_for_parallel') {
 		my $run_id = get_new_run_id;
 		my $name = $cmd_ref->{variable};
 		my $value = eval_string_in_shell($cmd_ref->{text}, \%vars, $opts_ref, $indent);
 		return undef if not defined $value;
-		foreach my $each_value (split(/\s/, $value)) {
-			$vars{$name} = $each_value;
-			$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
+		if ($command eq 'SP_for') {
+			foreach my $each_value (split(/\s+/, $value)) {
+				$vars{$name} = $each_value;
+				$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
+				return undef if not defined $ret;
+				last if $ret != 0;
+			}
+			delete $vars{$name};
+		} else {
+			my @threads = ();
+			foreach my $each_value (split(/\s+/, $value)) {
+				my %new_vars = %vars;
+				$new_vars{$name} = $each_value;
+				push @threads, threads->create(\&run_block,
+					$proc_name, $blocks[$cmd_ref->{block}], $indent, \%new_vars, $opts_ref);
+			}
+			foreach my $thd (@threads) {
+				my $new_ret = $thd->join();
+				if (not defined $new_ret) {
+					undef $ret;
+				} elsif (defined $ret and $ret == 0) {
+					$ret = $new_ret;
+				}
+			}
 			return undef if not defined $ret;
-			last if $ret != 0;
 		}
 
+	} elsif ($command eq 'SP_for_parallel') {
+		my $run_id = get_new_run_id;
+		my $name = $cmd_ref->{variable};
+		my $value = eval_string_in_shell($cmd_ref->{text}, \%vars, $opts_ref, $indent);
+		return undef if not defined $value;
+		{
+		}
 	} elsif ($command eq 'SP_while') {
 		my $run_id = get_new_run_id;
 		my $cmd = "SP_while $cmd_ref->{negative}($cmd_ref->{bash})";

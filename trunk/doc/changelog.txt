@@ -1,3 +1,6 @@
+2012-11-10  v0.4.1 (r198)
+* Support 'SP_for_parallel'.
+
 2012-11-09  v0.4.0 (r194)
 * Support new syntax: '{{', '}}', 'SP_if', 'SP_set', 'SP_for', 'SP_while'.
 * Support multi-line command in inline mode.

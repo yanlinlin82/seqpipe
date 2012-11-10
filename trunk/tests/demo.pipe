@@ -66,6 +66,14 @@ function demo_SP_for
 	}
 }
 
+function demo_SP_for_parallel
+{
+	SP_for_parallel _X={a..c} g
+	{
+		echo "${_X} start"; sleep 1; echo "${_X} end"
+	}
+}
+
 function demo_SP_while
 {
 	SP_set X=2
