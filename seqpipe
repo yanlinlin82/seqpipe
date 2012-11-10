@@ -39,6 +39,7 @@ my $execute_command = '';
 my $shell = '/bin/bash';
 my $obsolete_warned = 0;
 my $max_thread_number = 2;
+my $thread_number :shared = 0;
 
 # All procedures are loaded at startup.
 my %procedures = ();
@@ -1229,8 +1230,24 @@ sub run_cmd
 		if ($proc_name =~ /_sysinfo$/) {
 			run_shell(eval_string($command, \%vars, $opts_ref), 'sysinfo', 0, '');
 		} else {
+			if ($max_thread_number > 1) {
+				LOOP: while (1) {
+					{
+						lock($thread_number);
+						if ($thread_number < $max_thread_number) {
+							$thread_number++;
+							last LOOP;
+						}
+					}
+					sleep 1;
+				}
+			}
 			my $run_id = get_new_run_id;
 			my $shell_return = run_shell(eval_string($command, \%vars, $opts_ref), '', $run_id, $indent);
+			if ($max_thread_number > 1) {
+				lock($thread_number);
+				$thread_number--;
+			}
 			return undef if not defined $shell_return;
 			$ret = $shell_return->{ret};
 			if ($ret != 0) {
@@ -1359,14 +1376,6 @@ sub run_block
 		}
 
 		if ($can_use_threads and $max_thread_number != 1) {
-			if ($max_thread_number > 0) {
-				while (1) {
-					my $thread_number = 0;
-					$thread_number += ($_->is_running()) foreach (threads->list());
-					last if $thread_number < $max_thread_number;
-					sleep 1;
-				}
-			}
 			my $thd = threads->create({'context' => 'list'}, \&run_cmd,
 				$proc_name, $command, $cmd_ref, \@output_set, $indent . '  ', $vars_ref, $opts_ref);
 
