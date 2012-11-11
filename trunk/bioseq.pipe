@@ -192,7 +192,7 @@ function bwa_map_pe
 
 	SP_set _BWA_ALN_QUAL_OPT=
 	#[require="${INPUT_DIR}/${INPUT_1}"]
-	SP_if (test -z ""$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | sed -n '4001q;4~4p' | grep '[!"#$%&()*+,./:0-9'\''-]'))
+	SP_if (test -z ""$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT_1} | sed -n '4001q;4~4p' | grep '[!"#$%&()*+,./:0-9'\''-]'))
 	{
 		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
 		SP_set _BWA_ALN_QUAL_OPT=-I
