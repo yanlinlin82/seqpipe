@@ -133,20 +133,6 @@ sub initialize_config
 }
 
 ############################################################
-# Catch signals for KILL, Ctrl+C, etc.
-
-sub kill_signal_handler
-{
-	lock($exiting);
-	$exiting = 1;
-	print "ERROR: Catch KILL signal!\n";
-}
-$SIG{'INT'} = \&kill_signal_handler;
-$SIG{'ABRT'} = \&kill_signal_handler;
-$SIG{'QUIT'} = \&kill_signal_handler;
-$SIG{'TERM'} = \&kill_signal_handler;
-
-############################################################
 # Time display helper functions
 
 sub time_string
@@ -178,6 +164,22 @@ sub time_elapse_string
 	$time_elapse_text =~ s/\s$//g;
 	return $time_elapse_text;
 }
+
+############################################################
+# Catch signals for KILL, Ctrl+C, etc.
+
+sub kill_signal_handler
+{
+	lock($exiting);
+	$exiting = 1;
+
+	my $now = time_string time;
+	safe_print "ERROR: [$now] got KILL signal!\n";
+}
+$SIG{'INT'} = \&kill_signal_handler;
+$SIG{'ABRT'} = \&kill_signal_handler;
+$SIG{'QUIT'} = \&kill_signal_handler;
+$SIG{'TERM'} = \&kill_signal_handler;
 
 ############################################################
 
@@ -1155,17 +1157,17 @@ sub eval_string_in_shell
 
 	my $run_id = get_new_run_id;
 	safe_print "$indent($run_id) [eval] $text\n";
-	my $shell_return = run_shell(eval_string("echo $text", $vars_ref, $opts_ref), 'evaluator', $run_id, $indent);
-	return undef if not defined $shell_return;
+	my $ret_ref = run_shell(eval_string("echo $text", $vars_ref, $opts_ref), 'evaluator', $run_id, $indent);
+	return undef if not defined $ret_ref;
 
-	open FILE, $shell_return->{log_file} or return '';
+	open FILE, $ret_ref->{log_file} or return '';
 	my @text = ();
 	while (my $line = <FILE>) {
 		chomp $line;
 		push @text, $line;
 	}
 	close FILE;
-	unlink $shell_return->{log_file} if $run_id == 0;
+	unlink $ret_ref->{log_file} if $run_id == 0;
 	return join("\n", @text);
 }
 
@@ -1180,7 +1182,7 @@ sub run_cmd
 
 	{
 		lock($exiting);
-		return undef if $exiting;
+		return { ret => $ret, vars => \%vars } if $exiting;
 	}
 
 	if ($command eq 'SP_set') {
@@ -1206,9 +1208,9 @@ sub run_cmd
 		foreach my $cond_ref (@{$cmd_ref->{condition}}) {
 			if (exists $cond_ref->{bash}) {
 				$cmd = "$cond_ref->{command} $cond_ref->{negative}($cond_ref->{bash})";
-				my $shell_return = run_shell(eval_string($cond_ref->{bash}, \%vars, $opts_ref), 'checker', $run_id, $indent);
-				return undef if not defined $shell_return;
-				$yes = ($shell_return->{ret} == 0) ^ ($cond_ref->{negative} ne '');
+				my $ret_ref = run_shell(eval_string($cond_ref->{bash}, \%vars, $opts_ref), 'checker', $run_id, $indent);
+				return undef if not defined $ret_ref;
+				$yes = ($ret_ref->{ret} == 0) ^ ($cond_ref->{negative} ne '');
 			} else {
 				$cmd = "$cond_ref->{command} $cond_ref->{text}";
 				my $s = eval_string_in_shell($cond_ref->{text}, \%vars, $opts_ref, $indent);
@@ -1232,6 +1234,10 @@ sub run_cmd
 		return undef if not defined $value;
 		if ($command eq 'SP_for' or $max_thread_number == 1) {
 			foreach my $each_value (split(/\s+/, $value)) {
+				{
+					lock($exiting);
+					last if $exiting;
+				}
 				$vars{$name} = $each_value;
 				$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
 				return undef if not defined $ret;
@@ -1241,6 +1247,10 @@ sub run_cmd
 		} else {
 			my @threads = ();
 			foreach my $each_value (split(/\s+/, $value)) {
+				{
+					lock($exiting);
+					last if $exiting;
+				}
 				my %thd_vars = %vars;
 				$thd_vars{$name} = $each_value;
 				push @threads, threads->create(\&run_block,
@@ -1261,9 +1271,13 @@ sub run_cmd
 		my $run_id = get_new_run_id;
 		my $cmd = "SP_while $cmd_ref->{negative}($cmd_ref->{bash})";
 		while (1) {
-			my $shell_return = run_shell(eval_string($cmd_ref->{bash}, \%vars, $opts_ref), 'checker', $run_id, $indent);
-			return undef if not defined $shell_return;
-			my $yes = ($shell_return->{ret} == 0) ^ ($cmd_ref->{negative} ne '');
+			{
+				lock($exiting);
+				last if $exiting;
+			}
+			my $ret_ref = run_shell(eval_string($cmd_ref->{bash}, \%vars, $opts_ref), 'checker', $run_id, $indent);
+			return undef if not defined $ret_ref;
+			my $yes = ($ret_ref->{ret} == 0) ^ ($cmd_ref->{negative} ne '');
 			safe_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
 			last if (not $yes);
 			$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
@@ -1294,13 +1308,17 @@ sub run_cmd
 				}
 			}
 			my $run_id = get_new_run_id;
-			my $shell_return = run_shell(eval_string($command, \%vars, $opts_ref), '', $run_id, $indent);
+			my $ret_ref = run_shell(eval_string($command, \%vars, $opts_ref), '', $run_id, $indent);
 			if ($max_thread_number > 1) {
 				lock($thread_number);
 				$thread_number--;
 			}
-			return undef if not defined $shell_return;
-			$ret = $shell_return->{ret};
+			if (not defined $ret_ref or $ret_ref->{ret} != 0) {
+				lock($exiting);
+				$exiting = 2 if $exiting == 0;
+			}
+			return undef if not defined $ret_ref;
+			$ret = $ret_ref->{ret};
 			if ($ret != 0) {
 				safe_print "$indent($run_id) returns $ret\n";
 				foreach my $output_file (@{$outputs_ref}) {
@@ -1357,10 +1375,10 @@ sub run_proc
 	safe_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 
 	my $ret = run_block($proc_name, \%procedure, $indent, \%vars, $opts_ref);
-	return undef if not defined $ret;
 
-	# When successeed, remove intermediate files
-	if ($ret == 0 and not $keep_intermediates) {
+	if (defined $ret and $ret == 0 and not $keep_intermediates) {
+
+		# When successeed, remove intermediate files
 		foreach my $item (keys %{$procedure{temp_outputs}}) {
 			my $file = eval_string($item, \%vars, $opts_ref);
 			if (-e $file) {
@@ -1368,13 +1386,12 @@ sub run_proc
 				unlink $file;
 			}
 		}
+
+		# Record the finish time
+		my $end_time = time;
+		safe_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
+			time_string($end_time), time_elapse_string($start_time, $end_time);
 	}
-
-	# Record the finish time
-	my $end_time = time;
-	safe_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
-		time_string($end_time), time_elapse_string($start_time, $end_time);
-
 	return $ret;
 }
 
@@ -1385,7 +1402,7 @@ sub run_block
 
 	{
 		lock($exiting);
-		return undef if $exiting;
+		return $ret if $exiting;
 	}
 
 	my @cmds = ();
@@ -1470,6 +1487,10 @@ sub run_block
 			}
 		}
 		@thread_list = ();
+	}
+	if (not defined $ret or $ret != 0) {
+		lock($exiting);
+		$exiting = 2 if $exiting == 0;
 	}
 	return $ret;
 }
@@ -1629,7 +1650,9 @@ if ($proc_name eq '') {
 } else {
 	$ret = run_proc($proc_name, \%opts, '');
 }
-if (not defined $ret) {
+if ($exiting == 1) {
+	safe_print "Pipeline aborted for KILL signal!\n";
+} elsif (not defined $ret) {
 	safe_print "Pipeline finished abnormally!\n";
 } elsif ($ret != 0) {
 	safe_print "Pipeline finished abnormally with exit value: $ret!\n";
@@ -1638,4 +1661,4 @@ if (not defined $ret) {
 }
 close LOG_FILE;
 
-exit $ret;
+exit (defined $ret ? $ret : 1);

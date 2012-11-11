@@ -1,14 +1,29 @@
 #!/bin/bash
 
-function foo_failed_in_parallel
+function foo_failed_in_parallel_1
 {{
 	true
 	false
 }}
 
+function foo_failed_in_parallel_2
+{{
+	sleep 1; false
+	{
+		echo a
+		sleep 2
+		echo b
+	}
+	SP_for _X=1 2
+	{
+		echo ${_X}; sleep 2
+	}
+}}
+
 function test_failed_in_parallel
 {
-	${_SEQPIPE_ROOT}/${_SEQPIPE} -m test.pipe foo_failed_in_parallel; [ $? -ne 0 ]
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m test.pipe foo_failed_in_parallel_1; [ $? -ne 0 ]
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m test.pipe foo_failed_in_parallel_2; [ $? -ne 0 ]
 }
 
 function test_inline
