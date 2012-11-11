@@ -244,6 +244,29 @@ sub bash_line_decode {
 	return @argv;
 }
 
+sub eval_string_for_proc
+{
+	my ($text, $opts_ref, $proc_var_ref, $global_var_ref) = @_;
+
+	my %exclude = ();
+	start: while ($text =~ /\${(\w+)}/g) {
+		my $name = $1;
+		next if exists $exclude{$name};
+		if (exists $opts_ref->{$name}) {
+			$text =~ s/\${$name}/$opts_ref->{$name}/g;
+		} elsif (exists $proc_var_ref->{$name}) {
+			$text =~ s/\${$name}/$proc_var_ref->{$name}/g;
+		} elsif (exists $global_var_ref->{$name}) {
+			$text =~ s/\${$name}/$global_var_ref->{$name}/g;
+		} else {
+			$exclude{$name} = '';
+			next;
+		}
+		goto start;
+	}
+	return $text;
+}
+
 sub eval_string
 {
 	my ($string, $vars_ref, $opts_ref) = @_;
@@ -826,46 +849,49 @@ sub show_parameters
 	return if $proc_name eq '';
 
 	my $file = $procedures{$proc_name}{module_file};
-	my @used_vars = keys %{$procedures{$proc_name}{used_var}};
+	my $proc_var_ref = $procedures{$proc_name}{defined_var};
+	my $global_var_ref = $global_var{$file};
+
+	my %used_vars = %{$procedures{$proc_name}{used_var}};
+	start: foreach my $name (keys %used_vars) {
+		next if not exists $global_var_deps{$file}{$name};
+		foreach my $dep (keys %{$global_var_deps{$file}{$name}}) {
+			next if exists $used_vars{$dep};
+			$used_vars{$dep} = '';
+			goto start;
+		}
+	}
+	
 	my %req_vars = ();
 	my %def_vars = ();
-	while (my $name = shift @used_vars) {
+	foreach my $name (keys %used_vars) {
 		next if $name =~ /^_/;
-		next if exists $req_vars{$name};
-		next if exists $def_vars{$name};
-		if (exists $global_var_deps{$file}{$name}) {
-			push @used_vars, keys %{$global_var_deps{$file}{$name}};
-		}
-
-		if (exists $procedures{$proc_name}{iterator_var}{$name}) {
-			$def_vars{$name} = '(runtime-evaluate)';
-		} elsif (exists $opts_ref->{$name}) {
+		if (exists $opts_ref->{$name}) {
 			$def_vars{$name} = $opts_ref->{$name};
-		} elsif (exists $procedures{$proc_name}{defined_var}{$name}) {
-			$def_vars{$name} = $procedures{$proc_name}{defined_var}{$name};
-		} elsif (exists $global_var{$procedures{$proc_name}{module_file}}{$name}) {
-			$def_vars{$name} = $global_var{$file}{$name};
+		} elsif (exists $proc_var_ref->{$name}) {
+			$def_vars{$name} = $proc_var_ref->{$name};
+		} elsif (exists $global_var_ref->{$name}) {
+			$def_vars{$name} = $global_var_ref->{$name};
 		} else {
 			$req_vars{$name} = '';
 		}
 	}
+
 	print "\nParameters for procedure '$proc_name':\n";
 	foreach my $name (sort keys %req_vars) {
 		printf "   %-30s  Required\n", $name;
 	}
 	if ($help_mode == 2) {
-		if (%def_vars) {
-			print "\n";
-			foreach my $name (sort keys %def_vars) {
-				printf "   %-30s  Default: %s\n", $name, $def_vars{$name};
-			}
+		foreach my $name (sort keys %def_vars) {
+			next if exists $req_vars{$name};
+			printf "   %-30s  Default: %s\n", $name, $def_vars{$name};
 		}
 	}
 
 	if (%{$procedures{$proc_name}{requires}}) {
 		print "\nRequire file(s):\n";
 		foreach my $text (sort keys %{$procedures{$proc_name}{requires}}) {
-			my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+			my $eval_text = eval_string_for_proc($text, $opts_ref, $proc_var_ref, $global_var_ref);
 			if (length($eval_text) > 30) {
 				print "   $eval_text\n";
 				printf "   %-30s  Definition: %s\n", '', $text;
@@ -877,7 +903,7 @@ sub show_parameters
 	if (%{$procedures{$proc_name}{inputs}}) {
 		print "\nInput file(s):\n";
 		foreach my $text (sort keys %{$procedures{$proc_name}{inputs}}) {
-			my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+			my $eval_text = eval_string_for_proc($text, $opts_ref, $proc_var_ref, $global_var_ref);
 			if (length($eval_text) > 30) {
 				print "   $eval_text\n";
 				printf "   %-30s  Definition: %s\n", '', $text;
@@ -889,7 +915,7 @@ sub show_parameters
 	if (%{$procedures{$proc_name}{outputs}}) {
 		print "\nOutput file(s):\n";
 		foreach my $text (sort keys %{$procedures{$proc_name}{outputs}}) {
-			my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+			my $eval_text = eval_string_for_proc($text, $opts_ref, $proc_var_ref, $global_var_ref);
 			if (length($eval_text) > 30) {
 				print "   $eval_text\n";
 				printf "   %-30s  Definition: %s\n", '', $text;
@@ -902,7 +928,7 @@ sub show_parameters
 		if (%{$procedures{$proc_name}{temp_outputs}}) {
 			print "\nTemporary file(s):\n";
 			foreach my $text (sort keys %{$procedures{$proc_name}{temp_outputs}}) {
-				my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+				my $eval_text = eval_string_for_proc($text, $opts_ref, $proc_var_ref, $global_var_ref);
 				if (length($eval_text) > 30) {
 					print "   $eval_text\n";
 					printf "   %-30s  Definition: %s\n", '', $text;
