@@ -739,7 +739,8 @@ sub parse_proc
 
 			my %proc_info = create_proc_info();
 			my %var_info = ( defined_var => {}, used_var => {}, iterator_var => {} );
-			my $proc_ref = parse_block($blocking, $file, $lines_ref, \%proc_info, \%var_info);
+			push @blocks, parse_block($blocking, $file, $lines_ref, \%proc_info, \%var_info);
+			$proc_info{block} = scalar @blocks - 1;
 
 			if (%{$proc_info{outputs}}) {
 				check_dep $proc_info{outputs}, \%proc_info;
@@ -769,14 +770,11 @@ sub parse_proc
 				die "ERROR: Invalid option '$name'! Required option can not start with '_'!\n" if $name =~ /^_/;
 			}
 
-			$proc_ref->{requires}     = $proc_info{requires};
-			$proc_ref->{inputs}       = $proc_info{inputs};
-			$proc_ref->{outputs}      = $proc_info{outputs};
-			$proc_ref->{temp_outputs} = $proc_info{temp_outputs};
-			$proc_ref->{defined_var}  = $var_info{defined_var};
-			$proc_ref->{iterator_var} = $var_info{iterator_var};
-			$proc_ref->{used_var}     = $var_info{used_var};
-			$proc_list{$proc_name} = $proc_ref;
+			$proc_info{file} = $file;
+			$proc_info{defined_var} = $var_info{defined_var};
+			$proc_info{iterator_var} = $var_info{iterator_var};
+			$proc_info{used_var} = $var_info{used_var};
+			$proc_list{$proc_name} = \%proc_info;
 
 			%requires = ();
 			%inputs = ();
@@ -1006,14 +1004,12 @@ sub show_proc
 		print "ERROR: Unknown procedure '$proc_name'! Use '-l' option to list available proc_list.\n";
 		return;
 	}
-	my %procedure = %{$proc_list{$proc_name}};
-
-	print "#[require=\"$_\"]\n" for (keys %{$procedure{requires}});
-	print "#[input=\"$_\"]\n" for (keys %{$procedure{inputs}});
-	print "#[output=\"$_\"]\n" for (keys %{$procedure{outputs}});
+	print "#[require=\"$_\"]\n" for (keys %{$proc_list{$proc_name}{requires}});
+	print "#[input=\"$_\"]\n" for (keys %{$proc_list{$proc_name}{inputs}});
+	print "#[output=\"$_\"]\n" for (keys %{$proc_list{$proc_name}{outputs}});
 	print "function $proc_name\n";
 
-	show_block \%procedure, '';
+	show_block $blocks[$proc_list{$proc_name}{block}], '';
 	exit 1;
 }
 
@@ -1375,7 +1371,7 @@ sub run_proc
 	log_print "$indent($run_id) $cmd\n";
 	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 
-	my $ret = run_block($proc_name, \%procedure, $indent, \%vars, $args_ref);
+	my $ret = run_block($proc_name, $blocks[$procedure{block}], $indent, \%vars, $args_ref);
 
 	if (defined $ret and $ret == 0 and not $keep_temps) {
 
