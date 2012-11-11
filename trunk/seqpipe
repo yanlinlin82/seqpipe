@@ -205,7 +205,7 @@ sub split_command_and_comment
 	my ($line) = @_;
 
 	# Split bash command and tailing comments.
-	return undef if $line !~ /^(("[^"]*"|'[^']*'|[^\s'"#]+|\s+)*)(#.*|)$/;
+	return undef if $line !~ /^(("[^"]*"|'[^']*'|[^\s'"#]+|\\'|\s+)*)(#.*|)$/;
 	my $command = $1;
 	my $comment = $3;
 	return [$command, $comment];
