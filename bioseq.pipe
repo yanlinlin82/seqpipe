@@ -70,7 +70,7 @@ function convert_fastq_33to64
 
 	# Check if it is base-33
 	#[require="${INPUT_DIR}/${INPUT}"]
-	test -n "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+	test -n ""$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | sed -n '4001q;4~4p' | grep '[!"#$%&()*+,./:0-9'\''-]')
 
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
@@ -87,7 +87,7 @@ function convert_fastq_64to33
 
 	# Check if it is base-64
 	#[require="${INPUT_DIR}/${INPUT}"]
-	test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+	test -z ""$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | sed -n '4001q;4~4p' | grep '[!"#$%&()*+,./:0-9'\''-]')
 
 	#[input="${INPUT_DIR}/${INPUT}"]
 	#[output="${OUTPUT_DIR}/${OUTPUT}"]
@@ -107,7 +107,7 @@ function trim_fastq
 
 	# Check if it is base-64
 	#[require="${INPUT_DIR}/${INPUT}"]
-	SP_if (test -n "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	SP_if (test -n ""$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | sed -n '4001q;4~4p' | grep '[!"#$%&()*+,./:0-9'\''-]'))
 	{
 		SP_set _QUAL_OPT=-Q33
 	}
@@ -192,7 +192,7 @@ function bwa_map_pe
 
 	SP_set _BWA_ALN_QUAL_OPT=
 	#[require="${INPUT_DIR}/${INPUT_1}"]
-	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT_1} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	SP_if (test -z ""$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | sed -n '4001q;4~4p' | grep '[!"#$%&()*+,./:0-9'\''-]'))
 	{
 		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
 		SP_set _BWA_ALN_QUAL_OPT=-I
@@ -278,7 +278,7 @@ function bwa_map_se
 
 	SP_set _BWA_ALN_QUAL_OPT=
 	#[require="${INPUT_DIR}/${INPUT}"]
-	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	SP_if (test -z ""$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | sed -n '4001q;4~4p' | grep '[!"#$%&()*+,./:0-9'\''-]'))
 	{
 		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
 		SP_set _BWA_ALN_QUAL_OPT=-I
