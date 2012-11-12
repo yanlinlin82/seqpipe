@@ -1023,7 +1023,7 @@ sub check_for_skip
 		log_print "$indent(*) Checking require file '$file' ($require)\n" if $verbose;
 		if (not -e $file) {
 			log_print "ERROR: Required file '$file' does not exist!\n";
-			exit 1;
+			return -1;
 		}
 		$requires{$file} = 1;
 	}
@@ -1034,7 +1034,7 @@ sub check_for_skip
 		log_print "$indent(*) Checking input file '$file' ($input)\n" if $verbose;
 		if (not -e $file) {
 			log_print "ERROR: Input file '$file' does not exist!\n";
-			exit 1;
+			return -1;
 		}
 		$inputs{$file} = 1;
 	}
@@ -1045,7 +1045,7 @@ sub check_for_skip
 			log_print "$indent(*) Checking output file '$file' ($output)\n" if $verbose;
 			if (exists $requires{$file} or exists $inputs{$file}) {
 				log_print "ERROR: Output file '$file' has also been defined as require or input!\n";
-				exit 1;
+				return -1;
 			}
 			if (-e $file) {
 				foreach my $input (keys %inputs) {
@@ -1373,7 +1373,9 @@ sub run_proc
 	my $cmd = "SP_run $proc_name";
 	$cmd .= " $_=$args_ref->{$_}" foreach (keys%{$args_ref});
 
-	if (check_for_skip(\%vars, $args_ref, $procedure{requires}, $procedure{inputs}, $procedure{outputs}, $indent)) {
+	my $ret = check_for_skip(\%vars, $args_ref, $procedure{requires}, $procedure{inputs}, $procedure{outputs}, $indent);
+	return $ret if $ret < 0;
+	if ($ret > 0) {
 		log_print "$indent(Skip) $cmd\n";
 		return 0;
 	}
@@ -1383,7 +1385,7 @@ sub run_proc
 	log_print "$indent($run_id) $cmd\n";
 	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 
-	my $ret = run_block($proc_name, $blocks[$procedure{block}], $indent, \%vars, $args_ref);
+	$ret = run_block($proc_name, $blocks[$procedure{block}], $indent, \%vars, $args_ref);
 
 	if (defined $ret and $ret == 0 and not $keep_temps) {
 
@@ -1447,7 +1449,10 @@ sub run_block
 			}
 			push @output_set, $filename;
 		}
-		if (check_for_skip($vars_ref, $args_ref, $requires_ref, $inputs_ref, $outputs_ref, $indent)) {
+		$ret = check_for_skip($vars_ref, $args_ref, $requires_ref, $inputs_ref, $outputs_ref, $indent);
+		last if $ret < 0;
+		if ($ret > 0) {
+			$ret = 0;
 			log_print "$indent(Skip) $command\n";
 			next;
 		}
