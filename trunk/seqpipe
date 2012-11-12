@@ -7,6 +7,7 @@ use Cwd 'abs_path';
 use Fcntl qw(:flock);
 use File::Temp qw/tempfile/;
 
+############################################################
 # Check perl multi-thread supporting
 my $can_use_threads = 0;
 if (eval 'use forks; 1') {
@@ -22,14 +23,16 @@ if (eval 'use forks; 1') {
 	print "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
 }
 
+############################################################
 # All logs are saved into this directory.
 use constant UNIQ_ID => sprintf('%02d%02d%02d.%d', (localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], $$);
 use constant LOG_ROOT => './.seqpipe';
 use constant LOG_DIR => LOG_ROOT . '/' . UNIQ_ID;
 use constant APP_ROOT => dirname abs_path $0;
 
+############################################################
 # Command line parsing results.
-my $help_mode = 0;
+my $help_mode = 0;      # 1 - show help; 2 - show detail help
 my $verbose = 0;
 my $list_mode = 0;
 my $show_mode = 0;
@@ -51,10 +54,10 @@ my @blocks = ();
 my %global_var = ();
 my %global_var_deps = ();
 
-# Count how many commands have been run so far.
+# Count how many shell commands have run so far.
 my $run_counter :shared = 0;
 
-# Flag for exiting (when received KILL or Ctrl+C).
+# Flag for exiting (when received KILL signal like Ctrl+C, or met failure).
 my $exiting :shared = 0;
 
 # Command line entered by user.
@@ -204,27 +207,39 @@ sub bash_line_encode {
 	return join(' ', @argv);
 };
 
-sub split_command_and_comment
+sub remove_tailing_comment
 {
 	my ($line) = @_;
 
-	# Split bash command and tailing comments.
-	return undef if $line !~ /^(("[^"]*"|'[^']*'|[^\s'"#]+|\\'|\s+)*)(#.*|)$/;
-	my $command = $1;
-	my $comment = $3;
-	return [$command, $comment];
+	# Split to bash command and tailing comment.
+	return undef if $line !~ /^(("(\\.|[^"])*"|'[^']*'|[^\s#][^\s'"]*|\\.|\s+)*)(#.*|)$/;
+	my $cmd = $1;
+	my $rest = $4;
+
+	# Return the comment if no bash command
+	$cmd =~ s/^\s*//g;
+	$cmd =~ s/\s*$//g;
+	$cmd = $rest if $cmd eq '' and $rest ne '';
+
+	return $cmd;
+}
+
+sub remove_comment
+{
+	my $cmd = remove_tailing_comment @_;
+	$cmd = '' if $cmd =~ '^#';
+	return $cmd;
 }
 
 sub bash_line_decode {
-	my ($string) = @_;
+	my ($cmd) = @_;
 
-	my $ret = split_command_and_comment($string);
-	die 'Bad bash line!' if not defined $ret;
-	my ($command, $comment) = @{$ret};
+	$cmd = remove_comment($cmd);
+	die 'Bad bash line!' if not defined $cmd;
 
 	# Split bash command line to @argv.
 	my @argv = ();
-	while ($command =~ /(("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)/g) {
+	while ($cmd =~ /(("(\\.|[^"])*"|'[^']*'|[^\s#][^\s'"]*|\\.)+)/g) {
 		push @argv, $1;
 	}
 
@@ -273,21 +288,12 @@ sub eval_string_for_proc
 
 sub eval_string
 {
-	my ($string, $vars_ref, $args_ref) = @_;
+	my ($text, $vars_ref, $args_ref) = @_;
 
-	my $ret = split_command_and_comment($string);
-	if (not defined $ret) {
-		print "WARNING: parse string failed '$string'\n";
-		return '';
-	}
-	my ($text, $comment) = @{$ret};
-	$text =~ s/\s*$//g;
-	$text =~ s/^\s*//g;
+	$text = remove_comment($text);
+	return '' if not defined $text;
 
-	# Remove quot marks
-	if ($text =~ /^\s*\"(.*)\"\s*$/) {
-		$text = $1;
-	}
+	$text =~ s/^"(.*?)"$/$1/;  # Remove quot marks.
 
 	# Replace variables
 	my %exclude = ();
@@ -533,10 +539,8 @@ sub parse_block
 			next;
 		}
 
-		my $ret = split_command_and_comment($line);
-		print "Parse failed!" if not defined $ret;
-		my ($text, $comment) = @{$ret};
-		$line = $text;
+		$line = remove_tailing_comment($line);
+		print "Parse failed!" if not defined $line;
 
 		if ($last_line eq '') {
 			$line =~ s/^\s+//g;
@@ -549,13 +553,13 @@ sub parse_block
 
 		if ($line =~ s/\\$//) {
 			$last_line = $line;
-		} elsif ($line =~ /^\s*$/) {
-			if ($comment =~ /^#\[(command\s+|)(require|input|output|output\.temp)=.*\]$/) {
+		} elsif ($line =~ /^#/) {
+			if ($line =~ /^#\[(command\s+|)(require|input|output|output\.temp)=.*\]$/) {
 				if ($1 =~ /^command\s+$/ and not $quiet_mode and not $obsolete_warned) {
 					print "WARNING: '#[procedure ...]' and '#[command ...]' are obsolete, use '#[attr=\"...\"]' instead! Found in: $l->{file}($l->{line})\n";
 					$obsolete_warned = 1;
 				}
-				while ($comment =~ /(require|input|output|output\.temp)="(.*?)"/g) {
+				while ($line =~ /(require|input|output|output\.temp)="(.*?)"/g) {
 					if ($1 eq 'require') {
 						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
 							die "ERROR: Duplicated attribute for require file '$2'!";
@@ -575,7 +579,7 @@ sub parse_block
 					}
 				}
 			}
-		} else {
+		} elsif ($line ne '') {
 			my $cmd_ref = parse_cmd($line, $l, $file, $lines_ref, \@commands, \%cmd_info, $var_info_ref, $proc_info_ref);
 
 			foreach my $item ($cmd_ref->{command}, keys %{$cmd_info{requires}}, keys %{$cmd_info{inputs}}, keys %{$cmd_info{outputs}}, @{$cmd_ref->{var_checking}}) {
@@ -782,13 +786,9 @@ sub parse_proc
 
 		} elsif ($l->{text} =~ /^\s*(\w+)=(.*)$/) {
 			my $name = $1;
-			my $ret = split_command_and_comment($2);
-			die "ERROR: Parse failed for global variable '$name'" .parsing_error($l) if not defined($ret);
-
-			my ($value, $comment) = @{$ret};
-			$value =~ s/^\s*//g;
-			$value =~ s/\s*$//g;
-			$value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
+			my $value = remove_comment($2);
+			die "ERROR: Parse failed for global variable '$name'" .parsing_error($l) if not defined $value;
+			$value =~ s/^"(.*?)"$/$1/;  # Remove quot marks.
 			if (exists $global_var{$file}{$name}) {
 				die "ERROR: Redeclaration of global variable '$name' for '$file'" . parsing_error($l);
 			}
@@ -1098,10 +1098,22 @@ sub run_shell
 		$command_with_log = "($command) >>$log_file 2>>/dev/null";
 	} else {
 		my @argv = bash_line_decode($command);
-		my $name = $argv[0];
-		$name =~ s/\W//g;
+		my $name = '';
+		while (@argv) {
+			$name = basename shift @argv;
+			$name =~ s/\W//g;
+			last if $name ne '';
+		}
+		if ($name eq '') {
+			$name = 'shell';
+		} else {
+			while (@argv) {
+				my $arg = shift @argv;
+				last if $arg !~ /^\w+$/;
+				$name .= "_$arg";
+			}
+		}
 		$name = LOG_DIR . "/$run_id." . $name;
-		$name .= "_$argv[1]" if defined $argv[1] and $argv[1] =~ /^\w+$/;
 		$command_with_log = "($command) >>$name.log 2>>$name.err";
 		save_cmd $command, "$name.cmd";
 	}
