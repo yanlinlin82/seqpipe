@@ -1,5 +1,19 @@
 #!/bin/bash
 
+function foo_child
+{
+	#[output="${A}"]
+	touch ${A}
+	echo "a=\"abc"
+}
+
+function foo_parent
+{
+	SP_set C=${D}${E}
+	echo ${C}
+	SP_run foo_child A=${B}
+}
+
 function foo_failed_in_parallel_1
 {{
 	true
@@ -59,30 +73,34 @@ function test_demo
 
 function test_bioseq
 {
-	${_SEQPIPE_ROOT}/${_SEQPIPE} fastqc_check NAME=r1
-	${_SEQPIPE_ROOT}/${_SEQPIPE} fastqc_check NAME=r2
+	SP_run fastqc_check NAME=r_1
+	SP_run fastqc_check NAME=r_2
 
-	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_33to64 NAME=r1
-	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_33to64 NAME=r2
-	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_64to33 NAME=r1 INPUT_EXT_NAME=.q64.fq.gz
-	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_64to33 NAME=r2 INPUT_EXT_NAME=.q64.fq.gz
-	${_SEQPIPE_ROOT}/${_SEQPIPE} trim_fastq NAME=r1 START_POS=11 END_POS=70
+	SP_run convert_fastq_33to64 NAME=r_1
+	SP_run convert_fastq_33to64 NAME=r_2
+	SP_run convert_fastq_64to33 NAME=r_1 INPUT_EXT_NAME=.q64.fq.gz
+	SP_run convert_fastq_64to33 NAME=r_2 INPUT_EXT_NAME=.q64.fq.gz
+	SP_run trim_fastq NAME=r_1 START_POS=11 END_POS=70
 
-	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_pe REF=MT.fa NAME=r
-	${_SEQPIPE_ROOT}/${_SEQPIPE} sort_bam NAME=r
-	${_SEQPIPE_ROOT}/${_SEQPIPE} reorder_bam REF=MT.fa NAME=r.sorted
-	${_SEQPIPE_ROOT}/${_SEQPIPE} mkdup_bam NAME=r.sorted
-	${_SEQPIPE_ROOT}/${_SEQPIPE} rmdup_bam NAME=r.sorted
-	${_SEQPIPE_ROOT}/${_SEQPIPE} flagstat_bam NAME=r.sorted.mkdup
+	SP_run bwa_map_pe REF=MT.fa NAME=r
+	SP_run sort_bam NAME=r
+	SP_run reorder_bam REF=MT.fa NAME=r.sorted
+	SP_run mkdup_bam NAME=r.sorted
+	SP_run rmdup_bam NAME=r.sorted
+	SP_run flagstat_bam REF=MT.fa NAME=r.sorted.mkdup
 
-	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_se REF=MT.fa NAME=r1
-	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_se REF=MT.fa NAME=r2
-	${_SEQPIPE_ROOT}/${_SEQPIPE} merge_bam NAME_1=r1 NAME_2=r2 NAME=s
+	SP_run bwa_map_se REF=MT.fa NAME=r_1
+	SP_run bwa_map_se REF=MT.fa NAME=r_2
+	SP_run merge_bam NAME_1=r_1 NAME_2=r_2 NAME=s
 
-	${_SEQPIPE_ROOT}/${_SEQPIPE} bamqc_check NAME=r.sorted
-	${_SEQPIPE_ROOT}/${_SEQPIPE} bamqc_check NAME=s.sorted
+	SP_run bamqc_check NAME=r.sorted
+	SP_run bamqc_check NAME=s.sorted
 
-	${_SEQPIPE_ROOT}/${_SEQPIPE} gatk_indel_realign REF=MT.fa NAME=r.sorted
+	SP_run gatk_realign_bam REF=MT.fa NAME=r.sorted GATK_VCF_DBSNP=dbsnp_135.b37.MT.vcf
+	SP_run fixmate_bam NAME=r.sorted.realign
+	SP_run gatk_recal_bam REF=MT.fa NAME=r.sorted.realign.fixmate GATK_VCF_DBSNP=dbsnp_135.b37.MT.vcf
+	SP_run gatk_reduce_bam REF=MT.fa NAME=r.sorted.realign.fixmate.recal
+	SP_run gatk_genotype REF=MT.fa NAME=r.sorted.realign.fixmate.recal.reduced GATK_VCF_DBSNP=dbsnp_135.b37.MT.vcf
 
-	${_SEQPIPE_ROOT}/${_SEQPIPE} pindel_call_structure_variants REF=MT.fa NAME=r.sorted INSERT_SIZE=200
+	SP_run pindel_call_structure_variants REF=MT.fa NAME=r.sorted INSERT_SIZE=200
 }
