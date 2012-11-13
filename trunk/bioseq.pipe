@@ -380,6 +380,8 @@ function merge_bam
 {
 	SP_set INPUT_EXT_NAME=.bam
 	SP_set OUTPUT_EXT_NAME=.sorted.bam
+	SP_set INPUT_NAME_1=${NAME_1}
+	SP_set INPUT_NAME_2=${NAME_2}
 	SP_set INPUT_1=${INPUT_NAME_1}${INPUT_EXT_NAME}
 	SP_set INPUT_2=${INPUT_NAME_2}${INPUT_EXT_NAME}
 
@@ -895,8 +897,8 @@ function DNAseq_analysis
 	SP_set INSERT_SIZE=500
 
 	#[require="${REF}"]
-	#[input="${INPUT_DIR}/${NAME}1${INPUT_EXT_NAME}"]
-	#[input="${INPUT_DIR}/${NAME}2${INPUT_EXT_NAME}"]
+	#[input="${INPUT_DIR}/${NAME}_1${INPUT_EXT_NAME}"]
+	#[input="${INPUT_DIR}/${NAME}_2${INPUT_EXT_NAME}"]
 	#[output="${OUTPUT_DIR}/${NAME}.bam"]
 	SP_run bwa_map_pe REF=${REF} NAME=${NAME} INPUT_EXT_NAME=${INPUT_EXT_NAME}
 
