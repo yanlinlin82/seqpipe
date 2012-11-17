@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#[version="0.4.1 ($Id$)"]
+#[version="0.4.2 ($Id$)"]
 #
 
 ###########################################################################
@@ -60,7 +60,11 @@ function _bioseq_sysinfo
 {
 	echo -n 'FastQC   : '; fastqc --version | cut -d' ' -f2
 	echo -n 'FastX    : '; fastx_trimmer -h | grep FASTX | sed 's/^.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*$/\1/g'
+
 	echo -n 'bwa      : '; bwa |& grep Version | cut -d' ' -f2
+	echo -n 'bowtie   : '; bowtie --version | head -n1 | cut -d' ' -f3
+	echo -n 'bowtie2  : '; bowtie2 --version | head -n1 | cut -d' ' -f3
+
 	echo -n 'Qualimap : '; qualimap -h | grep '^QualiMap v' | cut -d' ' -f2
 	echo -n 'samtools : '; samtools |& grep Version | cut -d' ' -f2-
 	echo -n 'bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
@@ -176,6 +180,30 @@ function bwa_build_fasta_index
 
 	#[input="${INPUT}" output="${OUTPUT}"]
 	bwa index -a ${_ALGORITHM} ${INPUT}
+}
+
+function bowtie_build_fasta_index
+{
+	SP_set INPUT_EXT_NAME=.fasta
+	SP_set OUTPUT=${INPUT}.1.ebwt
+
+	# Ensure the output filename is correct.
+	test "${INPUT}.1.ebwt" == "${OUTPUT}"
+
+	#[input="${INPUT}" output="${OUTPUT}"]
+	bowtie-build ${INPUT} ${INPUT}
+}
+
+function bowtie2_build_fasta_index
+{
+	SP_set INPUT_EXT_NAME=.fasta
+	SP_set OUTPUT=${INPUT}.1.bt2
+
+	# Ensure the output filename is correct.
+	test "${INPUT}.1.bt2" == "${OUTPUT}"
+
+	#[input="${INPUT}" output="${OUTPUT}"]
+	bowtie2-build ${INPUT} ${INPUT}
 }
 
 function samtools_build_fasta_index
@@ -340,6 +368,96 @@ function bwa_map_se
 	bwa samse ${REF} ${SAI} ${INPUT} ${_RG} ${BWA_SAMSE_OPTS} \
 		| samtools view -Sb - \
 		> ${OUTPUT}
+}
+
+function bowtie_map_pe
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.bam
+
+	SP_set BOWTIE_OPTS=
+	SP_set _BOWTIE_ALN_QUAL_OPT=
+	#[require="${INPUT_1}"]
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT_1} | sed -n '4001q;4~4p' \
+		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
+	{
+		SP_set _BOWTIE_ALN_QUAL_OPT=--phred64-quals
+	}
+
+	SP_run bowtie_build_fasta_index INPUT=${REF}
+
+	#[require="${REF}" require="${REF}.1.ebwt" input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
+	bowtie ${REF} --best --strata -m 1 ${_BOWTIE_ALN_QUAL_OPT} --sam ${BOWTIE_OPTS} \
+		-1 <(${_SEQPIPE_ROOT}/uxcat ${INPUT_1}) \
+		-2 <(${_SEQPIPE_ROOT}/uxcat ${INPUT_2}) \
+		| samtools view -Sb - > ${OUTPUT}
+}
+
+function bowtie_map_se
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.bam
+
+	SP_set BOWTIE_OPTS=
+	SP_set _BOWTIE_ALN_QUAL_OPT=
+	#[require="${INPUT}"]
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT} | sed -n '4001q;4~4p' \
+		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
+	{
+		SP_set _BOWTIE_ALN_QUAL_OPT=--phred64-quals
+	}
+
+	SP_run bowtie_build_fasta_index INPUT=${REF}
+
+	#[require="${REF}" require="${REF}.1.ebwt" input="${INPUT}" output="${OUTPUT}"]
+	bowtie ${REF} --best --strata -m 1 ${_BOWTIE_ALN_QUAL_OPT} --sam ${BOWTIE_OPTS} \
+		<(${_SEQPIPE_ROOT}/uxcat ${INPUT}) \
+		| samtools view -Sb - > ${OUTPUT}
+}
+
+function bowtie2_map_pe
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.bam
+
+	SP_set BOWTIE2_OPTS=
+	SP_set _BOWTIE2_ALN_QUAL_OPT=
+	#[require="${INPUT_1}"]
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT_1} | sed -n '4001q;4~4p' \
+		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
+	{
+		SP_set _BOWTIE2_ALN_QUAL_OPT=--phred64
+	}
+
+	SP_run bowtie2_build_fasta_index INPUT=${REF}
+
+	#[require="${REF}" require="${REF}.1.ebwt" input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
+	bowtie2 ${REF} ${_BOWTIE2_ALN_QUAL_OPT} ${BOWTIE2_OPTS} \
+		-1 <(${_SEQPIPE_ROOT}/uxcat ${INPUT_1}) \
+		-2 <(${_SEQPIPE_ROOT}/uxcat ${INPUT_2}) \
+		| samtools view -Sb - > ${OUTPUT}
+}
+
+function bowtie2_map_se
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.bam
+
+	SP_set BOWTIE2_OPTS=
+	SP_set _BOWTIE2_ALN_QUAL_OPT=
+	#[require="${INPUT}"]
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT} | sed -n '4001q;4~4p' \
+		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
+	{
+		SP_set _BOWTIE2_ALN_QUAL_OPT=--phred64
+	}
+
+	SP_run bowtie2_build_fasta_index INPUT=${REF}
+
+	#[require="${REF}" require="${REF}.1.ebwt" input="${INPUT}" output="${OUTPUT}"]
+	bowtie2 ${REF} ${_BOWTIE2_ALN_QUAL_OPT} ${BOWTIE2_OPTS} \
+		<(${_SEQPIPE_ROOT}/uxcat ${INPUT}) \
+		| samtools view -Sb - > ${OUTPUT}
 }
 
 ###########################################################################
