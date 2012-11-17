@@ -1,3 +1,8 @@
+2012-11-17  v0.4.3 (r214)
+* Fix bug and improve variable and file dependency checking.
+* Remove quiet mode and verbose mode.
+* Change '-e' shell command from 'qsub' to 'qsub_sync' automatically.
+
 2012-11-12  v0.4.2 (r201)
 * Support 'SP_else_if'.
 
