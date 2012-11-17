@@ -1,43 +1,11 @@
 #!/bin/bash
 
-function foo_child
+function test_all
 {
-	#[output="${A}"]
-	touch ${A}
-	echo "a=\"abc"
-}
-
-function foo_parent
-{
-	SP_set C=${D}${E}
-	echo ${C}
-	SP_run foo_child A=${B}
-}
-
-function foo_failed_in_parallel_1
-{{
-	true
-	false
-}}
-
-function foo_failed_in_parallel_2
-{{
-	sleep 1; false
-	{
-		echo a
-		sleep 2
-		echo b
-	}
-	SP_for _X=1 2
-	{
-		echo ${_X}; sleep 2
-	}
-}}
-
-function test_failed_in_parallel
-{
-	${_SEQPIPE_ROOT}/${_SEQPIPE} -m test.pipe foo_failed_in_parallel_1; [ $? -ne 0 ]
-	${_SEQPIPE_ROOT}/${_SEQPIPE} -m test.pipe foo_failed_in_parallel_2; [ $? -ne 0 ]
+	SP_run test_inline
+	SP_run test_failed_in_parallel
+	SP_run test_demo
+	SP_run test_bioseq
 }
 
 function test_inline
@@ -46,61 +14,73 @@ function test_inline
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -e false; [ $? -ne 0 ]
 }
 
-function test
+function test_failed_in_parallel
 {
-	SP_run test_inline
-	SP_run test_failed_in_parallel
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_failed_in_parallel_1; [ $? -ne 0 ]
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_failed_in_parallel_2; [ $? -ne 0 ]
 }
 
 function test_demo
 {
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 0
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 1
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 2
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 3
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 4
-	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 1
-	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 0
+
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_set
-	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if
-	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if COND=false
+
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if_1
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if_1 COND=true
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if_1 COND=false
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if_2
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if_2 COND=true
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if_2 COND=false
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if_3
+	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_if_4
+
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_else_if
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_else_if C2=true
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_else_if C3=true
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_else_if C1=true C2=true
+
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_for
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_for_parallel
+
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_SP_while
 }
 
 function test_bioseq
 {
-	SP_run fastqc_check NAME=r_1
-	SP_run fastqc_check NAME=r_2
+	${_SEQPIPE_ROOT}/${_SEQPIPE} fastqc_check NAME=r_1
+	${_SEQPIPE_ROOT}/${_SEQPIPE} fastqc_check NAME=r_2
 
-	SP_run convert_fastq_33to64 NAME=r_1
-	SP_run convert_fastq_33to64 NAME=r_2
-	SP_run convert_fastq_64to33 NAME=r_1 INPUT_EXT_NAME=.q64.fq.gz
-	SP_run convert_fastq_64to33 NAME=r_2 INPUT_EXT_NAME=.q64.fq.gz
-	SP_run trim_fastq NAME=r_1 START_POS=11 END_POS=70
+	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_33to64 NAME=r_1
+	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_33to64 NAME=r_2
+	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_64to33 NAME=r_1 INPUT_EXT_NAME=.q64.fq.gz
+	${_SEQPIPE_ROOT}/${_SEQPIPE} convert_fastq_64to33 NAME=r_2 INPUT_EXT_NAME=.q64.fq.gz
+	${_SEQPIPE_ROOT}/${_SEQPIPE} trim_fastq NAME=r_1 START_POS=11 END_POS=70
 
-	SP_run bwa_map_pe REF=MT.fa NAME=r
-	SP_run sort_bam NAME=r
-	SP_run reorder_bam REF=MT.fa NAME=r.sorted
-	SP_run mkdup_bam NAME=r.sorted
-	SP_run rmdup_bam NAME=r.sorted
-	SP_run flagstat_bam REF=MT.fa NAME=r.sorted.mkdup
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_pe REF=MT.fa NAME=r
+	${_SEQPIPE_ROOT}/${_SEQPIPE} sort_bam NAME=r
+	${_SEQPIPE_ROOT}/${_SEQPIPE} reorder_bam REF=MT.fa NAME=r.sorted
+	${_SEQPIPE_ROOT}/${_SEQPIPE} mkdup_bam NAME=r.sorted
+	${_SEQPIPE_ROOT}/${_SEQPIPE} rmdup_bam NAME=r.sorted
+	${_SEQPIPE_ROOT}/${_SEQPIPE} flagstat_bam REF=MT.fa NAME=r.sorted.mkdup
 
-	SP_run bwa_map_se REF=MT.fa NAME=r_1
-	SP_run bwa_map_se REF=MT.fa NAME=r_2
-	SP_run merge_bam NAME_1=r_1 NAME_2=r_2 NAME=s
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_se REF=MT.fa NAME=r_1
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_se REF=MT.fa NAME=r_2
+	${_SEQPIPE_ROOT}/${_SEQPIPE} merge_bam NAME_1=r_1 NAME_2=r_2 NAME=s
 
-	SP_run bamqc_check NAME=r.sorted
-	SP_run bamqc_check NAME=s.sorted
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bamqc_check NAME=r.sorted
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bamqc_check NAME=s.sorted
 
-	SP_run gatk_realign_bam REF=MT.fa NAME=r.sorted GATK_VCF_DBSNP=dbsnp_135.b37.MT.vcf
-	SP_run fixmate_bam NAME=r.sorted.realign
-	SP_run gatk_recal_bam REF=MT.fa NAME=r.sorted.realign.fixmate GATK_VCF_DBSNP=dbsnp_135.b37.MT.vcf
-	SP_run gatk_reduce_bam REF=MT.fa NAME=r.sorted.realign.fixmate.recal
-	SP_run gatk_genotype REF=MT.fa NAME=r.sorted.realign.fixmate.recal.reduced GATK_VCF_DBSNP=dbsnp_135.b37.MT.vcf
+	${_SEQPIPE_ROOT}/${_SEQPIPE} gatk_realign_bam REF=MT.fa NAME=r.sorted GATK_VCF_DBSNP=dbsnp_135.b37.MT.vcf
+	${_SEQPIPE_ROOT}/${_SEQPIPE} fixmate_bam NAME=r.sorted.realign
+	${_SEQPIPE_ROOT}/${_SEQPIPE} gatk_recal_bam REF=MT.fa NAME=r.sorted.realign.fixmate GATK_VCF_DBSNP=dbsnp_135.b37.MT.vcf
+	${_SEQPIPE_ROOT}/${_SEQPIPE} gatk_reduce_bam REF=MT.fa NAME=r.sorted.realign.fixmate.recal
+	${_SEQPIPE_ROOT}/${_SEQPIPE} gatk_genotype REF=MT.fa NAME=r.sorted.realign.fixmate.recal.reduced GATK_VCF_DBSNP=dbsnp_135.b37.MT.vcf
 
-	SP_run pindel_call_structure_variants REF=MT.fa NAME=r.sorted INSERT_SIZE=200
+	${_SEQPIPE_ROOT}/${_SEQPIPE} pindel_call_structure_variants REF=MT.fa NAME=r.sorted INSERT_SIZE=200
 }
