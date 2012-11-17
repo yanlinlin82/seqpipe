@@ -1,4 +1,6 @@
+#summary Basic information about SeqPipe project.
 #labels Phase-Design
+
 =Introduction=
 
 SeqPipe is a sequencing data analsysis pipeline framework, which should help bioinformaticians and biology researchers to do data analysis and record all related information.
