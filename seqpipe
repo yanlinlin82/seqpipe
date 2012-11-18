@@ -353,6 +353,27 @@ sub sort_vars
 	return @vars;
 }
 
+sub check_vars_info
+{
+	my ($opt_vars_ref, $req_vars_ref, $args_ref, $proc_vars_ref, $global_vars_ref, @texts) = @_;
+
+	while (@texts) {
+		my $text = shift @texts;
+		while ($text =~ /\${(\w+)}/g) {
+			next if exists $opt_vars_ref->{$1} or exists $req_vars_ref->{$1};
+			if (exists $args_ref->{$1}) {
+				push @texts, $opt_vars_ref->{$1} = $args_ref->{$1};
+			} elsif (exists $proc_vars_ref->{$1}) {
+				push @texts, $opt_vars_ref->{$1} = $proc_vars_ref->{$1};
+			} elsif (exists $global_vars_ref->{$1}) {
+				push @texts, $opt_vars_ref->{$1} = $global_vars_ref->{$1};
+			} else {
+				$req_vars_ref->{$1} = '';
+			}
+		}
+	}
+}
+
 sub eval_text
 {
 	my ($text, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
@@ -362,7 +383,18 @@ sub eval_text
 
 	$text =~ s/^"(.*?)"$/$1/;  # Remove quot marks.
 
-	my %vars = get_vars $args_ref, $proc_vars_ref, $global_vars_ref;
+	my %opt_vars = ();
+	my %req_vars = ();
+	check_vars_info(\%opt_vars, \%req_vars, $args_ref, $proc_vars_ref, $global_vars_ref, $text);
+
+	my %vars = ();
+	foreach my $name (keys %opt_vars) {
+		$vars{$name} = $opt_vars{$name};
+	}
+	foreach my $name (keys %req_vars) {
+		$vars{$name} = "\${$name}";
+	}
+
 	my %deps = get_vars_dep %vars;
 	my @order = sort_vars(\%vars, \%deps);
 
@@ -709,6 +741,7 @@ sub parse_proc
 	my %requires = ();
 	my %inputs = ();
 	my %outputs = ();
+	my $met_proc = 0;
 
 	while (@{$lines_ref}) {
 		my $l = shift @{$lines_ref};
@@ -769,6 +802,7 @@ sub parse_proc
 					die "ERROR: Invalid procedure declaration! Line '{' or '{{' expected in $l->{info}.\n";
 				}
 			}
+			$met_proc = 1;
 
 			my %proc_info = create_proc_info();
 			push @blocks, parse_block($proc_name, $blocking, $file, $lines_ref, \%proc_info);
@@ -793,6 +827,11 @@ sub parse_proc
 			%outputs = ();
 
 		} elsif ($l->{text} =~ /^\s*(\w+)=(.*)$/) {
+			if ($met_proc) {
+				print "WARNING: Global variables should be defined before procedures in $l->{info}.\n" if not $obsolete_warned;
+				$obsolete_warned = 1;
+			}
+
 			my $name = $1;
 			my $value = remove_comment($2);
 			die "ERROR: Bad declaration format of global variable '$name' in $l->{info}.\n" if not defined $value;
@@ -819,6 +858,16 @@ sub load_modules
 		while (@lines) {
 			parse_proc($file, \@lines, $args_ref);
 		}
+		if (open my $file_handle, "$file.conf") {
+			while (my $line = <$file_handle>) {
+				chomp $line;
+				$line = remove_comment($line);
+				if ($line =~ /^\s*(\w+)=(.*)$/) {
+					$global_vars{$file}{$1} = $2;
+				}
+			}
+			close $file_handle;
+		}
 	}
 }
 
@@ -826,7 +875,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.4.3 ($Rev$)
+Version: 0.4.4 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
@@ -844,27 +893,6 @@ Options:
 
 ';
 	exit 1;
-}
-
-sub check_vars_info
-{
-	my ($opt_vars_ref, $req_vars_ref, $args_ref, $proc_vars_ref, $global_vars_ref, @texts) = @_;
-
-	while (@texts) {
-		my $text = shift @texts;
-		while ($text =~ /\${(\w+)}/g) {
-			next if exists $opt_vars_ref->{$1} or exists $req_vars_ref->{$1};
-			if (exists $args_ref->{$1}) {
-				push @texts, $opt_vars_ref->{$1} = $args_ref->{$1};
-			} elsif (exists $proc_vars_ref->{$1}) {
-				push @texts, $opt_vars_ref->{$1} = $proc_vars_ref->{$1};
-			} elsif (exists $global_vars_ref->{$1}) {
-				push @texts, $opt_vars_ref->{$1} = $global_vars_ref->{$1};
-			} else {
-				$req_vars_ref->{$1} = '';
-			}
-		}
-	}
 }
 
 sub merge_vars_info

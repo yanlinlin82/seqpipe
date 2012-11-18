@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-#[version="0.4.2 ($Id$)"]
+#[version="0.4.3 ($Id$)"]
 #
 
 ###########################################################################
-# Load global parameters
+# Global variables
 
-SP_include config.inc
+TMP_DIR=/tmp
 
 INPUT_DIR=.
 OUTPUT_DIR=${INPUT_DIR}
@@ -51,9 +51,49 @@ INPUT_3=${INPUT_DIR}/${INPUT_FILE_3}
 INPUT_4=${INPUT_DIR}/${INPUT_FILE_4}
 OUTPUT=${OUTPUT_DIR}/${OUTPUT_FILE}
 
+###########################################################################
+
+# Common options
 THREAD_NUM=2
 
-VALIDATION_STRINGENCY=SILENT
+# Java options
+JAVA_OPTS=                              # For user configure (in command line)
+JAVA_MAX_MEM_SIZE=2G                    # For Java's -Xmx option
+JAVA_GC_THREAD_NUM=2                    # For Java's -XX:ParallelGCThreads option
+_JAVA_OPTS= ${JAVA_OPTS} -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} -Djava.io.tmpdir=${TMP_DIR}
+                                        # For system configure (in .conf file)
+
+# Picard options
+PICARD_OPTS=                            # For user (command line)
+PICARD_ROOT=/tools/picard-tools         # Path of picard tools
+MAX_RECORDS_IN_RAM=500000               # For enhance performance of picard
+VALIDATION_STRINGENCY=SILENT            # Default validation stringency
+_PICARD_OPTS=${PICARD_OPTS} MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM}
+                                        # For system configure (in .conf file)
+
+# GATK options
+GATK_OPTS=                                     # For user configure (in command line)
+GATK_ROOT=/tools/gatk                          # Path of GATK
+GATK_BUNDLE_ROOT=/data/gatk_bundle/1.5/b37     # Path of GATK bundle
+_GATK_OPTS=${GATK_OPTS}                        # For system configure (in .conf file)
+
+# GATK bundle:
+#  Tool                  dbSNP  dbSNP  Mills   1KG     HapMap  Omni
+#                         129    >132  Indels  Indels
+# RealignerTargetCreator                X      X
+# IndelRealigner                        X      X
+# BaseRecalibrator               X      X      X
+# (UnifiedGenotyper/
+#   HaplotypeCaller)             X
+# VariantRecalibrator            X      X                X       X
+# VariantEval             X
+
+GATK_VCF_DBSNP129=${GATK_BUNDLE_ROOT}/dbsnp_135.b37.excluding_sites_after_129.vcf
+GATK_VCF_DBSNP=${GATK_BUNDLE_ROOT}/dbsnp_135.b37.vcf
+GATK_VCF_MILLS=${GATK_BUNDLE_ROOT}/Mills_and_1000G_gold_standard.indels.b37.vcf
+GATK_VCF_1KG=${GATK_BUNDLE_ROOT}/1000G_phase1.indels.b37.vcf
+GATK_VCF_HAPMAP=${GATK_BUNDLE_ROOT}/hapmap_3.3.b37.vcf
+GATK_VCF_OMNI=${GATK_BUNDLE_ROOT}/1000G_omni2.5.b37.vcf
 
 ###########################################################################
 
@@ -76,19 +116,30 @@ function _bioseq_sysinfo
 	echo -n 'pindel   : '; pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
 }
 
-function bioseq_system_check
+function bioseq_syscheck
 {
 	which fastqc
 	which fastx_trimmer
+
 	which bwa
+	which bowtie
+	which bowtie2
+
 	which qualimap
 	which samtools
 	which bcftools
+
 	which java
 	which pindel
+	which embossversion
+
 	ls ${PICARD_ROOT}/ViewSam.jar
 	ls ${GATK_ROOT}/GenomeAnalysisTK.jar
+
+	ls ${GATK_VCF_DBSNP129}
 	ls ${GATK_VCF_DBSNP}
+	ls ${GATK_VCF_MILLS}
+	ls ${GATK_VCF_1KG}
 	ls ${GATK_VCF_HAPMAP}
 	ls ${GATK_VCF_OMNI}
 }
@@ -756,7 +807,8 @@ function gatk_reduce_bam
 
 	SP_run build_fasta_dict INPUT=${REF}
 
-	#[require="${REF}" input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai"]
+	#[require="${REF}" require="${REF}.dict"]
+	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai"]
 	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T ReduceReads -R ${REF} -I ${INPUT} -o ${OUTPUT} \
 	&& \
@@ -775,18 +827,21 @@ function gatk_realign_bam
 
 	SP_run build_fasta_dict INPUT=${REF}
 
-	#[require="${REF}" require="${GATK_VCF_DBSNP}"]
+	#[require="${REF}" require="${REF}.dict" require="${GATK_VCF_MILLS}" require="${GATK_VCF_1KG}"]
 	#[input="${INPUT}" input="${INPUT}.bai" output="${INTERVALS}"]
 	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T RealignerTargetCreator --num_threads ${THREAD_NUM} \
-		-R ${REF} -known ${GATK_VCF_DBSNP} -I ${INPUT} -o ${INTERVALS}
+		-known ${GATK_VCF_MILLS} -known ${GATK_VCF_1KG} \
+		-R ${REF} -I ${INPUT} -o ${INTERVALS}
 
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[require="${REF}" input="${INTERVALS}"]
-	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai"]
+	#[require="${REF}" require="${REF}.dict" require="${GATK_VCF_MILLS}" require="${GATK_VCF_1KG}"]
+	#[input="${INPUT}" input="${INPUT}.bai" input="${INTERVALS}"]
+	#[output="${OUTPUT}" output="${OUTPUT}.bai"]
 	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T IndelRealigner \
+		-known ${GATK_VCF_MILLS} -known ${GATK_VCF_1KG} \
 		-R ${REF} -targetIntervals ${INTERVALS} -I ${INPUT} -o ${OUTPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
@@ -804,19 +859,20 @@ function gatk_recal_bam
 
 	SP_run build_fasta_dict INPUT=${REF}
 
-	#[require="${REF}" require="${GATK_VCF_DBSNP}"]
+	#[require="${REF}" require="${REF}.dict" require="${GATK_VCF_DBSNP}" require="${GATK_VCF_MILLS}" require="${GATK_VCF_1KG}"]
 	#[input="${INPUT}" input="${INPUT}.bai" output="${RECAL}"]
 	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T BaseRecalibrator \
-		-R ${REF} -knownSites ${GATK_VCF_DBSNP} -I ${INPUT} -o ${RECAL}
+		-knownSites ${GATK_VCF_DBSNP} -knownSites ${GATK_VCF_MILLS} -knownSites ${GATK_VCF_1KG} \
+		-R ${REF} -I ${INPUT} -o ${RECAL}
 
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[require="${REF}" require="${GATK_VCF_DBSNP}"]
+	#[require="${REF}" require="${REF}.dict"]
 	#[input="${INPUT}" input="${INPUT}.bai" input="${RECAL}" output="${OUTPUT}" output="${OUTPUT}.bai"]
 	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T PrintReads \
-		-R ${REF} -I ${INPUT} -BQSR ${OUTPUT_DIR}/${RECAL} -o ${OUTPUT} \
+		-R ${REF} -I ${INPUT} -BQSR ${RECAL} -o ${OUTPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
 }
@@ -828,16 +884,37 @@ function gatk_genotype
 	SP_set OUTPUT_EXT_NAME=.gatk.vcf
 
 	SP_set STAND_CALL_CONF=30
-	SP_set STAND_EMIT_CONF=10
+	SP_set STAND_EMIT_CONF=30
 	SP_set MIN_BASE_QUALITY_SCORE=20
 
 	SP_run build_fasta_dict INPUT=${REF}
 
-	#[require="${REF}" require="${GATK_VCF_DBSNP}"]
+	#[require="${REF}" require="${REF}.dict" require="${GATK_VCF_DBSNP}"]
 	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}"]
 	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
 		-T UnifiedGenotyper --num_threads ${THREAD_NUM} \
 		-glm BOTH --min_base_quality_score ${MIN_BASE_QUALITY_SCORE} \
+		-stand_call_conf ${STAND_CALL_CONF} \
+		-stand_emit_conf ${STAND_EMIT_CONF} \
+		--dbsnp ${GATK_VCF_DBSNP} \
+		-R ${REF} -I ${INPUT} -o ${OUTPUT}
+}
+
+function gatk_haplotype
+{
+	SP_set EXT_PREFIX=.sorted
+	SP_set INPUT_EXT_NAME=${EXT_PREFIX}.bam
+	SP_set OUTPUT_EXT_NAME=.gatk.vcf
+
+	SP_set STAND_CALL_CONF=30
+	SP_set STAND_EMIT_CONF=30
+
+	SP_run build_fasta_dict INPUT=${REF}
+
+	#[require="${REF}" require="${REF}.dict" require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T HaplotypeCaller --num_threads ${THREAD_NUM} \
 		-stand_call_conf ${STAND_CALL_CONF} \
 		-stand_emit_conf ${STAND_EMIT_CONF} \
 		--dbsnp ${GATK_VCF_DBSNP} \
@@ -849,7 +926,7 @@ function gatk_call_variants
 	SP_set EXT_PREFIX=.sorted.mkdup
 
 	SP_run gatk_realign_bam \
-		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
+		REF=${REF} GATK_VCF_MILLS=${GATK_VCF_MILLS} GATK_VCF_1KG=${GATK_VCF_1KG} \
 		INPUT_DIR=${INPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME} \
 		EXT_PREFIX=${EXT_PREFIX}
 
@@ -858,7 +935,7 @@ function gatk_call_variants
 		EXT_PREFIX=${EXT_PREFIX}.realign
 
 	SP_run gatk_recal_bam \
-		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
+		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} GATK_VCF_MILLS=${GATK_VCF_MILLS} GATK_VCF_1KG=${GATK_VCF_1KG} \
 		INPUT_DIR=${OUTPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME} \
 		EXT_PREFIX=${EXT_PREFIX}.realign.fixmate
 
@@ -1014,7 +1091,8 @@ function DNAseq_analysis
 			INPUT_DIR=${OUTPUT_DIR} REF=${REF} NAME=${NAME}
 
 		SP_run gatk_call_variants \
-			INPUT_DIR=${OUTPUT_DIR} REF=${REF} NAME=${NAME} GATK_VCF_DBSNP=${GATK_VCF_DBSNP}
+			INPUT_DIR=${OUTPUT_DIR} REF=${REF} NAME=${NAME} \
+			GATK_VCF_DBSNP=${GATK_VCF_DBSNP} GATK_VCF_MILLS=${GATK_VCF_MILLS} GATK_VCF_1KG=${GATK_VCF_1KG}
 		
 		SP_run pindel_call_variants \
 			INPUT_DIR=${OUTPUT_DIR} REF=${REF} NAME=${NAME} INSERT_SIZE=${INSERT_SIZE}
