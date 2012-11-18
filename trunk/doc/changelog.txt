@@ -1,3 +1,8 @@
+2012-11-19  v0.4.4 (r222)
+* Fix bug and improve variable and file dependency checking.
+* Change configure filenames.
+* Improve bioseq pipelines.
+
 2012-11-17  v0.4.3 (r214)
 * Fix bug and improve variable and file dependency checking.
 * Remove quiet mode and verbose mode.
