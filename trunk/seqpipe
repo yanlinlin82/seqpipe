@@ -424,8 +424,9 @@ sub parse_cmd
 {
 	my ($proc_name, $command, $l, $file, $lines_ref, $commands_ref, $cmd_info_ref, $proc_info_ref) = @_;
 
-	my $cmd_ref = { command => $command, requires => $cmd_info_ref->{requires}, inputs => $cmd_info_ref->{inputs},
-		outputs => $cmd_info_ref->{outputs}, temps => $cmd_info_ref->{temps}, line_info => $l->{info} };
+	my $cmd_ref = { command => $command, requires => $cmd_info_ref->{requires},
+		inputs => $cmd_info_ref->{inputs}, outputs => $cmd_info_ref->{outputs},
+		saves => $cmd_info_ref->{saves}, temps => $cmd_info_ref->{temps}, line_info => $l->{info} };
 
 	my @argv = bash_line_decode($command);
 	if ($argv[0] =~ /^SP_/) {
@@ -539,7 +540,7 @@ sub parse_cmd
 
 sub create_cmd_info
 {
-	return ( requires => {}, inputs => {}, outputs => {}, temps => {} );
+	return ( requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} );
 }
 
 sub parse_block
@@ -578,7 +579,7 @@ sub parse_block
 			}
 			push @blocks, parse_block($proc_name, $sub_blocking, $file, $lines_ref, $proc_info_ref);
 			my $block_index = scalar @blocks - 1;
-			push @commands, { command => '', block => $block_index, requires => {}, inputs => {}, outputs => {}, temps => {} };
+			push @commands, { command => '', block => $block_index, requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
 			next;
 		}
 
@@ -597,13 +598,16 @@ sub parse_block
 		if ($line =~ s/\\$//) {
 			$last_line = $line;
 		} elsif ($line =~ /^#/) {
-			if ($line =~ /^#\[(command\s+|)(require|input|output|output\.temp)=.*\]$/) {
+			if ($line =~ /^#\[/) {
+				die "ERROR: Invalid format of command attribute declaration in $l->{info}.\n"
+					if $line !~ /^#\[(command\s+|)([\w\.]+)="[^"]*"(\s+([\w\.]+)="[^"]*")*\]$/;
+
 				if ($1 =~ /^command\s+$/ and not $obsolete_warned) {
 					print "WARNING: Obsolete format of command attribute in $l->{info}.\n";
 					print "   NOTE: Please use '#[attr=\"...\"] instead of '#[command attr=\"...\" ...]'.\n";
 					$obsolete_warned = 1;
 				}
-				while ($line =~ /(require|input|output|output\.temp)="(.*?)"/g) {
+				while ($line =~ /([\w\.]+)="(.*?)"/g) {
 					if ($1 eq 'require') {
 						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
 							die "ERROR: Duplicated attribute for require file '$2'!";
@@ -614,12 +618,15 @@ sub parse_block
 							die "ERROR: Duplicated attribute for input file '$2'!";
 						}
 						$cmd_info{inputs}{$2} = 1;
-					} else {
+					} elsif ($1 eq 'output' or $1 eq 'output.temp' or $1 eq 'output.save') {
 						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
 							die "ERROR: Duplicated attribute for output file '$2'!";
 						}
 						$cmd_info{outputs}{$2} = 1;
+						$cmd_info{saves}{$2} = 1 if $1 eq 'output.save';
 						$cmd_info{temps}{$2} = 1 if $1 eq 'output.temp';
+					} else {
+						die "ERROR: Unknown command attribute '$1' in $l->{info}.\n";
 					}
 				}
 			}
@@ -627,6 +634,11 @@ sub parse_block
 			my $cmd_ref = parse_cmd($proc_name, $line, $l, $file, $lines_ref, \@commands, \%cmd_info, $proc_info_ref);
 
 			push @commands, $cmd_ref;
+			if (keys %{$cmd_info{saves}}) {
+				foreach my $file (keys %{$cmd_info{saves}}) {
+					$proc_info_ref->{saves}{$file} = '';
+				}
+			}
 			if (keys %{$cmd_info{temps}}) {
 				foreach my $file (keys %{$cmd_info{temps}}) {
 					$proc_info_ref->{temps}{$file} = '';
@@ -688,7 +700,7 @@ sub load_lines
 
 sub create_proc_info
 {
-	return ( requires_of => {}, inputs_of => {}, requires => {}, inputs => {}, outputs => {}, temps => {} );
+	return ( requires_of => {}, inputs_of => {}, requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} );
 }
 
 sub parse_proc
@@ -701,38 +713,41 @@ sub parse_proc
 	while (@{$lines_ref}) {
 		my $l = shift @{$lines_ref};
 
-		if ($l->{text} =~ /^#\[/) {
-			next if $l->{text} =~ /^#\[(seqpipe|version)/;
-			if ($l->{text} !~ /^#\[(procedure\s+|)(type|require|input|output)="(.*?)"+\s*\]$/) {
-				die "ERROR: Bad format of procedure attribute in $l->{info}.\n";
-			}
-			if ($1 =~ /^procedure\s+$/ and not $obsolete_warned) {
-				print "WARNING: Obsolete format of procedure attribute in $l->{info}.\n";
-				print "   NOTE: Please use '#[attr=\"...\"] instead of '#[procedure attr=\"...\" ...]'.\n";
-				$obsolete_warned = 1;
-			}
-			if ($2 eq 'type' and not $obsolete_warned) {
-				print "WARNING: Obsolete procedure attribute 'type' in $l->{info}.\n";
-				$obsolete_warned = 1;
-			}
-			while ($l->{text} =~ /(require|input|output)="(.*?)"/g) {
-				if ($1 eq 'require') {
-					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
-						die "ERROR: Duplicated attribute for require file '$2' in $l->{info}.\n";
-					}
-					$requires{$2} = 1;
-				} elsif ($1 eq 'input') {
-					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
-						die "ERROR: Duplicated attribute for input file '$2' in $l->{info}.\n";
-					}
-					$inputs{$2} = 1;
-				} elsif ($1 eq 'output') {
-					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
-						die "ERROR: Duplicated attribute for output file '$2' in $l->{info}.\n";
-					}
-					$outputs{$2} = 1;
+		if ($l->{text} =~ /^\s*#/) {
+			if ($l->{text} =~ /^\s*#\[/) {
+				next if $l->{text} =~ /^#\[(seqpipe|version)/;
+				die "ERROR: Invalid format of procedure attribute declaration in $l->{info}.\n"
+					if $l->{text} !~ /^#\[(procedure\s+|)([\w\.]+)="[^"]*"(\s+([\w\.]+)="[^"]*")*\]$/;
+
+				if ($1 =~ /^procedure\s+$/ and not $obsolete_warned) {
+					print "WARNING: Obsolete format of procedure attribute in $l->{info}.\n";
+					print "   NOTE: Please use '#[attr=\"...\"] instead of '#[procedure attr=\"...\" ...]'.\n";
+					$obsolete_warned = 1;
 				}
-				next;
+				while ($l->{text} =~ /([\w\.]+)="[^"]*"/g) {
+					if ($1 eq 'type') {
+						print "WARNING: Obsolete procedure attribute 'type' in $l->{info}.\n" if not $obsolete_warned;
+						$obsolete_warned = 1;
+					} elsif ($1 eq 'require') {
+						if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
+							die "ERROR: Duplicated attribute for require file '$2' in $l->{info}.\n";
+						}
+						$requires{$2} = 1;
+					} elsif ($1 eq 'input') {
+						if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
+							die "ERROR: Duplicated attribute for input file '$2' in $l->{info}.\n";
+						}
+						$inputs{$2} = 1;
+					} elsif ($1 eq 'output') {
+						if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
+							die "ERROR: Duplicated attribute for output file '$2' in $l->{info}.\n";
+						}
+						$outputs{$2} = 1;
+					} else {
+						die "ERROR: Unknown procedure attribute '$1' in $l->{info}.\n";
+					}
+					next;
+				}
 			}
 		} elsif ($l->{text} =~ /^\s*function\s+/) {
 			die 'ERROR: Invalid procedure declaration!' if $l->{text} !~ /^function\s+(\w+)\s*(\{|\{\{|)\s*$/;
@@ -852,7 +867,7 @@ sub check_vars_info
 	}
 }
 
-sub merge_info_ref
+sub merge_vars_info
 {
 	my ($opt_vars_ref, $req_vars_ref, $sub_info_ref) = @_;
 
@@ -868,15 +883,22 @@ sub merge_info_ref
 
 sub add_dep_info
 {
-	my ($requires_of_ref, $inputs_of_ref, $outputs_ref, $temps_ref,
+	my ($requires_of_ref, $inputs_of_ref, $outputs_ref, $saves_ref, $temps_ref,
 		$args_ref, $proc_vars_ref, $global_vars_ref,
-		$cmd_requires_ref, $cmd_inputs_ref, $cmd_outputs_ref, $cmd_temps_ref) = @_;
+		$cmd_requires_ref, $cmd_inputs_ref, $cmd_outputs_ref, $cmd_saves_ref, $cmd_temps_ref) = @_;
 
 	foreach my $output (keys %{$cmd_outputs_ref}) {
 		my $output_result = eval_text($output, $args_ref, $proc_vars_ref, $global_vars_ref);
 		next if $output_result eq '';
 		next if exists $outputs_ref->{$output_result};
 		$outputs_ref->{$output_result} = $output;
+	}
+
+	foreach my $save (keys %{$cmd_saves_ref}) {
+		my $save_result = eval_text($save, $args_ref, $proc_vars_ref, $global_vars_ref);
+		next if $save_result eq '';
+		next if exists $saves_ref->{$save_result};
+		$saves_ref->{$save_result} = $save;
 	}
 
 	foreach my $temp (keys %{$cmd_temps_ref}) {
@@ -938,7 +960,7 @@ sub trace_dep
 				}
 			}
 			if (%items) {
-				trace_dep(\%items, $info_ref, 0);
+				trace_dep(\%items, $info_ref, $is_require);
 			}
 		}
 	}
@@ -991,6 +1013,7 @@ sub transform_info
 	transform_files($info_ref->{requires}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 	transform_files($info_ref->{inputs}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 	transform_files($info_ref->{outputs}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
+	transform_files($info_ref->{saves}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 	transform_files($info_ref->{temps}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 
 	transform_deps($info_ref->{requires_of}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
@@ -1008,6 +1031,7 @@ sub check_block
 	my %requires = ();
 	my %inputs = ();
 	my %outputs = ();
+	my %saves = ();
 	my %temps = ();
 
 	my %proc_vars = %{$proc_vars_ref};
@@ -1025,7 +1049,7 @@ sub check_block
 			} elsif ($cmd_ref->{command} eq 'SP_run') {
 				die "ERROR: Unknown procedure '$cmd_ref->{proc_name}' for SP_run in $cmd_ref->{line_info}.\n" if not exists $proc_list{$cmd_ref->{proc_name}};
 
-				my @items = (values %{$cmd_ref->{options}}, keys %{$cmd_ref->{requires}}, keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}}, keys %{$cmd_ref->{temps}});
+				my @items = (values %{$cmd_ref->{options}}, keys %{$cmd_ref->{requires}}, keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}}, keys %{$cmd_ref->{saves}}, keys %{$cmd_ref->{temps}});
 				check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, @items);
 				
 				my %args = ();
@@ -1038,6 +1062,37 @@ sub check_block
 				}
 				transform_info $info_ref, $cmd_ref->{options}, $args_ref, \%proc_vars, $global_vars_ref;
 				
+				foreach my $file (keys %{$cmd_ref->{requires}}) {
+					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
+					if (not exists $info_ref->{requires}{$file_result}) {
+						$info_ref->{requires}{$file_result} = $file;
+					}
+				}
+				foreach my $file (keys %{$cmd_ref->{inputs}}) {
+					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
+					if (not exists $info_ref->{inputs}{$file_result}) {
+						$info_ref->{inputs}{$file_result} = $file;
+					}
+				}
+				foreach my $file (keys %{$cmd_ref->{outputs}}) {
+					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
+					if (not exists $info_ref->{outputs}{$file_result}) {
+						$info_ref->{outputs}{$file_result} = $file;
+					}
+				}
+				foreach my $file (keys %{$cmd_ref->{saves}}) {
+					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
+					if (not exists $info_ref->{saves}{$file_result}) {
+						$info_ref->{saves}{$file_result} = $file;
+					}
+				}
+				foreach my $file (keys %{$cmd_ref->{temps}}) {
+					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
+					if (not exists $info_ref->{temps}{$file_result}) {
+						$info_ref->{temps}{$file_result} = $file;
+					}
+				}
+
 				foreach my $output (keys %{$info_ref->{outputs}}) {
 					$outputs{$output} = $info_ref->{outputs}{$output};
 
@@ -1051,6 +1106,13 @@ sub check_block
 					}
 				}
 
+				foreach my $save (keys %{$info_ref->{saves}}) {
+					$saves{$save} = $info_ref->{saves}{$save};
+				}
+				foreach my $temp (keys %{$info_ref->{temps}}) {
+					$temps{$temp} = $info_ref->{temps}{$temp};
+				}
+
 			} elsif ($cmd_ref->{command} eq 'SP_if') {
 				foreach my $cond_ref (@{$cmd_ref->{condition}}) {
 					my @items = ();
@@ -1059,28 +1121,28 @@ sub check_block
 					check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, @items);
 
 					my $info_ref = check_block($blocks[$cond_ref->{block}], $args_ref, \%proc_vars);
-					merge_info_ref \%opt_vars, \%req_vars, $info_ref;
+					merge_vars_info \%opt_vars, \%req_vars, $info_ref;
 				}
 				if (exists $cmd_ref->{else_block}) {
 					my $info_ref = check_block($blocks[$cmd_ref->{else_block}], $args_ref, \%proc_vars);
-					merge_info_ref \%opt_vars, \%req_vars, $info_ref;
+					merge_vars_info \%opt_vars, \%req_vars, $info_ref;
 				}
 			} elsif ($cmd_ref->{command} eq 'SP_for' or $cmd_ref->{command} eq 'SP_for_parallel') {
 				$proc_vars{$cmd_ref->{variable}} = '';
 				check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, $cmd_ref->{text});
 
 				my $info_ref = check_block($blocks[$cmd_ref->{block}], $args_ref, \%proc_vars);
-				merge_info_ref \%opt_vars, \%req_vars, $info_ref;
+				merge_vars_info \%opt_vars, \%req_vars, $info_ref;
 			} elsif ($cmd_ref->{command} eq 'SP_while') {
 				check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, $cmd_ref->{bash});
 
 				my $info_ref = check_block($blocks[$cmd_ref->{block}], $args_ref, \%proc_vars);
-				merge_info_ref \%opt_vars, \%req_vars, $info_ref;
+				merge_vars_info \%opt_vars, \%req_vars, $info_ref;
 			}
 
 		} elsif ($cmd_ref->{command} eq '') {
 			my $info_ref = check_block($blocks[$cmd_ref->{block}], $args_ref, \%proc_vars);
-			merge_info_ref \%opt_vars, \%req_vars, $info_ref;
+			merge_vars_info \%opt_vars, \%req_vars, $info_ref;
 
 			foreach my $file (keys %{$info_ref->{requires_of}}) {
 				foreach my $dep (keys %{$info_ref->{requires_of}{$file}}) {
@@ -1101,21 +1163,25 @@ sub check_block
 			foreach my $file (keys %{$info_ref->{outputs}}) {
 				$outputs{$file} = $info_ref->{outputs}{$file};
 			}
+			foreach my $file (keys %{$info_ref->{saves}}) {
+				$saves{$file} = $info_ref->{saves}{$file};
+			}
 			foreach my $file (keys %{$info_ref->{temps}}) {
 				$temps{$file} = $info_ref->{temps}{$file};
 			}
 		} else {
 			check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref,
 				$cmd_ref->{command}, keys %{$cmd_ref->{requires}},
-				keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}}, keys %{$cmd_ref->{temps}});
-			add_dep_info \%requires_of, \%inputs_of, \%outputs, \%temps,
+				keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}},
+				keys %{$cmd_ref->{saves}}, keys %{$cmd_ref->{temps}});
+			add_dep_info \%requires_of, \%inputs_of, \%outputs, \%saves, \%temps,
 				$args_ref, \%proc_vars, $global_vars_ref,
-				$cmd_ref->{requires}, $cmd_ref->{inputs}, $cmd_ref->{outputs}, $cmd_ref->{temps};
+				$cmd_ref->{requires}, $cmd_ref->{inputs}, $cmd_ref->{outputs}, $cmd_ref->{saves}, $cmd_ref->{temps};
 		}
 	}
 
 	return { opt_vars => \%opt_vars, req_vars => \%req_vars, requires_of => \%requires_of, inputs_of => \%inputs_of,
-		requires => \%requires, inputs => \%inputs, outputs => \%outputs, temps => \%temps };
+		requires => \%requires, inputs => \%inputs, outputs => \%outputs, saves => \%saves, temps => \%temps };
 }
 
 sub remove_intermediate_outputs
@@ -1134,7 +1200,9 @@ sub remove_intermediate_outputs
 
 	my $output_ref = $info_ref->{outputs};
 	foreach my $file (keys %items) {
-		delete $output_ref->{$file};
+		if (exists $output_ref->{$file}) {
+			delete $output_ref->{$file};
+		}
 	}
 }
 
@@ -1149,17 +1217,28 @@ sub check_proc
 
 	remove_intermediate_outputs $info_ref;
 	trace_dep($info_ref->{outputs}, $info_ref);
-
+	
+	foreach my $file (keys %{$info_ref->{inputs}}) {
+		if (exists $info_ref->{requires}{$file}) {
+			delete $info_ref->{requires}{$file};
+		}
+	}
 	foreach my $file (keys %{$info_ref->{requires}}) {
-		delete $info_ref->{requires}{$file}
-			if exists $info_ref->{requires_of}{$file} or exists $info_ref->{inputs_of}{$file};
+		if (exists $info_ref->{requires_of}{$file} or exists $info_ref->{inputs_of}{$file}) {
+			delete $info_ref->{requires}{$file};
+		}
 	}
 	foreach my $file (keys %{$info_ref->{inputs}}) {
-		delete $info_ref->{inputs}{$file}
-			if exists $info_ref->{requires_of}{$file} or exists $info_ref->{inputs_of}{$file};
+		if (exists $info_ref->{requires_of}{$file} or exists $info_ref->{inputs_of}{$file}) {
+			if (not exists $info_ref->{saves}{$file}) {
+				$info_ref->{temps}{$file} = $info_ref->{inputs}{$file};
+			}
+			delete $info_ref->{inputs}{$file};
+		}
 	}
-	foreach my $file (keys %{$info_ref->{inputs}}) {
-		delete $info_ref->{requires}{$file} if exists $info_ref->{requires}{$file};
+	foreach my $file (keys %{$info_ref->{saves}}) {
+		$info_ref->{outputs}{$file} = $info_ref->{saves}{$file} if not exists $info_ref->{outputs}{$file};
+		delete $info_ref->{temps}{$file} if exists $info_ref->{temps}{$file};
 	}
 	foreach my $file (keys %{$info_ref->{temps}}) {
 		delete $info_ref->{outputs}{$file} if exists $info_ref->{outputs}{$file};
@@ -1170,7 +1249,7 @@ sub check_proc
 sub show_info
 {
 	my ($proc_name, $info_ref) = @_;
-
+	
 	print "\n";
 
 	if (%{$info_ref->{req_vars}} or ($help_mode == 2 and %{$info_ref->{opt_vars}})) {
@@ -1178,14 +1257,14 @@ sub show_info
 
 		if (%{$info_ref->{req_vars}}) {
 			foreach my $name (sort keys %{$info_ref->{req_vars}}) {
-				printf "   %-30s  Required\n", $name if $name !~ /^_/;
+				printf "   %-30s  Required\n", $name;
 			}
 			print "\n";
 		}
 
 		if ($help_mode == 2 and %{$info_ref->{opt_vars}}) {
 			foreach my $name (sort keys %{$info_ref->{opt_vars}}) {
-				printf "   %-30s  Default: %s\n", $name, $info_ref->{opt_vars}{$name} if $name !~ /^_/;
+				printf "   %-30s  Default: %s\n", $name, $info_ref->{opt_vars}{$name};
 			}
 			print "\n";
 		}
@@ -1254,6 +1333,7 @@ sub show_block
 			foreach my $file (keys %{$cmd_ref->{outputs}}) {
 				print "$indent\t#[output";
 				print '.temp' if exists $cmd_ref->{temps}{$file};
+				print '.save' if exists $cmd_ref->{saves}{$file};
 				print "=\"$file\"]\n";
 			}
 		}
@@ -1721,7 +1801,7 @@ sub run_block
 	my @thread_list = ();
 	foreach my $cmd_ref (@cmds) {
 		
-		my $info_ref = { requires => {}, inputs => {}, outputs => {}, temps => {} };
+		my $info_ref = { requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
 		foreach my $require (keys %{$cmd_ref->{requires}}) {
 			my $file = eval_text($require, $args_ref, $proc_vars_ref, $global_vars_ref);
 			$info_ref->{requires}{$file} = '';
@@ -1733,6 +1813,10 @@ sub run_block
 		foreach my $output (keys %{$cmd_ref->{outputs}}) {
 			my $file = eval_text($output, $args_ref, $proc_vars_ref, $global_vars_ref);
 			$info_ref->{outputs}{$file} = '';
+		}
+		foreach my $save (keys %{$cmd_ref->{saves}}) {
+			my $file = eval_text($save, $args_ref, $proc_vars_ref, $global_vars_ref);
+			$info_ref->{saves}{$file} = '';
 		}
 		foreach my $temp (keys %{$cmd_ref->{temps}}) {
 			my $file = eval_text($temp, $args_ref, $proc_vars_ref, $global_vars_ref);
