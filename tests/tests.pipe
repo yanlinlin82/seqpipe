@@ -71,7 +71,12 @@ function test_bioseq
 
 	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_se REF=MT.fa NAME=r_1
 	${_SEQPIPE_ROOT}/${_SEQPIPE} bwa_map_se REF=MT.fa NAME=r_2
-	${_SEQPIPE_ROOT}/${_SEQPIPE} merge_bam NAME_1=r_1 NAME_2=r_2 NAME=s
+	${_SEQPIPE_ROOT}/${_SEQPIPE} merge_bam NAME=r OUTPUT_NAME=r.merged
+
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bowtie_map_pe REF=MT.fa NAME=r OUTPUT_EXT_NAME=.bowtie.bam
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bowtie2_map_pe REF=MT.fa NAME=r OUTPUT_EXT_NAME=.bowtie2.bam
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bowtie_map_se REF=MT.fa NAME=r_1 OUTPUT_EXT_NAME=.bowtie.bam
+	${_SEQPIPE_ROOT}/${_SEQPIPE} bowtie2_map_se REF=MT.fa NAME=r_2 OUTPUT_EXT_NAME=.bowtie2.bam
 
 	${_SEQPIPE_ROOT}/${_SEQPIPE} bamqc_check NAME=r.sorted
 	${_SEQPIPE_ROOT}/${_SEQPIPE} bamqc_check NAME=s.sorted
