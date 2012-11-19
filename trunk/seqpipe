@@ -341,7 +341,7 @@ sub sort_vars
 			unshift @vars, $name;
 			delete $vars{$name};
 			delete $deps_ref->{$name};
-			foreach my $dep (keys $deps_ref) {
+			foreach my $dep (keys %{$deps_ref}) {
 				my $sub_ref = $deps_ref->{$dep};
 				delete $sub_ref->{$name} if exists $sub_ref->{$name};
 				delete $deps_ref->{$dep} if not %{$sub_ref};
