@@ -133,6 +133,8 @@ function bioseq_syscheck
 	which pindel
 	which embossversion
 
+	[ -z "${REF}" ] || ls ${REF}
+
 	ls ${PICARD_ROOT}/ViewSam.jar
 	ls ${GATK_ROOT}/GenomeAnalysisTK.jar
 

@@ -1779,7 +1779,7 @@ sub run_proc
 	if (defined $ret and $ret == 0 and not $keep_temps) {
 
 		# When successeed, remove intermediate files
-		foreach my $item (keys %{$proc_ref->{temps}}) {
+		foreach my $item (keys %{$info_ref->{temps}}) {
 			my $file = eval_text($item, $args_ref, \%proc_vars, $global_vars_ref);
 			if (-e $file) {
 				log_printf "$indent($run_id) removes intemediate file '%s'\n", $file;
