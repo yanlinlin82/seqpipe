@@ -1,3 +1,7 @@
+2012-11-22  v0.4.5 (r225)
+* Use a bash wrapper to solve the forks::shared problem.
+* Fix bug about intermediate files processing.
+
 2012-11-19  v0.4.4 (r222)
 * Fix bug and improve variable and file dependency checking.
 * Change configure filenames.
