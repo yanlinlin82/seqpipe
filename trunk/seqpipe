@@ -9,4 +9,4 @@ else
 	echo "WARNING: Your Perl does not support threads! Parallel mode is disabled."
 fi
 
-perl ${PERL_OPTS} $(dirname $(realpath $0))/seqpipe.pl $@
+perl ${PERL_OPTS} $(dirname $(realpath $0))/seqpipe.pl "$@"
