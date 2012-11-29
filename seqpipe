@@ -49,6 +49,8 @@ my @blocks = ();
 # Global variables (which are defined outside procedures in .pipe files).
 my %global_vars = ();
 
+my %shell_env_vars :shared = ();
+
 # Count how many shell commands have run so far.
 my $run_counter :shared = 0;
 
@@ -876,7 +878,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.4.6 ($Rev$)
+Version: 0.4.7 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
@@ -1523,6 +1525,12 @@ sub run_shell
 		log_print "$indent($run_id) starts failed!\n";
 		return undef;
 	}
+	{
+		lock(%shell_env_vars);
+		foreach my $name (keys %shell_env_vars) {
+			print BASH "$name=$shell_env_vars{$name}\n";
+		}
+	}
 	print BASH $command_with_log;
 	close BASH;
 	if ($? == -1) {
@@ -1698,7 +1706,17 @@ sub run_cmd
 
 	} else {
 		# For single bash command
-		if ($proc_name =~ /_sysinfo$/) {
+		if ($cmd_ref->{command} =~ /^export (\w+)=(.*)$/) {
+			my $name = $1;
+			my $value = eval_text_in_shell($2, $indent, $args_ref, \%proc_vars, $global_vars_ref);
+			return undef if not defined $value;
+			log_print "$indent(*) Export shell environment variable '$name' as '$value'\n";
+			{
+				lock(%shell_env_vars);
+				$shell_env_vars{$name} = $value;
+			}
+
+		} elsif ($proc_name =~ /_sysinfo$/) {
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
 			run_shell($cmd_result, 'sysinfo', 0, '');
 		} else {
