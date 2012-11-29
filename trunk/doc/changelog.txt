@@ -1,3 +1,6 @@
+2012-11-29  v0.4.7 (r229)
+* Enable to 'export' shell environment variables in bash script.
+
 2012-11-24  v0.4.6 (r228)
 * Fix bug about pipeline script parsing.
 * Improve perl-thread supports checking.
