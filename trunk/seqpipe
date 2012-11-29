@@ -1528,7 +1528,7 @@ sub run_shell
 	{
 		lock(%shell_env_vars);
 		foreach my $name (keys %shell_env_vars) {
-			print BASH "$name=$shell_env_vars{$name}\n";
+			print BASH "export $name=$shell_env_vars{$name}\n";
 		}
 	}
 	print BASH $command_with_log;
