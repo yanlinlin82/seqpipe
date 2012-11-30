@@ -711,9 +711,14 @@ sub load_lines
 			$line_no++;
 
 			if ($line =~ /^\s*(SP_include|\.)\s+(.*)$/) { # Process file including
-				my $inc_file = eval_text($2, {}, {}, $global_vars{$file});
-				$inc_file = dirname($file) . '/' . $inc_file unless $inc_file =~ /^\//;
-				push @lines, load_lines(abs_path($inc_file), $loaded_ref, [ "$file($line_no)", @{$including_ref} ]);
+				my $inc_file = $2;
+				my $the_file = eval_text($inc_file, {}, {}, $global_vars{$file});
+				$the_file = dirname($file) . '/' . $inc_file unless $the_file =~ /^\//;
+				$the_file = abs_path($the_file);
+				if (not defined $the_file or $the_file eq '') {
+					die join("\n\t", ("ERROR: Can not find file '$inc_file', which is included by:", "$file($line_no)", @{$including_ref})) . "\nFailed";
+				}
+				push @lines, load_lines($the_file, $loaded_ref, [ "$file($line_no)", @{$including_ref} ]);
 			} else {
 				push @lines, { text => $line, info => "$file($line_no)" };
 			}
