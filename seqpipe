@@ -883,7 +883,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.4.7 ($Rev$)
+Version: 0.4.8 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012, Centre for Bioinformatics, Peking University, China
 
@@ -1266,9 +1266,6 @@ sub check_proc
 	}
 	foreach my $file (keys %{$info_ref->{inputs}}) {
 		if (exists $info_ref->{requires_of}{$file} or exists $info_ref->{inputs_of}{$file}) {
-			if (not exists $info_ref->{saves}{$file}) {
-				$info_ref->{temps}{$file} = $info_ref->{inputs}{$file};
-			}
 			delete $info_ref->{inputs}{$file};
 		}
 	}
