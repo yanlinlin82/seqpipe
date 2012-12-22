@@ -293,11 +293,11 @@ function bwa_map_pe
 	SP_run bwa_build_fasta_index INPUT=${REF}
 
 	{{
-		#[require="${REF}" require="${REF}.bwt" input="${INPUT_1}" output="${SAI_1}"]
+		#[require="${REF}" require="${REF}.bwt" input="${INPUT_1}" output.temp="${SAI_1}"]
 		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 			${REF} ${INPUT_1} -f ${SAI_1} ${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
 		
-		#[require="${REF}" require="${REF}.bwt" input="${INPUT_2}" output="${SAI_2}"]
+		#[require="${REF}" require="${REF}.bwt" input="${INPUT_2}" output.temp="${SAI_2}"]
 		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 			${REF} ${INPUT_2} -f ${SAI_2} ${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
 	}}
@@ -368,7 +368,7 @@ function bwa_map_se
 
 	SP_run bwa_build_fasta_index INPUT=${REF}
 
-	#[require="${REF}" require="${REF}.bwt" input="${INPUT}" output="${SAI}"]
+	#[require="${REF}" require="${REF}.bwt" input="${INPUT}" output.temp="${SAI}"]
 	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${REF} ${INPUT} -f ${SAI} ${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
 
