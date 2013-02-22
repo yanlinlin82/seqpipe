@@ -1,0 +1,6 @@
+#summary Frequently Asked Questions
+
+= SeqPipe FAQ =
+
+== Why SeqPipe says "WARNING: Parallel mode is disabled since your Perl does not support threads!" ==
+That means your Perl does not support threads. You can only run your pipeline in a single thread unless you re-install perl with ithread support or install 'forks' via cpan.
