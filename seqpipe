@@ -9,14 +9,22 @@ use File::Temp qw/tempfile/;
 
 ############################################################
 # Check perl multi-thread supporting
+sub has_module
+{
+	my $name = shift;
+	return 0 if not exists $INC{$name};
+	return 0 if not defined $INC{$name};
+	return 1;
+}
+
 BEGIN { eval 'use forks; use forks::shared; 1' or eval 'use threads; use threads::shared; 1' };
 my $can_use_threads = 1;
-if (not exists $INC{'forks.pm'}) {
-	if (exists $INC{'threads.pm'}) {
-		print "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
-	} else {
+if (not has_module('forks.pm')) {
+	if (not has_module('threads.pm')) {
 		$can_use_threads = 0;
 		print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
+	} else {
+		print "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
 	}
 }
 
