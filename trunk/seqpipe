@@ -2016,7 +2016,7 @@ if ($exec_cmd) {
 	die "ERROR: Can not use both '-e' and '-T'!\n" if $show_mode;
 
 	# Load inline command as a block
-	push @blocks, { commands => [ { command => $exec_cmd } ], file => DEF_PIPE, proc_name => '' };
+	push @blocks, { commands => [ { name => 'shell', command => $exec_cmd } ], file => DEF_PIPE, proc_name => '' };
 
 } elsif ($proc_name) {
 	die "ERROR: Unknown procedure '$proc_name'! Use '-l' to list available procedures.\n"
