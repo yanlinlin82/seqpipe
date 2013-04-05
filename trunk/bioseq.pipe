@@ -907,15 +907,10 @@ function gatk_call_variants
 		INPUT_DIR=${OUTPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME} \
 		EXT_PREFIX=${EXT_PREFIX}.realign.fixmate
 
-	SP_run gatk_reduce_bam \
-		REF=${REF} \
-		INPUT_DIR=${OUTPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME} \
-		EXT_PREFIX=${EXT_PREFIX}.realign.fixmate.recal
-
 	SP_run gatk_genotype \
 		REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
 		INPUT_DIR=${OUTPUT_DIR} OUTPUT_DIR=${OUTPUT_DIR} NAME=${NAME} \
-		EXT_PREFIX=${EXT_PREFIX}.realign.fixmate.recal.reduced
+		EXT_PREFIX=${EXT_PREFIX}.realign.fixmate.recal
 }
 
 function pindel_call_variants
