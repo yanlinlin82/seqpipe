@@ -455,7 +455,7 @@ sub parse_cmd
 {
 	my ($proc_name, $command, $l, $file, $lines_ref, $commands_ref, $cmd_info_ref, $proc_info_ref) = @_;
 
-	my $cmd_ref = { command => $command, requires => $cmd_info_ref->{requires},
+	my $cmd_ref = { name => $cmd_info_ref->{name}, command => $command, requires => $cmd_info_ref->{requires},
 		inputs => $cmd_info_ref->{inputs}, outputs => $cmd_info_ref->{outputs},
 		saves => $cmd_info_ref->{saves}, temps => $cmd_info_ref->{temps}, line_info => $l->{info} };
 
@@ -571,7 +571,7 @@ sub parse_cmd
 
 sub create_cmd_info
 {
-	return ( requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} );
+	return ( name => '', requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} );
 }
 
 sub parse_block
@@ -658,6 +658,11 @@ sub parse_block
 						$cmd_info{outputs}{$2} = 1;
 						$cmd_info{saves}{$2} = 1 if $1 eq 'output.save';
 						$cmd_info{temps}{$2} = 1 if $1 eq 'output.temp';
+					} elsif ($1 eq 'name') {
+						if ($cmd_info{name} ne '') {
+							die "ERROR: Duplicated attribute for command name!";
+						}
+						$cmd_info{name} = $2;
 					} else {
 						die "ERROR: Unknown command attribute '$1' in $l->{info}.\n";
 					}
@@ -1360,11 +1365,14 @@ sub show_block
 	my $block_start = 1;
 	foreach my $cmd_ref (@{$procedure{commands}}) {
 
-		if ($cmd_ref->{command} eq '{{' or %{$cmd_ref->{requires}} or %{$cmd_ref->{inputs}} or %{$cmd_ref->{outputs}}) {
+		if ($cmd_ref->{command} eq '{{' or $cmd_ref->{name} ne '' or %{$cmd_ref->{requires}} or %{$cmd_ref->{inputs}} or %{$cmd_ref->{outputs}}) {
 			if (not $block_start and $cmd_ref->{command} ne 'SP_set') {
 				print "\n";
 			}
 
+			if ($cmd_ref->{name} ne '') {
+				printf "$indent\t#[name=\"$cmd_ref->{name}\"]\n";
+			}
 			foreach my $file (keys %{$cmd_ref->{requires}}) {
 				print "$indent\t#[require=\"$file\"]\n";
 			}
@@ -1483,7 +1491,7 @@ sub save_cmd
 
 sub run_shell
 {
-	my ($command, $procedure_type, $run_id, $indent) = @_;
+	my ($command, $procedure_type, $cmd_name, $run_id, $indent) = @_;
 
 	my $command_with_log = '';
 	my $log_file = '';
@@ -1506,18 +1514,22 @@ sub run_shell
 	} else {
 		my @argv = bash_line_decode($command);
 		my $name = '';
-		while (@argv) {
-			$name = basename shift @argv;
-			$name =~ s/\W//g;
-			last if $name;
-		}
-		if ($name eq '') {
-			$name = 'shell';
+		if ($cmd_name ne '') {
+			$name = $cmd_name;
 		} else {
 			while (@argv) {
-				my $arg = shift @argv;
-				last if $arg !~ /^\w+$/;
-				$name .= "_$arg";
+				$name = basename shift @argv;
+				$name =~ s/\W//g;
+				last if $name;
+			}
+			if ($name eq '') {
+				$name = 'shell';
+			} else {
+				while (@argv) {
+					my $arg = shift @argv;
+					last if $arg !~ /^\w+$/;
+					$name .= "_$arg";
+				}
 			}
 		}
 		$name = LOG_DIR . "/$run_id." . $name;
@@ -1580,7 +1592,7 @@ sub eval_text_in_shell
 
 	my $run_id = get_new_run_id;
 	log_print "$indent($run_id) [eval] $text\n";
-	my $ret_ref = run_shell("echo $result", 'evaluator', $run_id, $indent);
+	my $ret_ref = run_shell("echo $result", 'evaluator', 'evaluator', $run_id, $indent);
 	return undef if not defined $ret_ref;
 
 	open FILE, $ret_ref->{log_file} or return '';
@@ -1631,7 +1643,7 @@ sub run_cmd
 			if (exists $cond_ref->{bash}) {
 				$cmd = "$cond_ref->{command} $cond_ref->{negative}($cond_ref->{bash})";
 				my $cmd_result = eval_text($cond_ref->{bash}, $args_ref, \%proc_vars, $global_vars_ref);
-				my $ret_ref = run_shell($cmd_result, 'checker', $run_id, $indent);
+				my $ret_ref = run_shell($cmd_result, 'checker', 'checker', $run_id, $indent);
 				return undef if not defined $ret_ref;
 				$yes = ($ret_ref->{ret} == 0) ^ ($cond_ref->{negative} ne '');
 			} else {
@@ -1699,7 +1711,7 @@ sub run_cmd
 				last if $exiting;
 			}
 			my $cmd_result = eval_text($cmd_ref->{bash}, $args_ref, \%proc_vars, $global_vars_ref);
-			my $ret_ref = run_shell($cmd_result, 'checker', $run_id, $indent);
+			my $ret_ref = run_shell($cmd_result, 'checker', 'checker', $run_id, $indent);
 			return undef if not defined $ret_ref;
 			my $yes = ($ret_ref->{ret} == 0) ^ ($cmd_ref->{negative} ne '');
 			log_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
@@ -1728,7 +1740,7 @@ sub run_cmd
 
 		} elsif ($proc_name =~ /_sysinfo$/) {
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
-			run_shell($cmd_result, 'sysinfo', 0, '');
+			run_shell($cmd_result, 'sysinfo', 'sysinfo', 0, '');
 		} else {
 			if ($max_thread_number > 1) {
 				LOOP: while (1) {
@@ -1745,7 +1757,7 @@ sub run_cmd
 			my $run_id = get_new_run_id;
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
 
-			my $ret_ref = run_shell($cmd_result, '', $run_id, $indent);
+			my $ret_ref = run_shell($cmd_result, '', $cmd_ref->{name}, $run_id, $indent);
 			if ($max_thread_number > 1) {
 				lock($thread_number);
 				$thread_number--;
