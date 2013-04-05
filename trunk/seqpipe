@@ -1440,18 +1440,18 @@ sub show_proc
 
 sub check_files
 {
-	my ($info_ref, $indent) = @_;
+	my ($info_ref, $indent, $run_id) = @_;
 
 	foreach my $require (keys %{$info_ref->{requires}}) {
 		if (not -e $require) {
-			log_print "ERROR: Required file '$require' does not exist!\n";
+			log_print "$indent($run_id) ERROR: Required file '$require' does not exist!\n";
 			return -1;
 		}
 	}
 
 	foreach my $input (keys %{$info_ref->{inputs}}) {
 		if (not -e $input) {
-			log_print "ERROR: Input file '$input' does not exist!\n";
+			log_print "$indent($run_id) ERROR: Input file '$input' does not exist!\n";
 			return -1;
 		}
 	}
@@ -1459,7 +1459,7 @@ sub check_files
 	if (%{$info_ref->{outputs}}) {
 		foreach my $output (keys %{$info_ref->{outputs}}) {
 			if (exists $info_ref->{requires}{$output} or exists $info_ref->{inputs}{$output}) {
-				log_print "ERROR: Output file '$output' has also been defined as require or input!\n";
+				log_print "$indent($run_id) ERROR: Output file '$output' has also been defined as require or input!\n";
 				return -1;
 			}
 			if (-e $output) {
@@ -1539,7 +1539,6 @@ sub run_shell
 	
 	my $start_time = time;
 	if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
-		log_print "$indent($run_id) [shell] $command\n";
 		log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 	}
 	
@@ -1663,7 +1662,6 @@ sub run_cmd
 		}
 
 	} elsif ($cmd_ref->{command} eq 'SP_for' or $cmd_ref->{command} eq 'SP_for_parallel') {
-		my $run_id = get_new_run_id;
 		my $name = $cmd_ref->{variable};
 		my $value = eval_text_in_shell($cmd_ref->{text}, $indent, $args_ref, \%proc_vars, $global_vars_ref);
 		return undef if not defined $value;
@@ -1729,10 +1727,11 @@ sub run_cmd
 	} else {
 		# For single bash command
 		if ($cmd_ref->{command} =~ /^export (\w+)=(.*)$/) {
+			my $run_id = get_new_run_id;
 			my $name = $1;
 			my $value = eval_text_in_shell($2, $indent, $args_ref, \%proc_vars, $global_vars_ref);
 			return undef if not defined $value;
-			log_print "$indent(*) Export shell environment variable '$name' as '$value'\n";
+			log_print "$indent($run_id) [shell] export $name=$value\n";
 			{
 				lock(%shell_env_vars);
 				$shell_env_vars{$name} = $value;
@@ -1742,6 +1741,39 @@ sub run_cmd
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
 			run_shell($cmd_result, 'sysinfo', 'sysinfo', 0, '');
 		} else {
+			my $run_id = get_new_run_id;
+			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
+			log_print "$indent($run_id) [shell] $cmd_result\n";
+
+			my $info_ref = { requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
+			foreach my $require (keys %{$cmd_ref->{requires}}) {
+				my $file = eval_text($require, $args_ref, \%proc_vars, $global_vars_ref);
+				$info_ref->{requires}{$file} = '';
+			}
+			foreach my $input (keys %{$cmd_ref->{inputs}}) {
+				my $file = eval_text($input, $args_ref, \%proc_vars, $global_vars_ref);
+				$info_ref->{inputs}{$file} = '';
+			}
+			foreach my $output (keys %{$cmd_ref->{outputs}}) {
+				my $file = eval_text($output, $args_ref, \%proc_vars, $global_vars_ref);
+				$info_ref->{outputs}{$file} = '';
+			}
+			foreach my $save (keys %{$cmd_ref->{saves}}) {
+				my $file = eval_text($save, $args_ref, \%proc_vars, $global_vars_ref);
+				$info_ref->{saves}{$file} = '';
+			}
+			foreach my $temp (keys %{$cmd_ref->{temps}}) {
+				my $file = eval_text($temp, $args_ref, \%proc_vars, $global_vars_ref);
+				$info_ref->{temps}{$file} = '';
+			}
+			my $check_ret = check_files($info_ref, $indent, $run_id);
+			if ($check_ret < 0) {
+				return { ret => $check_ret, vars => \%proc_vars };
+			} elsif ($check_ret > 0) {
+				log_print "$indent($run_id) [skip] $cmd_ref->{command}\n";
+				return { ret => 0, vars => \%proc_vars };
+			}
+
 			if ($max_thread_number > 1) {
 				LOOP: while (1) {
 					{
@@ -1754,8 +1786,6 @@ sub run_cmd
 					sleep 1;
 				}
 			}
-			my $run_id = get_new_run_id;
-			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
 
 			my $ret_ref = run_shell($cmd_result, '', $cmd_ref->{name}, $run_id, $indent);
 			if ($max_thread_number > 1) {
@@ -1799,20 +1829,21 @@ sub run_proc
 	}
 
 	# Otherwise (not a sysinfo)
-	my $cmd = "SP_run $proc_name";
+	my $cmd = "$proc_name";
 	$cmd .= " $_=$args_ref->{$_}" foreach (keys%{$args_ref});
-
-	my $info_ref = check_proc($proc_ref, $args_ref, \%proc_vars, $args_ref);
-	my $ret = check_files($info_ref);
-	return $ret if $ret < 0;
-	if ($ret > 0) {
-		log_print "$indent(Skip) $cmd\n";
-		return 0;
-	}
 
 	my $run_id = get_new_run_id;
 	my $start_time = time;
-	log_print "$indent($run_id) $cmd\n";
+	log_print "$indent($run_id) [pipeline] $cmd\n";
+
+	my $info_ref = check_proc($proc_ref, $args_ref, \%proc_vars, $args_ref);
+	my $ret = check_files($info_ref, $indent, $run_id);
+	return $ret if $ret < 0;
+	if ($ret > 0) {
+		log_print "$indent($run_id) [skip] $cmd\n";
+		return 0;
+	}
+
 	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 
 	$ret = run_block($blocks[$proc_ref->{block}], $indent, $args_ref, \%proc_vars);
@@ -1869,35 +1900,6 @@ sub run_block
 
 	my @thread_list = ();
 	foreach my $cmd_ref (@cmds) {
-		
-		my $info_ref = { requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
-		foreach my $require (keys %{$cmd_ref->{requires}}) {
-			my $file = eval_text($require, $args_ref, $proc_vars_ref, $global_vars_ref);
-			$info_ref->{requires}{$file} = '';
-		}
-		foreach my $input (keys %{$cmd_ref->{inputs}}) {
-			my $file = eval_text($input, $args_ref, $proc_vars_ref, $global_vars_ref);
-			$info_ref->{inputs}{$file} = '';
-		}
-		foreach my $output (keys %{$cmd_ref->{outputs}}) {
-			my $file = eval_text($output, $args_ref, $proc_vars_ref, $global_vars_ref);
-			$info_ref->{outputs}{$file} = '';
-		}
-		foreach my $save (keys %{$cmd_ref->{saves}}) {
-			my $file = eval_text($save, $args_ref, $proc_vars_ref, $global_vars_ref);
-			$info_ref->{saves}{$file} = '';
-		}
-		foreach my $temp (keys %{$cmd_ref->{temps}}) {
-			my $file = eval_text($temp, $args_ref, $proc_vars_ref, $global_vars_ref);
-			$info_ref->{temps}{$file} = '';
-		}
-		my $check_ret = check_files($info_ref);
-		last if $check_ret < 0;
-		if ($check_ret > 0) {
-			log_print "$indent(Skip) $cmd_ref->{command}\n";
-			next;
-		}
-
 		if ($can_use_threads and $max_thread_number != 1) {
 			my $thd = threads->create({'context' => 'list'}, \&run_cmd,
 				$block_ref->{proc_name}, $cmd_ref, $indent . '  ', $args_ref, $proc_vars_ref, $global_vars_ref);
