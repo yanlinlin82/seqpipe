@@ -610,7 +610,7 @@ sub parse_block
 			}
 			push @blocks, parse_block($proc_name, $sub_blocking, $file, $lines_ref, $proc_info_ref);
 			my $block_index = scalar @blocks - 1;
-			push @commands, { command => '', block => $block_index, requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
+			push @commands, { name => '', command => '', block => $block_index, requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
 			next;
 		}
 
