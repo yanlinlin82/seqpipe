@@ -38,8 +38,10 @@ use constant DEF_PIPE => APP_ROOT . '/default.pipe';
 
 ############################################################
 # Command line parsing results.
-my $help_mode = 0;      # 1 - show help; 2 - show detail help
-my $list_mode = 0;      # 1 - list procedures; 2 - list all procedures (include internal ones)
+my $verbose_mode = 0;
+my $help_mode = 0;
+my $list_mode = 0;
+my $test_mode = 0;
 my $show_mode = 0;
 my $keep_temps = 0;
 my $exec_cmd = '';
@@ -156,16 +158,24 @@ sub time_elapse_string
 
 sub log_print
 {
-	flock LOG_FILE, LOCK_EX;
-	print LOG_FILE @_;
-	flock LOG_FILE, LOCK_UN;
+	if ($test_mode) {
+		print @_;
+	} else {
+		flock LOG_FILE, LOCK_EX;
+		print LOG_FILE @_;
+		flock LOG_FILE, LOCK_UN;
+	}
 }
 
 sub log_printf
 {
-	flock LOG_FILE, LOCK_EX;
-	printf LOG_FILE @_;
-	flock LOG_FILE, LOCK_UN;
+	if ($test_mode) {
+		printf @_;
+	} else {
+		flock LOG_FILE, LOCK_EX;
+		printf LOG_FILE @_;
+		flock LOG_FILE, LOCK_UN;
+	}
 }
 
 ############################################################
@@ -896,21 +906,25 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.4.8 ($Rev$)
+Version: 0.4.9 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
-Copyright: 2012, Centre for Bioinformatics, Peking University, China
+Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
+Websites: http://seqpipe.googlecode.com
+          http://www.cbi.pku.edu.cn
 
 Usage: seqpipe [options] <procedure> [NAME=VALUE ...]
 
 Options:
-   -h / -H     Show this or procedure usage. -H for more details.
+   -h          Show help messages.
+   -v          Show verbose messages.
+   -l          List current available procedures.
    -m <file>   Load procedure module file, this option can be used many times.
-   -l / -L     List current available proc_list. -L for all procedures (include internal ones).
-   -T          Show the raw procedure declaration.
-   -k          Keep intermediate files.
    -t <int>    Max thread number, 0 for unlimited. default: ' . $max_thread_number . '
    -e <cmd>    Inline mode, execute a bash command directly.
    -s <shell>  Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
+   -k          Keep intermediate files.
+   -R          Show the raw procedure declaration.
+   -T          Test mode, show commands rather than execute them.
 
 ';
 	exit 1;
@@ -1298,7 +1312,7 @@ sub show_info
 	
 	print "\n";
 
-	if (%{$info_ref->{req_vars}} or ($help_mode == 2 and %{$info_ref->{opt_vars}})) {
+	if (%{$info_ref->{req_vars}} or ($verbose_mode and %{$info_ref->{opt_vars}})) {
 		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "inline command '$exec_cmd'") . ":\n";
 
 		if (%{$info_ref->{req_vars}}) {
@@ -1308,7 +1322,7 @@ sub show_info
 			print "\n";
 		}
 
-		if ($help_mode == 2 and %{$info_ref->{opt_vars}}) {
+		if ($verbose_mode and %{$info_ref->{opt_vars}}) {
 			foreach my $name (sort keys %{$info_ref->{opt_vars}}) {
 				printf "   %-30s  Default: %s\n", $name, $info_ref->{opt_vars}{$name};
 			}
@@ -1318,7 +1332,7 @@ sub show_info
 
 	my @text_list = ( 'Require', 'Input', 'Output', 'Temporary' );
 	my @files_list = ( $info_ref->{requires}, $info_ref->{inputs}, $info_ref->{outputs}, $info_ref->{temps} );
-	if ($help_mode != 2) {
+	if (not $verbose_mode) {
 		pop @text_list;
 		pop @files_list;
 	}
@@ -1338,17 +1352,21 @@ sub show_info
 			print "\n";
 		}
 	}
+
+	if (not $verbose_mode) {
+		print "NOTE: Add '-v' option to see all variables for procedure '$proc_name'.\n\n";
+	}
 	exit 1;
 }
 
 sub list_proc
 {
 	my ($proc_name) = @_;
-	print "\nCurrent available proc_list";
+	print "\nCurrent available procedures";
 	print " (search for '$proc_name')" if $proc_name;
 	print ":\n";
 	foreach my $name (sort keys %proc_list) {
-		next if $list_mode == 1 and $name =~ /^_/;
+		next if $name =~ /^_/;
 		print "   $name\n" if $name =~ /$proc_name/;
 	}
 	print "\n";
@@ -1483,91 +1501,98 @@ sub check_files
 
 sub save_cmd
 {
-	my ($cmd, $file) = @_;
-	open FILE, ">>$file";
-	print FILE "$cmd\n";
-	close FILE;
+	if (not $test_mode) {
+		my ($cmd, $file) = @_;
+		open FILE, ">>$file";
+		print FILE "$cmd\n";
+		close FILE;
+	}
 }
 
 sub run_shell
 {
 	my ($command, $procedure_type, $cmd_name, $run_id, $indent) = @_;
 
+	my $ret = 0;
 	my $command_with_log = '';
 	my $log_file = '';
 
-	if ($procedure_type eq 'sysinfo') {
-		$command_with_log = "($command) 2>&1 >>" . LOG_DIR . '/sysinfo';
-	} elsif ($procedure_type eq 'checker') {
-		my $name = LOG_DIR . "/$run_id.check";
-		$command_with_log = "($command) >>/dev/null 2>>/dev/null";
-		save_cmd $command, "$name.cmd";
-	} elsif ($procedure_type eq 'evaluator') {
-		if ($run_id == 0) {
-			(undef, $log_file) = tempfile();
-		} else {
-			my $name = LOG_DIR . "/$run_id.eval";
-			$log_file = "$name.result";
-			save_cmd $command, "$name.cmd";
-		}
-		$command_with_log = "($command) >>$log_file 2>>/dev/null";
+	if ($test_mode) {
+		print "$command\n";
 	} else {
-		my @argv = bash_line_decode($command);
-		my $name = '';
-		if ($cmd_name ne '') {
-			$name = $cmd_name;
-		} else {
-			while (@argv) {
-				$name = basename shift @argv;
-				$name =~ s/\W//g;
-				last if $name;
+		if ($procedure_type eq 'sysinfo') {
+			$command_with_log = "($command) 2>&1 >>" . LOG_DIR . '/sysinfo';
+		} elsif ($procedure_type eq 'checker') {
+			my $name = LOG_DIR . "/$run_id.check";
+			$command_with_log = "($command) >>/dev/null 2>>/dev/null";
+			save_cmd $command, "$name.cmd";
+		} elsif ($procedure_type eq 'evaluator') {
+			if ($run_id == 0) {
+				(undef, $log_file) = tempfile();
+			} else {
+				my $name = LOG_DIR . "/$run_id.eval";
+				$log_file = "$name.result";
+				save_cmd $command, "$name.cmd";
 			}
-			if ($name eq '') {
-				$name = 'shell';
+			$command_with_log = "($command) >>$log_file 2>>/dev/null";
+		} else {
+			my @argv = bash_line_decode($command);
+			my $name = '';
+			if ($cmd_name ne '') {
+				$name = $cmd_name;
 			} else {
 				while (@argv) {
-					my $arg = shift @argv;
-					last if $arg !~ /^\w+$/;
-					$name .= "_$arg";
+					$name = basename shift @argv;
+					$name =~ s/\W//g;
+					last if $name;
+				}
+				if ($name eq '') {
+					$name = 'shell';
+				} else {
+					while (@argv) {
+						my $arg = shift @argv;
+						last if $arg !~ /^\w+$/;
+						$name .= "_$arg";
+					}
 				}
 			}
+			$name = LOG_DIR . "/$run_id." . $name;
+			$command_with_log = "($command) >>$name.log 2>>$name.err";
+			save_cmd $command, "$name.cmd";
 		}
-		$name = LOG_DIR . "/$run_id." . $name;
-		$command_with_log = "($command) >>$name.log 2>>$name.err";
-		save_cmd $command, "$name.cmd";
-	}
-	
-	my $start_time = time;
-	if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
-		log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
-	}
-	
-	if (not open BASH, "|$shell") {
-		log_print "$indent($run_id) starts failed!\n";
-		return undef;
-	}
-	{
-		lock(%shell_env_vars);
-		foreach my $name (keys %shell_env_vars) {
-			print BASH "export $name=$shell_env_vars{$name}\n";
+		
+		my $start_time = time;
+		if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
+			log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 		}
-	}
-	print BASH $command_with_log;
-	close BASH;
-	if ($? == -1) {
-		log_print "$indent($run_id) starts failed!\n";
-		return undef;
-	} elsif ($? & 127) {
-		log_printf "$indent($run_id) starts failed! Child died with signal %d (%s coredump)\n",
-			($? & 127), ($? & 128) ? 'with' : 'without';
-		return undef;
-	}
-	my $ret = ($? >> 8);
+		
+		if (not open BASH, "|$shell") {
+			log_print "$indent($run_id) starts failed!\n";
+			return undef;
+		}
+		{
+			lock(%shell_env_vars);
+			foreach my $name (keys %shell_env_vars) {
+				print BASH "export $name=$shell_env_vars{$name}\n";
+			}
+		}
+		print BASH $command_with_log;
+		close BASH;
+		if ($? == -1) {
+			log_print "$indent($run_id) starts failed!\n";
+			return undef;
+		} elsif ($? & 127) {
+			log_printf "$indent($run_id) starts failed! Child died with signal %d (%s coredump)\n",
+				($? & 127), ($? & 128) ? 'with' : 'without';
+			return undef;
+		}
+		$ret = ($? >> 8);
 
-	if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
-		my $end_time = time;
-		log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
-			time_string($end_time), time_elapse_string($start_time, $end_time);
+		if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
+			my $end_time = time;
+			log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
+				time_string($end_time), time_elapse_string($start_time, $end_time);
+		}
 	}
 	return { ret => $ret, log_file => $log_file };
 }
@@ -1589,20 +1614,24 @@ sub eval_text_in_shell
 		return $result;
 	}
 
-	my $run_id = get_new_run_id;
-	log_print "$indent($run_id) [eval] $text\n";
-	my $ret_ref = run_shell("echo $result", 'evaluator', 'evaluator', $run_id, $indent);
-	return undef if not defined $ret_ref;
+	if ($test_mode) {
+		return $result;
+	} else {
+		my $run_id = get_new_run_id;
+		log_print "$indent($run_id) [eval] $text\n";
+		my $ret_ref = run_shell("echo $result", 'evaluator', 'evaluator', $run_id, $indent);
+		return undef if not defined $ret_ref;
 
-	open FILE, $ret_ref->{log_file} or return '';
-	my @text = ();
-	while (my $line = <FILE>) {
-		chomp $line;
-		push @text, $line;
+		open FILE, $ret_ref->{log_file} or return '';
+		my @text = ();
+		while (my $line = <FILE>) {
+			chomp $line;
+			push @text, $line;
+		}
+		close FILE;
+		unlink $ret_ref->{log_file} if $run_id == 0;
+		return join("\n", @text);
 	}
-	close FILE;
-	unlink $ret_ref->{log_file} if $run_id == 0;
-	return join("\n", @text);
 }
 
 sub run_cmd
@@ -1651,7 +1680,9 @@ sub run_cmd
 				return undef if not defined $s;
 				$yes = ($s ne '');
 			}
-			log_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+			if (not $test_mode) {
+				log_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+			}
 			if ($yes) {
 				$ret = run_block($blocks[$cond_ref->{block}], $indent, $args_ref, \%proc_vars);
 				last;
@@ -1743,47 +1774,50 @@ sub run_cmd
 		} else {
 			my $run_id = get_new_run_id;
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
-			log_print "$indent($run_id) [shell] $cmd_result\n";
 
-			my $info_ref = { requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
-			foreach my $require (keys %{$cmd_ref->{requires}}) {
-				my $file = eval_text($require, $args_ref, \%proc_vars, $global_vars_ref);
-				$info_ref->{requires}{$file} = '';
-			}
-			foreach my $input (keys %{$cmd_ref->{inputs}}) {
-				my $file = eval_text($input, $args_ref, \%proc_vars, $global_vars_ref);
-				$info_ref->{inputs}{$file} = '';
-			}
-			foreach my $output (keys %{$cmd_ref->{outputs}}) {
-				my $file = eval_text($output, $args_ref, \%proc_vars, $global_vars_ref);
-				$info_ref->{outputs}{$file} = '';
-			}
-			foreach my $save (keys %{$cmd_ref->{saves}}) {
-				my $file = eval_text($save, $args_ref, \%proc_vars, $global_vars_ref);
-				$info_ref->{saves}{$file} = '';
-			}
-			foreach my $temp (keys %{$cmd_ref->{temps}}) {
-				my $file = eval_text($temp, $args_ref, \%proc_vars, $global_vars_ref);
-				$info_ref->{temps}{$file} = '';
-			}
-			my $check_ret = check_files($info_ref, $indent, $run_id);
-			if ($check_ret < 0) {
-				return { ret => $check_ret, vars => \%proc_vars };
-			} elsif ($check_ret > 0) {
-				log_print "$indent($run_id) [skip] $cmd_ref->{command}\n";
-				return { ret => 0, vars => \%proc_vars };
-			}
+			if (not $test_mode) {
+				log_print "$indent($run_id) [shell] $cmd_result\n";
 
-			if ($max_thread_number > 1) {
-				LOOP: while (1) {
-					{
-						lock($thread_number);
-						if ($thread_number < $max_thread_number) {
-							$thread_number++;
-							last LOOP;
+				my $info_ref = { requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
+				foreach my $require (keys %{$cmd_ref->{requires}}) {
+					my $file = eval_text($require, $args_ref, \%proc_vars, $global_vars_ref);
+					$info_ref->{requires}{$file} = '';
+				}
+				foreach my $input (keys %{$cmd_ref->{inputs}}) {
+					my $file = eval_text($input, $args_ref, \%proc_vars, $global_vars_ref);
+					$info_ref->{inputs}{$file} = '';
+				}
+				foreach my $output (keys %{$cmd_ref->{outputs}}) {
+					my $file = eval_text($output, $args_ref, \%proc_vars, $global_vars_ref);
+					$info_ref->{outputs}{$file} = '';
+				}
+				foreach my $save (keys %{$cmd_ref->{saves}}) {
+					my $file = eval_text($save, $args_ref, \%proc_vars, $global_vars_ref);
+					$info_ref->{saves}{$file} = '';
+				}
+				foreach my $temp (keys %{$cmd_ref->{temps}}) {
+					my $file = eval_text($temp, $args_ref, \%proc_vars, $global_vars_ref);
+					$info_ref->{temps}{$file} = '';
+				}
+				my $check_ret = check_files($info_ref, $indent, $run_id);
+				if ($check_ret < 0) {
+					return { ret => $check_ret, vars => \%proc_vars };
+				} elsif ($check_ret > 0) {
+					log_print "$indent($run_id) [skip] $cmd_ref->{command}\n";
+					return { ret => 0, vars => \%proc_vars };
+				}
+
+				if ($max_thread_number > 1) {
+					LOOP: while (1) {
+						{
+							lock($thread_number);
+							if ($thread_number < $max_thread_number) {
+								$thread_number++;
+								last LOOP;
+							}
 						}
+						sleep 1;
 					}
-					sleep 1;
 				}
 			}
 
@@ -1798,7 +1832,7 @@ sub run_cmd
 			}
 			return undef if not defined $ret_ref;
 			$ret = $ret_ref->{ret};
-			if ($ret != 0) {
+			if (not $test_mode and $ret != 0) {
 				log_print "$indent($run_id) returns $ret\n";
 				foreach my $output (keys %{$cmd_ref->{outputs}}) {
 					my $file = eval_text($output, $args_ref, \%proc_vars, $global_vars_ref);
@@ -1832,40 +1866,53 @@ sub run_proc
 	my $cmd = "$proc_name";
 	$cmd .= " $_=$args_ref->{$_}" foreach (keys%{$args_ref});
 
-	my $run_id = get_new_run_id;
-	my $start_time = time;
-	log_print "$indent($run_id) [pipeline] $cmd\n";
-
+	my $run_id;
+	my $start_time;
+	my $ret = 0;
+	if (not $test_mode) {
+		$run_id = get_new_run_id;
+		$start_time = time;
+		log_print "$indent($run_id) [pipeline] $cmd\n";
+	}
+	
 	my $info_ref = check_proc($proc_ref, $args_ref, \%proc_vars, $args_ref);
-	my $ret = check_files($info_ref, $indent, $run_id);
-	return $ret if $ret < 0;
-	if ($ret > 0) {
-		log_print "$indent($run_id) [skip] $cmd\n";
-		return 0;
+
+	if (not $test_mode) {
+		$ret = check_files($info_ref, $indent, $run_id);
+		return $ret if $ret < 0;
+		if ($ret > 0) {
+			log_print "$indent($run_id) [skip] $cmd\n";
+			return 0;
+		}
+		log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 	}
 
-	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
+	if ($test_mode) {
+		print "# SP_run $cmd\n" if $verbose_mode;
+		run_block($blocks[$proc_ref->{block}], $indent, $args_ref, \%proc_vars);
+		return 1;
+	} else {
+		$ret = run_block($blocks[$proc_ref->{block}], $indent, $args_ref, \%proc_vars);
+		
+		if (defined $ret and $ret == 0 and not $keep_temps) {
 
-	$ret = run_block($blocks[$proc_ref->{block}], $indent, $args_ref, \%proc_vars);
-
-	if (defined $ret and $ret == 0 and not $keep_temps) {
-
-		# When successeed, remove intermediate files
-		foreach my $item (keys %{$proc_ref->{temps}}) {
-			my $file = eval_text($item, $args_ref, \%proc_vars, $global_vars_ref);
-			if (-e $file) {
-				log_printf "$indent($run_id) removes intemediate file '%s'\n", $file;
-				unlink $file;
+			# When successeed, remove intermediate files
+			foreach my $item (keys %{$proc_ref->{temps}}) {
+				my $file = eval_text($item, $args_ref, \%proc_vars, $global_vars_ref);
+				if (-e $file) {
+					log_printf "$indent($run_id) removes intemediate file '%s'\n", $file;
+					unlink $file;
+				}
 			}
 		}
+
+		# Record the finish time
+		my $end_time = time;
+		log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
+			time_string($end_time), time_elapse_string($start_time, $end_time);
+		
+		return $ret;
 	}
-
-	# Record the finish time
-	my $end_time = time;
-	log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
-		time_string($end_time), time_elapse_string($start_time, $end_time);
-
-	return $ret;
 }
 
 sub run_block
@@ -1898,28 +1945,9 @@ sub run_block
 		}
 	}
 
-	my @thread_list = ();
-	foreach my $cmd_ref (@cmds) {
-		if ($can_use_threads and $max_thread_number != 1) {
-			my $thd = threads->create({'context' => 'list'}, \&run_cmd,
-				$block_ref->{proc_name}, $cmd_ref, $indent . '  ', $args_ref, $proc_vars_ref, $global_vars_ref);
-
-			if ($block_ref->{parallel}) {
-				push @thread_list, $thd;
-			} else {
-				my $thread_ret = $thd->join();
-				if (not defined $ret) {
-					undef $ret;
-					last;
-				}
-				$ret = $thread_ret->{ret};
-				foreach my $name (keys %{$thread_ret->{vars}}) {
-					$proc_vars_ref->{$name} = $thread_ret->{vars}->{$name};
-				}
-			}
-		} else {
-			my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent . '  ',
-				$args_ref, $proc_vars_ref, $global_vars_ref);
+	if ($test_mode) {
+		foreach my $cmd_ref (@cmds) {
+			my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent . '  ', $args_ref, $proc_vars_ref, $global_vars_ref);
 			if (not defined $cmd_ret) {
 				undef $cmd_ret;
 				last;
@@ -1929,28 +1957,61 @@ sub run_block
 				$proc_vars_ref->{$name} = $cmd_ret->{vars}->{$name};
 			}
 		}
-		last if not defined $ret or $ret != 0;
-	}
-	if (scalar @thread_list > 0) {
-		foreach my $thd (@thread_list) {
-			my $thd_ret = $thd->join();
-			if (not defined $thd_ret) {
-				undef $ret;
-			} elsif ($thd_ret->{ret} != 0) {
-				$ret = $thd_ret->{ret} if defined $ret;
+	} else {
+		my @thread_list = ();
+		foreach my $cmd_ref (@cmds) {
+			if ($can_use_threads and $max_thread_number != 1) {
+				my $thd = threads->create({'context' => 'list'}, \&run_cmd,
+					$block_ref->{proc_name}, $cmd_ref, $indent . '  ', $args_ref, $proc_vars_ref, $global_vars_ref);
+
+				if ($block_ref->{parallel}) {
+					push @thread_list, $thd;
+				} else {
+					my $thread_ret = $thd->join();
+					if (not defined $ret) {
+						undef $ret;
+						last;
+					}
+					$ret = $thread_ret->{ret};
+					foreach my $name (keys %{$thread_ret->{vars}}) {
+						$proc_vars_ref->{$name} = $thread_ret->{vars}->{$name};
+					}
+				}
 			} else {
-				foreach my $name (keys %{$thd_ret->{vars}}) {
-					$proc_vars_ref->{$name} = $thd_ret->{vars}->{$name};
+				my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent . '  ',
+					$args_ref, $proc_vars_ref, $global_vars_ref);
+				if (not defined $cmd_ret) {
+					undef $cmd_ret;
+					last;
+				}
+				$ret = $cmd_ret->{ret};
+				foreach my $name (keys %{$cmd_ret->{vars}}) {
+					$proc_vars_ref->{$name} = $cmd_ret->{vars}->{$name};
 				}
 			}
+			last if not defined $ret or $ret != 0;
 		}
-		@thread_list = ();
+		if (scalar @thread_list > 0) {
+			foreach my $thd (@thread_list) {
+				my $thd_ret = $thd->join();
+				if (not defined $thd_ret) {
+					undef $ret;
+				} elsif ($thd_ret->{ret} != 0) {
+					$ret = $thd_ret->{ret} if defined $ret;
+				} else {
+					foreach my $name (keys %{$thd_ret->{vars}}) {
+						$proc_vars_ref->{$name} = $thd_ret->{vars}->{$name};
+					}
+				}
+			}
+			@thread_list = ();
+		}
+		if (not defined $ret or $ret != 0) {
+			lock($exiting);
+			$exiting = 2 if $exiting == 0;
+		}
+		return $ret;
 	}
-	if (not defined $ret or $ret != 0) {
-		lock($exiting);
-		$exiting = 2 if $exiting == 0;
-	}
-	return $ret;
 }
 
 ############################################################
@@ -1965,14 +2026,18 @@ if ($#ARGV < 0) {
 	$help_mode = 1;
 } else {
 	while (my $arg = shift @ARGV) {
-		if ($arg eq '-h' or $arg eq '-H') {
-			$help_mode = ($arg eq '-h' ? 1 : 2);
+		if ($arg eq '-h') {
+			$help_mode = 1;
+		} elsif ($arg eq '-v') {
+			$verbose_mode = 1;
 		} elsif ($arg eq '-m') {
 			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
 			push(@files, abs_path shift @ARGV);
-		} elsif ($arg eq '-l' or $arg eq '-L') {
-			$list_mode = ($arg eq '-l' ? 1 : 2);
+		} elsif ($arg eq '-l') {
+			$list_mode = 1;
 		} elsif ($arg eq '-T') {
+			$test_mode = 1;
+		} elsif ($arg eq '-R') {
 			$show_mode = 1;
 		} elsif ($arg eq '-k') {
 			$keep_temps = 1;
@@ -2013,10 +2078,13 @@ load_modules \@files, \%args;
 list_proc $proc_name if $list_mode;
 
 if ($exec_cmd) {
-	die "ERROR: Can not use both '-e' and '-T'!\n" if $show_mode;
-
 	# Load inline command as a block
 	push @blocks, { commands => [ { name => 'shell', command => $exec_cmd } ], file => DEF_PIPE, proc_name => '' };
+
+	if ($show_mode) {
+		show_block $blocks[-1], '', \%args;
+		exit 1;
+	}
 
 } elsif ($proc_name) {
 	die "ERROR: Unknown procedure '$proc_name'! Use '-l' to list available procedures.\n"
@@ -2037,29 +2105,31 @@ if ($proc_name) {
 }
 show_info $proc_name, $info_ref if $help_mode;
 
-if (%{$info_ref->{req_vars}}) {
-	die 'ERROR: Variable(s) required for ' . ($proc_name ? "procedure '$proc_name'" : "inline command '$exec_cmd'")
-		. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "\n";
-}
-die "ERROR: Can not run internal procedures '$proc_name' directly!\n" if $proc_name =~ /^_/;
+if (not $test_mode) {
+	if (%{$info_ref->{req_vars}}) {
+		die 'ERROR: Variable(s) required for ' . ($proc_name ? "procedure '$proc_name'" : "inline command '$exec_cmd'")
+			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "\n";
+	}
+	die "ERROR: Can not run internal procedures '$proc_name' directly!\n" if $proc_name =~ /^_/;
 
-mkdir LOG_ROOT or die "ERROR: Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
-mkdir LOG_DIR or die "ERROR: Can't create directory '" . LOG_DIR . "'!";
+	mkdir LOG_ROOT or die "ERROR: Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
+	mkdir LOG_DIR or die "ERROR: Can't create directory '" . LOG_DIR . "'!";
 
-open LOG_FILE, '>>' . LOG_ROOT . '/history.log';
-log_print UNIQ_ID . "\t$command_line\n";
-close LOG_FILE;
+	open LOG_FILE, '>>' . LOG_ROOT . '/history.log';
+	log_print UNIQ_ID . "\t$command_line\n";
+	close LOG_FILE;
 
-open LOG_FILE, '| tee -ai ' . LOG_DIR . '/log';
+	open LOG_FILE, '| tee -ai ' . LOG_DIR . '/log';
 
-log_print '[' . UNIQ_ID . "] $command_line\n";
+	log_print '[' . UNIQ_ID . "] $command_line\n";
 
-set_kill_signal_handler;
+	set_kill_signal_handler;
 
-foreach my $name (keys %proc_list) {
-	if ($name =~ /_sysinfo$/) {
-		if ($name eq '_sysinfo' or ($proc_name and $proc_list{$name}{file} eq $proc_list{$proc_name}{file})) {
-			run_proc $name, '', {};
+	foreach my $name (keys %proc_list) {
+		if ($name =~ /_sysinfo$/) {
+			if ($name eq '_sysinfo' or ($proc_name and $proc_list{$name}{file} eq $proc_list{$proc_name}{file})) {
+				run_proc $name, '', {};
+			}
 		}
 	}
 }
@@ -2070,15 +2140,18 @@ if ($proc_name eq '') {
 } else {
 	$ret = run_proc($proc_name, '', \%args);
 }
-if ($exiting == 1) {
-	log_print "Pipeline aborted for KILL signal!\n";
-} elsif (not defined $ret) {
-	log_print "Pipeline finished abnormally!\n";
-} elsif ($ret != 0) {
-	log_print "Pipeline finished abnormally with exit value: $ret!\n";
-} else {
-	log_print "Pipeline finished successfully!\n";
+
+if (not $test_mode) {
+	if ($exiting == 1) {
+		log_print "Pipeline aborted for KILL signal!\n";
+	} elsif (not defined $ret) {
+		log_print "Pipeline finished abnormally!\n";
+	} elsif ($ret != 0) {
+		log_print "Pipeline finished abnormally with exit value: $ret!\n";
+	} else {
+		log_print "Pipeline finished successfully!\n";
+	}
+	close LOG_FILE;
 }
-close LOG_FILE;
 
 exit (defined $ret ? $ret : 1);
