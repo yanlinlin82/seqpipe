@@ -565,6 +565,11 @@ sub parse_cmd
 			die "ERROR: Bad procedure name '$cmd_ref->{proc_name}' for SP_run in $l->{info}" if $cmd_ref->{proc_name} !~ /^\w+$/;
 			$cmd_ref->{options} = {};
 			for my $opt (@argv) {
+				if ($opt eq '...') {
+					die "ERROR: Duplicated '...' for SP_run in $l->{info}" if exists $cmd_ref->{dots};
+					$cmd_ref->{dots} = 1;
+					next;
+				}
 				die "ERROR: Invalid option '$opt' for SP_run in $l->{info}" if $opt !~ /^(\w+)=(.*)$/;
 				die "ERROR: Duplicate option '$opt' for SP_run in $l->{info}" if exists $cmd_ref->{options}{$1};
 				$cmd_ref->{options}{$1} = $2;
@@ -906,7 +911,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.4.9 ($Rev$)
+Version: 0.4.10 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
 Websites: http://seqpipe.googlecode.com
@@ -1121,7 +1126,18 @@ sub check_block
 				}
 				my $info_ref = check_proc($proc_list{$cmd_ref->{proc_name}}, \%args, {}, $global_vars_ref);
 				if (%{$info_ref->{req_vars}}) {
-					die "ERROR: No enough variable(s) for SP_run '$cmd_ref->{proc_name}' in $cmd_ref->{line_info}:\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "\n";
+					if (not exists $cmd_ref->{dots}) {
+						die "ERROR: No enough variable(s) for SP_run '$cmd_ref->{proc_name}' in $cmd_ref->{line_info}:\n   "
+							. join(', ', sort keys %{$info_ref->{req_vars}}) . "\n";
+					} else {
+						foreach my $name (keys %{$info_ref->{req_vars}}) {
+							if (exists $args_ref->{$name}) {
+								$opt_vars{$name} = $args_ref->{$name};
+							} else {
+								$req_vars{$name} = "";
+							}
+						}
+					}
 				}
 				transform_info $info_ref, $cmd_ref->{options}, $args_ref, \%proc_vars, $global_vars_ref;
 				
@@ -1414,6 +1430,7 @@ sub show_block
 		} elsif ($cmd_ref->{command} eq 'SP_run') {
 			print "$indent\tSP_run $cmd_ref->{proc_name}";
 			print " $_=$cmd_ref->{options}->{$_}" foreach (keys %{$cmd_ref->{options}});
+			print " ..." if exists $cmd_ref->{dots};
 			print "\n";
 		} elsif ($cmd_ref->{command} eq 'SP_if') {
 			foreach my $cond_ref (@{$cmd_ref->{condition}}) {
@@ -1660,6 +1677,11 @@ sub run_cmd
 		my %options = %{$cmd_ref->{options}};
 		foreach my $name (keys %options) {
 			$options{$name} = eval_text_in_shell($options{$name}, $indent, $args_ref, \%proc_vars, $global_vars_ref);
+		}
+		if (exists $cmd_ref->{dots}) {
+			foreach my $name (keys %{$args_ref}) {
+				$options{$name} = eval_text_in_shell($args_ref->{$name}, $indent, $args_ref, \%proc_vars, $global_vars_ref);
+			}
 		}
 		$ret = run_proc($cmd_ref->{proc_name}, $indent, \%options);
 
