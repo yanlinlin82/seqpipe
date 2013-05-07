@@ -1,3 +1,6 @@
+2013-05-07  v0.4.10 (r245)
+* Support '...' in SP_run.
+
 2013-05-05  v0.4.9 (r244)
 * Enable test mode (-T) option again.
 * Enable 'name' attribute for commands.
