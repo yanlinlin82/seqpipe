@@ -1718,7 +1718,7 @@ sub run_cmd
 		my $name = $cmd_ref->{variable};
 		my $value = eval_text_in_shell($cmd_ref->{text}, $indent, $args_ref, \%proc_vars, $global_vars_ref);
 		return undef if not defined $value;
-		if ($cmd_ref->{command} eq 'SP_for' or $max_thread_number == 1) {
+		if ($cmd_ref->{command} eq 'SP_for' or $max_thread_number == 1 or $test_mode) {
 			foreach my $each_value (split(/\s+/, $value)) {
 				{
 					lock($exiting);
