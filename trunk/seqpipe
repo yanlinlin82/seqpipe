@@ -2137,6 +2137,8 @@ if (not $test_mode) {
 	mkdir LOG_ROOT or die "ERROR: Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
 	mkdir LOG_DIR or die "ERROR: Can't create directory '" . LOG_DIR . "'!";
 
+	system "ln -s -f -n " . UNIQ_ID . " " . LOG_ROOT . "/last";
+
 	open LOG_FILE, '>>' . LOG_ROOT . '/history.log';
 	log_print UNIQ_ID . "\t$command_line\n";
 	close LOG_FILE;
