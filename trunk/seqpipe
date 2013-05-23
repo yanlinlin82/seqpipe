@@ -1369,7 +1369,7 @@ sub show_info
 		}
 	}
 
-	if (not $verbose_mode) {
+	if (not $verbose_mode and %{$info_ref->{opt_vars}}) {
 		print "NOTE: Add '-v' option to see all variables for procedure '$proc_name'.\n\n";
 	}
 	exit 1;
@@ -1746,7 +1746,7 @@ sub run_cmd
 				my $thd_ret = $thd->join();
 				if (not defined $thd_ret) {
 					undef $ret;
-				} elsif ($thd_ret != 0) {
+				} elsif ($thd_ret ne 0) {
 					$ret = $thd_ret if defined $ret;
 				}
 			}
