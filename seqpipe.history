@@ -3,90 +3,169 @@
 SEQPIPE_DIR=.seqpipe
 SEQPIPE_LOG=${SEQPIPE_DIR}/history.log
 
-if [ -z "$1" ]; then
-	cat <<EOF
+########################################
 
-Histroy Manipulator for SeqPipe (a SEQuencing data analsysis PIPEline framework)
-Version: 0.0.1 (\$Rev$)
-Copyright: 2012, Centre for Bioinformatics, Peking University, China
-
-Usage: $0 <command> [<options>]
-
-Support commands:
-   id     ( <id> | <order> )
-   show   [ <id> | <order> ]
-   log    ( <id> | <order> )
-   cmd    ( <id> | <order> )
-   remove <id>
-   upgrade
-
-EOF
-	exit 1
-fi
-
-if [ ! -f ${SEQPIPE_LOG} ]; then
-	echo "ERROR: Can not find history of seqpipe here!"
-	exit 1
-fi
-
-COMMAND="$1"
-
-if [ "${COMMAND}" == "id" ]; then
-	ID=$2
+function do_show_cmd_line
+{
+	ID="$1"
 	if [ -z "${ID}" ]; then
-		echo "Usage: $0 id <id>"
-		exit 1
-	elif ( echo ${ID} | egrep '\.' >/dev/null ) then
-		cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"' | cut -f1
-	elif ( echo ${ID} | egrep '^-[0-9]' >/dev/null ) then
-		tail ${SEQPIPE_LOG} -n $(echo ${ID} | sed 's/^.*([0-9]+).*/\\1/g') | head -n1 | cut -f1
-	else
-		head ${SEQPIPE_LOG} -n ${ID} | tail -n1 | cut -f1
-	fi
-elif [ "${COMMAND}" == "show" ]; then
-	ID=$2
-	if [ -z "${ID}" ]; then
+		# Without any options, show all records
 		cat ${SEQPIPE_LOG}
-	elif ( echo ${ID} | egrep '\.' >/dev/null ) then
+	elif (echo ${ID} | grep -q -E "^[0-9]+\.[0-9]+$") then
+		# With an option of ID, show its record
 		cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"'
-	elif ( echo ${ID} | egrep '^-[0-9]' >/dev/null ) then
-		tail ${SEQPIPE_LOG} -n $(echo ${ID} | sed 's/^.*([0-9]+).*/\\1/g') | head -n1
+	elif (echo ${ID} | grep -q -E "^[+-]?0+$") then
+		# With option of digit '0', show all records
+		cat ${SEQPIPE_LOG}
+	elif (echo ${ID} | grep -qE "^\+?[0-9]+$") then
+		# With positive integer (n), show the first n-th record
+		head ${SEQPIPE_LOG} -n$(echo ${ID} | sed "s/^+//g") | tail -n1
+	elif (echo ${ID} | grep -qE "^-[0-9]+$") then
+		# With negative integer (n), show the last n-th record
+		tail ${SEQPIPE_LOG} -n$(echo ${ID} | sed "s/^-//g") | head -n1
 	else
-		head ${SEQPIPE_LOG} -n ${ID} | tail -n1
-	fi
-elif [ "${COMMAND}" == "log" ]; then
-	ID=$2
-	if [ -z "${ID}" ]; then
-		echo "Usage: $0 log <id>"
+		echo "Error: Invalid option '${ID}'!" >/dev/stderr
 		exit 1
-	elif ( echo ${ID} | egrep '\.' >/dev/null ) then
+	fi
+}
+
+function do_show_log
+{
+	ID="$(do_show_cmd_line $* | tail -n1 | cut -f1)"
+	if [ -f ${SEQPIPE_DIR}/${ID}/log ]; then
 		cat ${SEQPIPE_DIR}/${ID}/log
-	elif ( echo ${ID} | egrep '^-[0-9]' >/dev/null ) then
-		cat ${SEQPIPE_DIR}/$(tail ${SEQPIPE_LOG} -n $(echo ${ID} | sed 's/^.*([0-9]+).*/\\1/g') | head -n1 | cut -f1)/log
+	elif [ -f ${SEQPIPE_DIR}/${ID}.tar.gz ]; then
+		zcat ${SEQPIPE_DIR}/${ID}.tar.gz | tar x -O ${ID}/log
 	else
-		cat ${SEQPIPE_DIR}/$(head ${SEQPIPE_LOG} -n ${ID} | tail -n1 | cut -f1)/log
+		echo "Error: Missing log file for SeqPipe run '${ID}'!" >/dev/stderr
+		exit 1
 	fi
-elif [ "${COMMAND}" == "cmd" ]; then
-	$0 log $2 | egrep '\[shell\]'
-elif [ "${COMMAND}" == "remove" ]; then
-	ID=$2
+}
+
+function do_show_sysinfo
+{
+	ID="$(do_show_cmd_line $* | tail -n1 | cut -f1)"
+	if [ -f ${SEQPIPE_DIR}/${ID}/sysinfo ]; then
+		cat ${SEQPIPE_DIR}/${ID}/sysinfo
+	elif [ -f ${SEQPIPE_DIR}/${ID}.tar.gz ]; then
+		zcat ${SEQPIPE_DIR}/${ID}.tar.gz | tar x -O ${ID}/sysinfo
+	else
+		echo "Error: Missing sysinfo file for SeqPipe run '${ID}'!" >/dev/stderr
+		exit 1
+	fi
+}
+
+function do_show_shell_cmds
+{
+	do_show_log $* | grep -E "\[shell\]"
+}
+
+function do_remove_log
+{
+	ID=""
+	FORCE=""
+	while [ -n "$1" ]; do
+		if [ "-f" == "$1" ]; then
+			FORCE="-f"
+		else
+			ID="$1"
+		fi
+		shift
+	done
+	
 	if [ -z "${ID}" ]; then
-		echo "Usage: $0 remove (rm) <id>"
+		echo "Usage: seqpipe.history remove <id>"
 		exit 1
 	fi
-	if [ -z "$(cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"')" -a ! -d ${SEQPIPE_DIR}/${ID}/ ]; then
-		echo "ERROR: Can not find SeqPipe run for '${ID}'!"
+	if [ -z "$(cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"')" \
+		-a ! -d ${SEQPIPE_DIR}/${ID}/ \
+		-a ! -f ${SEQPIPE_DIR}/${ID}.tar.gz ]; then
+
+		echo "ERROR: Can not find SeqPipe run for '${ID}'!" >/dev/stderr
 		exit 1
 	fi
-	echo -n "Are you sure to remove seqpipe run '$2' (y/n)? "
-	read C
-	if [ "$(echo $C | cut -c1)" == "y" -o "$(echo $C | cut -c1)" == "Y" ]; then
-		N=$(grep -n "${ID}" ${SEQPIPE_LOG} | cut -d: -f1)
-		([ -z "${N}" ] || sed -i "${N}d" ${SEQPIPE_LOG}) \
+	if [ -z "${FORCE}" ]; then
+		if [ -z "$(do_show_log ${ID} | tail -n1 | grep -E '^Pipeline (finished|aborted)')" ]; then
+			echo "WARNING: SeqPipe run '${ID}' may not finish or abnormally terminated!" >/dev/stderr
+			echo "  You may add option '-f' to force to remove the record." >/dev/stderr
+			exit 1
+		fi
+	fi
+
+	if [ -z "${FORCE}"]; then
+		echo -n "Are you sure to remove seqpipe run '${ID}' (y/n)? "
+		read C
+		if [ "$(echo $C | cut -c1)" != "y" -a "$(echo $C | cut -c1)" != "Y" ]; then
+			exit 1
+		fi
+	fi
+
+	N=$(grep -n "${ID}" ${SEQPIPE_LOG} | cut -d: -f1)
+	([ -z "${N}" ] || sed -i "${N}d" ${SEQPIPE_LOG}) \
+		&& rm -rf ${SEQPIPE_DIR}/${ID}{/,.tar.gz} \
+		&& echo "SeqPipe run '${ID}' has been removed successfully!"
+
+	LAST=$(readlink ${SEQPIPE_DIR}/last)
+	if [ "${ID}" == "${LAST}" -o "${ID}.tar.gz" == "${LAST}" ]; then
+		ID=$(do_show_cmd_line | cut -f1 | tail -n1)
+		if [ -z "${ID}" ]; then
+			rm -f ${SEQPIPE_DIR}/last
+		elif [ -d ${SEQPIPE_DIR}/${ID}/ ]; then
+			ln -sf ${ID} ${SEQPIPE_DIR}/last
+		elif [ -f ${SEQPIPE_DIR}/${ID}.tar.gz ]; then
+			ln -sv ${ID}.tar.gz ${SEQPIPE_DIR}/last
+		fi
+	fi
+}
+
+function do_compress_log
+{
+	ID=""
+	FORCE=""
+	while [ -n "$1" ]; do
+		if [ "-f" == "$1" ]; then
+			FORCE="-f"
+		else
+			ID="$1"
+		fi
+		shift
+	done
+	
+	if [ -z "${ID}" ]; then
+		echo "Usage: seqpipe.history compress <id>"
+		exit 1
+	fi
+	if [ -z "$(cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"')" ]; then
+		echo "ERROR: Can not find SeqPipe run for '${ID}'!" >/dev/stderr
+		exit 1
+	fi
+	if [ -d ${SEQPIPE_DIR}/${ID}/ ]; then
+		if [ -z "${FORCE}" ]; then
+			if [ -z "$(tail -n1 ${SEQPIPE_DIR}/${ID}/log | grep -E '^Pipeline (finished|aborted)')" ]; then
+				echo "WARNING: SeqPipe run '${ID}' may not finish or abnormally terminated!" >/dev/stderr
+				echo "  You may add option '-f' to force ${CMD} the record." >/dev/stderr
+				exit 1
+			fi
+		fi
+
+		tar c -C ${SEQPIPE_DIR} ${ID}/ | gzip -9c > ${SEQPIPE_DIR}/${ID}.tar.gz \
 			&& rm -rf ${SEQPIPE_DIR}/${ID}/ \
-			&& echo "SeqPipe run '${ID}' has been removed successfully!"
+			&& echo "SeqPipe run '${ID}' has been compressed successfully!"
+
+		LAST=$(readlink ${SEQPIPE_DIR}/last)
+		if [ "${ID}" == "${LAST}" ]; then
+			ln -sf ${ID}.tar.gz ${SEQPIPE_DIR}/last
+		fi
 	fi
-elif [ "$1" == "upgrade" ]; then
+}
+
+function do_compress_log_all
+{
+	do_show_cmd_line | cut -f1 | xargs -i seqpipe.history compress {} $*
+}
+
+function do_upgrade_log
+{
 	ls -F ${SEQPIPE_DIR} | grep -v '/' | egrep '^[0-9]+\.[0-9]+\..*$' | while read NAME; do
 		DIR="$(echo "${NAME}" | cut -d'.' -f1-2)"
 		FILE="$(echo "${NAME}" | cut -d'.' -f3-)"
@@ -97,9 +176,84 @@ elif [ "$1" == "upgrade" ]; then
 		fi
 		mv -iv ${SEQPIPE_DIR}/${NAME} ${SEQPIPE_DIR}/${DIR}/${FILE}
 	done
-else
-	echo "ERROR: Invalid command '${COMMAND}'!"
+}
+
+########################################
+
+function show_usage
+{
+	echo "
+Histroy Manipulator for SeqPipe (a SEQuencing data analsysis PIPEline framework)
+Version: 0.1.0 (\$Rev$)
+Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
+Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
+Websites: http://seqpipe.googlecode.com
+          http://www.cbi.pku.edu.cn
+
+Usage: seqpipe.history <command> [<options>]
+
+Support commands:
+   show     [<id_or_order>]        # Show run id and command line
+   log      [<id_or_order>]        # Show SeqPipe log of the run
+   sysinfo  [<id_or_order>]        # Show sysinfo of the run
+   cmd      [<id_or_order>]        # Show shell commands of the run
+   remove   [-f] <id>              # Remove all log files of the run
+   compress [-f] <id>              # Compress the run log files into .tar.gz
+   compress_all [-f]
+   upgrade                         # Upgrade log files from old version
+   help"
+
+	if [ "verbose" == "$1" ]; then
+		echo "
+Note:
+   <id_or_order> could be:
+       formated as \"<number>.<number>\", which represents ID of a SeqPipe run;
+     or a positive integer, which means the first n-th record;
+     or a negative integer, wihch means the last n-th record 
+"
+	else
+		echo "
+Use 'help' command to show more detail message.
+"
+	fi
+}
+
+########################################
+
+if [ -z "$1" ]; then
+	show_usage
+	exit 1
+elif [ "help" == "$1" ]; then
+	show_usage "verbose"
 	exit 1
 fi
 
+if [ ! -f ${SEQPIPE_LOG} ]; then
+	echo "ERROR: Can not find history of seqpipe here!" >/dev/stderr
+	exit 1
+fi
+
+CMD=$1
+shift
+
+if [ "${CMD}" == "show" ]; then
+	do_show_cmd_line $*
+elif [ "${CMD}" == "log" ]; then
+	do_show_log $*
+elif [ "${CMD}" == "sysinfo" ]; then
+	do_show_sysinfo $*
+elif [ "${CMD}" == "cmd" ]; then
+	do_show_shell_cmds $*
+elif [ "${CMD}" == "remove" ]; then
+	do_remove_log $*
+elif [ "${CMD}" == "compress" ]; then
+	do_compress_log $*
+elif [ "${CMD}" == "compress_all" ]; then
+	do_compress_log_all $*
+elif [ "${CMD}" == "upgrade" ]; then
+	do_upgrade_log
+else
+	echo "ERROR: Invalid command '${CMD}'!"
+	exit 1
+fi
 exit 0
