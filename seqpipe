@@ -26,7 +26,8 @@ if (not has_module('forks.pm') and not has_module('threads.pm')) {
 
 ############################################################
 # All logs are saved into this directory.
-use constant UNIQ_ID => sprintf('%02d%02d%02d.%d', (localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], $$);
+use constant UNIQ_ID => sprintf('%02d%02d%02d.%02d%02d.%d',
+	(localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], (localtime)[2], (localtime)[1], $$);
 use constant LOG_ROOT => './.seqpipe';
 use constant LOG_DIR => LOG_ROOT . '/' . UNIQ_ID;
 use constant APP_ROOT => dirname abs_path $0;
