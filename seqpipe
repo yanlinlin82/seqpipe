@@ -19,13 +19,9 @@ sub has_module
 
 BEGIN { eval 'use forks; use forks::shared; 1' or eval 'use threads; use threads::shared; 1' };
 my $can_use_threads = 1;
-if (not has_module('forks.pm')) {
-	if (not has_module('threads.pm')) {
-		$can_use_threads = 0;
-		print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
-	} else {
-		print "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
-	}
+if (not has_module('forks.pm') and not has_module('threads.pm')) {
+	$can_use_threads = 0;
+	print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
 }
 
 ############################################################
@@ -63,9 +59,6 @@ my %shell_env_vars :shared = ();
 
 # Count how many shell commands have run so far.
 my $run_counter :shared = 0;
-
-# Flag for exiting (when received KILL signal like Ctrl+C, or met failure).
-my $exiting :shared = 0;
 
 # Command line entered by user.
 my $command_line = bash_line_encode(dirname(abs_path($0)) . '/seqpipe', @ARGV);
@@ -179,24 +172,12 @@ sub log_printf
 }
 
 ############################################################
-# Catch signals for KILL, Ctrl+C, etc.
+# Process Ctrl+C.
 
-sub kill_signal_handler
-{
-	lock($exiting);
-	$exiting = 1;
-
+$SIG{'INT'} = sub {
 	my $now = time_string time;
-	log_print "ERROR: [$now] got KILL signal!\n";
-}
-
-sub set_kill_signal_handler
-{
-	$SIG{'INT'} = \&kill_signal_handler;
-	$SIG{'ABRT'} = \&kill_signal_handler;
-	$SIG{'QUIT'} = \&kill_signal_handler;
-	$SIG{'TERM'} = \&kill_signal_handler;
-}
+	log_print "(0) Aborts at $now\n";
+};
 
 ############################################################
 
@@ -1584,7 +1565,7 @@ sub run_shell
 		}
 		
 		if (not open BASH, "|$shell") {
-			log_print "$indent($run_id) starts failed!\n";
+			log_print "$indent($run_id) starts failed! (error: $!)\n";
 			return undef;
 		}
 		{
@@ -1595,16 +1576,12 @@ sub run_shell
 		}
 		print BASH $command_with_log;
 		close BASH;
-		if ($? == -1) {
-			log_print "$indent($run_id) starts failed!\n";
-			return undef;
-		} elsif ($? & 127) {
-			log_printf "$indent($run_id) starts failed! Child died with signal %d (%s coredump)\n",
-				($? & 127), ($? & 128) ? 'with' : 'without';
+		if ($? & 0xFF) {
+			log_printf "$indent($run_id) aborted by signal %d (%s coredump)\n",
+				($? & 0x7F), ($? & 0x80) ? 'with' : 'without';
 			return undef;
 		}
 		$ret = ($? >> 8);
-
 		if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
 			my $end_time = time;
 			log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
@@ -1659,11 +1636,6 @@ sub run_cmd
 	# to record the changes, and after all return the copy to parent thread.
 	my %proc_vars = %{$proc_vars_ref};
 	my $ret = 0;
-
-	{
-		lock($exiting);
-		return { ret => $ret, vars => \%proc_vars } if $exiting;
-	}
 
 	if ($cmd_ref->{command} eq 'SP_set') {
 		my $name = $cmd_ref->{variable};
@@ -1720,10 +1692,6 @@ sub run_cmd
 		return undef if not defined $value;
 		if ($cmd_ref->{command} eq 'SP_for' or $max_thread_number == 1 or $test_mode) {
 			foreach my $each_value (split(/\s+/, $value)) {
-				{
-					lock($exiting);
-					last if $exiting;
-				}
 				$proc_vars{$name} = $each_value;
 				$ret = run_block($blocks[$cmd_ref->{block}], $indent, $args_ref, \%proc_vars);
 				return undef if not defined $ret;
@@ -1733,10 +1701,6 @@ sub run_cmd
 		} else {
 			my @threads = ();
 			foreach my $each_value (split(/\s+/, $value)) {
-				{
-					lock($exiting);
-					last if $exiting;
-				}
 				my %thd_vars = %proc_vars;
 				$thd_vars{$name} = $each_value;
 				push @threads, threads->create(\&run_block,
@@ -1757,10 +1721,6 @@ sub run_cmd
 		my $run_id = get_new_run_id;
 		my $cmd = "SP_while $cmd_ref->{negative}($cmd_ref->{bash})";
 		while (1) {
-			{
-				lock($exiting);
-				last if $exiting;
-			}
 			my $cmd_result = eval_text($cmd_ref->{bash}, $args_ref, \%proc_vars, $global_vars_ref);
 			my $ret_ref = run_shell($cmd_result, 'checker', 'checker', $run_id, $indent);
 			return undef if not defined $ret_ref;
@@ -1847,10 +1807,6 @@ sub run_cmd
 			if ($max_thread_number > 1) {
 				lock($thread_number);
 				$thread_number--;
-			}
-			if (not defined $ret_ref or $ret_ref->{ret} != 0) {
-				lock($exiting);
-				$exiting = 2 if $exiting == 0;
 			}
 			return undef if not defined $ret_ref;
 			$ret = $ret_ref->{ret};
@@ -1942,11 +1898,6 @@ sub run_block
 	my ($block_ref, $indent, $args_ref, $proc_vars_ref) = @_;
 	my $ret = 0;
 
-	{
-		lock($exiting);
-		return $ret if $exiting;
-	}
-
 	my $global_vars_ref = $global_vars{$block_ref->{file}};
 
 	my @cmds = ();
@@ -2027,10 +1978,6 @@ sub run_block
 				}
 			}
 			@thread_list = ();
-		}
-		if (not defined $ret or $ret != 0) {
-			lock($exiting);
-			$exiting = 2 if $exiting == 0;
 		}
 		return $ret;
 	}
@@ -2147,8 +2094,6 @@ if (not $test_mode) {
 
 	log_print '[' . UNIQ_ID . "] $command_line\n";
 
-	set_kill_signal_handler;
-
 	foreach my $name (keys %proc_list) {
 		if ($name =~ /_sysinfo$/) {
 			if ($name eq '_sysinfo' or ($proc_name and $proc_list{$name}{file} eq $proc_list{$proc_name}{file})) {
@@ -2166,10 +2111,8 @@ if ($proc_name eq '') {
 }
 
 if (not $test_mode) {
-	if ($exiting == 1) {
-		log_print "Pipeline aborted for KILL signal!\n";
-	} elsif (not defined $ret) {
-		log_print "Pipeline finished abnormally!\n";
+	if (not defined $ret) {
+		log_print "Pipeline aborted!\n";
 	} elsif ($ret != 0) {
 		log_print "Pipeline finished abnormally with exit value: $ret!\n";
 	} else {
