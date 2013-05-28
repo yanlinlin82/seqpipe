@@ -11,7 +11,7 @@ function do_show_cmd_line
 	if [ -z "${ID}" ]; then
 		# Without any options, show all records
 		cat ${SEQPIPE_LOG}
-	elif (echo ${ID} | grep -q -E "^[0-9]+\.[0-9]+$") then
+	elif (echo ${ID} | grep -q -E "^[0-9]+(\.[0-9]+)+$") then
 		# With an option of ID, show its record
 		cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"'
 	elif (echo ${ID} | grep -q -E "^[+-]?0+$") then
@@ -20,7 +20,7 @@ function do_show_cmd_line
 	elif (echo ${ID} | grep -qE "^\+?[0-9]+$") then
 		# With positive integer (n), show the first n-th record
 		head ${SEQPIPE_LOG} -n$(echo ${ID} | sed "s/^+//g") | tail -n1
-	elif (echo ${ID} | grep -qE "^-[0-9]+$") then
+	elif (echo ${ID} | grep -qE "^-[1-9]+$") then
 		# With negative integer (n), show the last n-th record
 		tail ${SEQPIPE_LOG} -n$(echo ${ID} | sed "s/^-//g") | head -n1
 	else
@@ -29,30 +29,48 @@ function do_show_cmd_line
 	fi
 }
 
-function do_show_log
+function do_list_log_files
 {
 	ID="$(do_show_cmd_line $* | tail -n1 | cut -f1)"
-	if [ -f ${SEQPIPE_DIR}/${ID}/log ]; then
-		cat ${SEQPIPE_DIR}/${ID}/log
+	if [ -d ${SEQPIPE_DIR}/${ID}/ ]; then
+		cd ${SEQPIPE_DIR} && ls -l ${ID}/*
 	elif [ -f ${SEQPIPE_DIR}/${ID}.tar.gz ]; then
-		zcat ${SEQPIPE_DIR}/${ID}.tar.gz | tar x -O ${ID}/log
+		zcat ${SEQPIPE_DIR}/${ID}.tar.gz | tar tv
 	else
 		echo "Error: Missing log file for SeqPipe run '${ID}'!" >/dev/stderr
 		exit 1
 	fi
 }
 
+function do_cat_log_file
+{
+	FILE="$*"
+	ID=$(echo ${FILE} | cut -d"/" -f1)
+	FILE=$(echo ${FILE} | cut -d"/" -f2-)
+	if [ "." == "${ID}" ]; then
+		ID=$(echo ${FILE} | cut -d"/" -f1)
+		FILE=$(echo ${FILE} | cut -d"/" -f2-)
+	fi
+	if [ -d ${SEQPIPE_DIR}/${ID}/ ]; then
+		cat ${SEQPIPE_DIR}/${ID}/${FILE}
+	elif [ -f ${SEQPIPE_DIR}/${ID}.tar.gz ]; then
+		zcat ${SEQPIPE_DIR}/${ID}.tar.gz | tar x -O ${ID}/${FILE}
+	else
+		echo "Error: Missing log file for SeqPipe run '${ID}'!" >/dev/stderr
+		exit 1
+	fi
+}
+
+function do_show_log
+{
+	ID="$(do_show_cmd_line $* | tail -n1 | cut -f1)"
+	do_cat_log_file ${ID}/log
+}
+
 function do_show_sysinfo
 {
 	ID="$(do_show_cmd_line $* | tail -n1 | cut -f1)"
-	if [ -f ${SEQPIPE_DIR}/${ID}/sysinfo ]; then
-		cat ${SEQPIPE_DIR}/${ID}/sysinfo
-	elif [ -f ${SEQPIPE_DIR}/${ID}.tar.gz ]; then
-		zcat ${SEQPIPE_DIR}/${ID}.tar.gz | tar x -O ${ID}/sysinfo
-	else
-		echo "Error: Missing sysinfo file for SeqPipe run '${ID}'!" >/dev/stderr
-		exit 1
-	fi
+	do_cat_log_file ${ID}/sysinfo
 }
 
 function do_show_shell_cmds
@@ -195,6 +213,8 @@ Usage: seqpipe.history <command> [<options>]
 Support commands:
    show     [<id_or_order>]        # Show run id and command line
    log      [<id_or_order>]        # Show SeqPipe log of the run
+   ls       [<id_or_order>]        # List log files of the run
+   cat      [<file>]               # Cat the log file
    sysinfo  [<id_or_order>]        # Show sysinfo of the run
    cmd      [<id_or_order>]        # Show shell commands of the run
    remove   [-f] <id>              # Remove all log files of the run
@@ -240,6 +260,10 @@ if [ "${CMD}" == "show" ]; then
 	do_show_cmd_line $*
 elif [ "${CMD}" == "log" ]; then
 	do_show_log $*
+elif [ "${CMD}" == "ls" ]; then
+	do_list_log_files $*
+elif [ "${CMD}" == "cat" ]; then
+	do_cat_log_file $*
 elif [ "${CMD}" == "sysinfo" ]; then
 	do_show_sysinfo $*
 elif [ "${CMD}" == "cmd" ]; then
