@@ -23,7 +23,6 @@ function test_failed_in_parallel
 function test_demo
 {
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks
-	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 0
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 1
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 2
 	${_SEQPIPE_ROOT}/${_SEQPIPE} -m demo.pipe demo_blocks -t 3
