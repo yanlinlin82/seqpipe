@@ -21,7 +21,6 @@ BEGIN { eval 'use forks; use forks::shared; 1' or eval 'use threads; use threads
 my $can_use_threads = 1;
 if (not has_module('forks.pm') and not has_module('threads.pm')) {
 	$can_use_threads = 0;
-	print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
 }
 
 ############################################################
@@ -35,7 +34,6 @@ use constant DEF_PIPE => APP_ROOT . '/default.pipe';
 
 ############################################################
 # Command line parsing results.
-my $verbose_mode = 0;
 my $help_mode = 0;
 my $list_mode = 0;
 my $test_mode = 0;
@@ -46,7 +44,7 @@ my $shell = '/bin/bash';
 my @files = glob(APP_ROOT . '/*.pipe');  # All *.pipe files in SeqPipe install directory will be loaded automatically.
 
 my $obsolete_warned = 0;
-my $max_thread_number = 2;
+my $max_thread_number = 1;
 my $thread_number :shared = 0;
 
 # All procedures are loaded at startup.
@@ -902,16 +900,15 @@ Websites: http://seqpipe.googlecode.com
 Usage: seqpipe [options] <procedure> [NAME=VALUE ...]
 
 Options:
-   -h          Show help messages.
-   -v          Show verbose messages.
-   -l          List current available procedures.
-   -m <file>   Load procedure module file, this option can be used many times.
-   -t <int>    Max thread number, 0 for unlimited. default: ' . $max_thread_number . '
-   -e <cmd>    Inline mode, execute a bash command directly.
-   -s <shell>  Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
-   -k          Keep intermediate files.
-   -R          Show the raw procedure declaration.
-   -T          Test mode, show commands rather than execute them.
+   -h / -H         Show help messages.
+   -l [<pattern>]  List current available procedures.
+   -m <file>       Load procedure module file, this option can be used many times.
+   -t <int>        Max thread number in parallel. default: ' . $max_thread_number . '
+   -e <cmd>        Inline mode, execute a bash command directly.
+   -s <shell>      Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
+   -k              Keep intermediate files.
+   -R              Show the raw procedure declaration.
+   -T              Test mode, show commands rather than execute them.
 
 ';
 	exit 1;
@@ -1310,7 +1307,7 @@ sub show_info
 	
 	print "\n";
 
-	if (%{$info_ref->{req_vars}} or ($verbose_mode and %{$info_ref->{opt_vars}})) {
+	if (%{$info_ref->{req_vars}} or ($help_mode == 2 and %{$info_ref->{opt_vars}})) {
 		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "inline command '$exec_cmd'") . ":\n";
 
 		if (%{$info_ref->{req_vars}}) {
@@ -1320,7 +1317,7 @@ sub show_info
 			print "\n";
 		}
 
-		if ($verbose_mode and %{$info_ref->{opt_vars}}) {
+		if ($help_mode == 2 and %{$info_ref->{opt_vars}}) {
 			foreach my $name (sort keys %{$info_ref->{opt_vars}}) {
 				printf "   %-30s  Default: %s\n", $name, $info_ref->{opt_vars}{$name};
 			}
@@ -1330,7 +1327,7 @@ sub show_info
 
 	my @text_list = ( 'Require', 'Input', 'Output', 'Temporary' );
 	my @files_list = ( $info_ref->{requires}, $info_ref->{inputs}, $info_ref->{outputs}, $info_ref->{temps} );
-	if (not $verbose_mode) {
+	if ($help_mode == 2) {
 		pop @text_list;
 		pop @files_list;
 	}
@@ -1351,8 +1348,8 @@ sub show_info
 		}
 	}
 
-	if (not $verbose_mode and %{$info_ref->{opt_vars}}) {
-		print "NOTE: Add '-v' option to see all variables for procedure '$proc_name'.\n\n";
+	if ($help_mode < 2 and %{$info_ref->{opt_vars}}) {
+		print "NOTE: Use '-H' option to see all variables for procedure '$proc_name'.\n\n";
 	}
 	exit 1;
 }
@@ -1867,7 +1864,6 @@ sub run_proc
 	}
 
 	if ($test_mode) {
-		print "# SP_run $cmd\n" if $verbose_mode;
 		run_block($blocks[$proc_ref->{block}], $indent, $args_ref, \%proc_vars);
 		return 1;
 	} else {
@@ -1998,8 +1994,8 @@ if ($#ARGV < 0) {
 	while (my $arg = shift @ARGV) {
 		if ($arg eq '-h') {
 			$help_mode = 1;
-		} elsif ($arg eq '-v') {
-			$verbose_mode = 1;
+		} elsif ($arg eq '-H') {
+			$help_mode = 2;
 		} elsif ($arg eq '-m') {
 			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
 			push(@files, abs_path shift @ARGV);
@@ -2014,7 +2010,10 @@ if ($#ARGV < 0) {
 		} elsif ($arg eq '-t') {
 			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
 			$max_thread_number = shift @ARGV;
-			die "ERROR: Invalid max thread number: $max_thread_number!\n" if $max_thread_number < 0;
+			die "ERROR: Invalid max thread number: $max_thread_number!\n" if $max_thread_number <= 0;
+			if ($max_thread_number > 1 and $can_use_threads) {
+				print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
+			}
 		} elsif ($arg eq '-e') {
 			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
 			die "ERROR: Duplicated '$arg' option!\n" if $exec_cmd;
