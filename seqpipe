@@ -5,7 +5,6 @@ use File::Basename;
 use File::stat;
 use Cwd 'abs_path';
 use Fcntl qw(:flock);
-use File::Temp qw/tempfile/;
 
 ############################################################
 # Check perl multi-thread supporting
@@ -73,7 +72,7 @@ sub init_config
 	} else {
 		my %vars = ();
 		my @variable_list = ();
-		open FILE, APP_ROOT . '/config.inc.tpl' or return;
+		open FILE, '<', APP_ROOT . '/config.inc.tpl' or return;
 		while (my $line = <FILE>) {
 			chomp $line;
 			if ($line =~ /^\s*(\w+)=(.*)$/) {
@@ -85,7 +84,7 @@ sub init_config
 		close FILE;
 
 		my @lines = ();
-		open FILE, APP_ROOT . '/config.inc' or return;
+		open FILE, '<', APP_ROOT . '/config.inc' or return;
 		while (my $line = <FILE>) {
 			chomp $line;
 			if ($line =~ /^\s*(\w+)=(.*)$/) {
@@ -105,9 +104,9 @@ sub init_config
 			}
 		}
 
-		open FILE, '>' . APP_ROOT . '/config.inc' or return;
+		open FILE, '>', APP_ROOT . '/config.inc' or return;
 		foreach my $line (@lines) {
-			print FILE "$line\n";
+			print FILE $line, "\n";
 		}
 		close FILE;
 	}
@@ -709,7 +708,7 @@ sub load_lines
 
 	if (not exists $loaded_ref->{$file}) {
 
-		open my $handle, $file or die join("\n\t",
+		open my $handle, '<', $file or die join("\n\t",
 			("ERROR: Can't open file '$file', which is included by:", @{$including_ref})) . "\nFailed";
 		$loaded_ref->{$file} = 1;
 
@@ -866,7 +865,7 @@ sub load_modules
 		while (@lines) {
 			parse_proc($file, \@lines, $args_ref);
 		}
-		if (open my $file_handle, "$file.conf") {
+		if (open my $file_handle, '<', "$file.conf") {
 			my $line_no = 0;
 			while (my $line = <$file_handle>) {
 				++$line_no;
@@ -1495,12 +1494,11 @@ sub check_files
 	}
 }
 
-sub save_cmd
+sub append_file
 {
-	if (not $test_mode) {
-		my ($cmd, $file) = @_;
-		open FILE, ">>$file";
-		print FILE "$cmd\n";
+	my $file = shift;
+	if (open FILE, '>>', $file) {
+		print FILE @_;
 		close FILE;
 	}
 }
@@ -1521,16 +1519,7 @@ sub run_shell
 		} elsif ($procedure_type eq 'checker') {
 			my $name = LOG_DIR . "/$run_id.check";
 			$command_with_log = "($command) >>/dev/null 2>>/dev/null";
-			save_cmd $command, "$name.cmd";
-		} elsif ($procedure_type eq 'evaluator') {
-			if ($run_id == 0) {
-				(undef, $log_file) = tempfile();
-			} else {
-				my $name = LOG_DIR . "/$run_id.eval";
-				$log_file = "$name.result";
-				save_cmd $command, "$name.cmd";
-			}
-			$command_with_log = "($command) >>$log_file 2>>/dev/null";
+			append_file "$name.cmd", $command, "\n";
 		} else {
 			my @argv = bash_line_decode($command);
 			my $name = '';
@@ -1554,15 +1543,15 @@ sub run_shell
 			}
 			$name = LOG_DIR . "/$run_id." . $name;
 			$command_with_log = "($command) >>$name.log 2>>$name.err";
-			save_cmd $command, "$name.cmd";
+			append_file "$name.cmd", $command, "\n";
 		}
 		
 		my $start_time = time;
-		if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
+		if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker') {
 			log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 		}
 		
-		if (not open BASH, "|$shell") {
+		if (not open BASH, '|-', $shell) {
 			log_print "$indent($run_id) starts failed! (error: $!)\n";
 			return undef;
 		}
@@ -1580,7 +1569,7 @@ sub run_shell
 			return undef;
 		}
 		$ret = ($? >> 8);
-		if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
+		if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker') {
 			my $end_time = time;
 			log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
 				time_string($end_time), time_elapse_string($start_time, $end_time);
@@ -1605,25 +1594,17 @@ sub eval_text_in_shell
 		last if $result =~ /\?/;
 		return $result;
 	}
-
-	if ($test_mode) {
-		return $result;
-	} else {
-		my $run_id = get_new_run_id;
-		log_print "$indent($run_id) [eval] $text\n";
-		my $ret_ref = run_shell("echo $result", 'evaluator', 'evaluator', $run_id, $indent);
-		return undef if not defined $ret_ref;
-
-		open FILE, $ret_ref->{log_file} or return '';
-		my @text = ();
-		while (my $line = <FILE>) {
-			chomp $line;
-			push @text, $line;
-		}
+	my $cmd = "echo $result";
+	if (open FILE, '-|', "echo $cmd|$shell") {
+		$result = join('', <FILE>);
+		chomp $result;
 		close FILE;
-		unlink $ret_ref->{log_file} if $run_id == 0;
-		return join("\n", @text);
+		if (not $test_mode) {
+			my $run_id = get_new_run_id;
+			log_print "$indent($run_id) [eval] $text\n";
+		}
 	}
+	return $result;
 }
 
 sub run_cmd
@@ -2086,11 +2067,11 @@ if (not $test_mode) {
 
 	system "ln -s -f -n " . UNIQ_ID . " " . LOG_ROOT . "/last";
 
-	open LOG_FILE, '>>' . LOG_ROOT . '/history.log';
+	open LOG_FILE, '>>', LOG_ROOT . '/history.log';
 	log_print UNIQ_ID . "\t$command_line\n";
 	close LOG_FILE;
 
-	open LOG_FILE, '| tee -ai ' . LOG_DIR . '/log';
+	open LOG_FILE, '|-', 'tee -ai ' . LOG_DIR . '/log';
 
 	log_print '[' . UNIQ_ID . "] $command_line\n";
 
