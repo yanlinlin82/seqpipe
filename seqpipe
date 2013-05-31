@@ -118,7 +118,8 @@ sub init_config
 sub time_string
 {
 	my ($sec, $min, $hour, $mday, $mon, $year) = localtime shift;
-	return sprintf('%04d-%02d-%02d %02d:%02d:%02d', $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
+	return sprintf('%04d-%02d-%02d %02d:%02d:%02d',
+		$year + 1900, $mon + 1, $mday, $hour, $min, $sec);
 }
 
 sub time_elapse_string
@@ -1503,79 +1504,107 @@ sub append_file
 	}
 }
 
+sub try_guess_name
+{
+	my ($cmd) = @_;
+	my @argv = bash_line_decode($cmd);
+	my $name = '';
+	while (@argv) {
+		$name = basename shift @argv;
+		$name =~ s/\W//g;
+		last if $name;
+	}
+	if ($name eq '') {
+		$name = 'shell';
+	} else {
+		while (@argv) {
+			my $arg = shift @argv;
+			last if $arg !~ /^\w+$/;
+			$name .= "_$arg";
+		}
+	}
+	return $name;
+}
+
+sub get_env_cmds
+{
+	my @env_cmds = ();
+	{
+		lock(%shell_env_vars);
+		foreach my $name (keys %shell_env_vars) {
+			push @env_cmds, "export $name=$shell_env_vars{$name}";
+		}
+	}
+	return @env_cmds;
+}
+
+sub run_checker
+{
+	my ($cmd, $cmd_result, $run_id, $negative, $indent) = @_;
+	
+	append_file LOG_DIR . "/$run_id.check.cmd", $cmd_result, "\n";
+
+	if (not open SHELL, '|-', $shell) {
+		return undef;
+	}
+	print SHELL $cmd_result;
+	close SHELL;
+	
+	if ($? & 0xFF) {
+		return undef;
+	}
+	my $yes = (($? >> 8) == 0) ^ ($negative ne '');
+	if (not $test_mode) {
+		log_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+	}
+	return $yes;
+}
+
 sub run_shell
 {
 	my ($command, $procedure_type, $cmd_name, $run_id, $indent) = @_;
 
-	my $ret = 0;
-	my $command_with_log = '';
-	my $log_file = '';
-
 	if ($test_mode) {
 		print "$command\n";
-	} else {
-		if ($procedure_type eq 'sysinfo') {
-			$command_with_log = "($command) 2>&1 >>" . LOG_DIR . '/sysinfo';
-		} elsif ($procedure_type eq 'checker') {
-			my $name = LOG_DIR . "/$run_id.check";
-			$command_with_log = "($command) >>/dev/null 2>>/dev/null";
-			append_file "$name.cmd", $command, "\n";
-		} else {
-			my @argv = bash_line_decode($command);
-			my $name = '';
-			if ($cmd_name ne '') {
-				$name = $cmd_name;
-			} else {
-				while (@argv) {
-					$name = basename shift @argv;
-					$name =~ s/\W//g;
-					last if $name;
-				}
-				if ($name eq '') {
-					$name = 'shell';
-				} else {
-					while (@argv) {
-						my $arg = shift @argv;
-						last if $arg !~ /^\w+$/;
-						$name .= "_$arg";
-					}
-				}
-			}
-			$name = LOG_DIR . "/$run_id." . $name;
-			$command_with_log = "($command) >>$name.log 2>>$name.err";
-			append_file "$name.cmd", $command, "\n";
-		}
-		
-		my $start_time = time;
-		if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker') {
-			log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
-		}
-		
-		if (not open BASH, '|-', $shell) {
-			log_print "$indent($run_id) starts failed! (error: $!)\n";
-			return undef;
-		}
-		{
-			lock(%shell_env_vars);
-			foreach my $name (keys %shell_env_vars) {
-				print BASH "export $name=$shell_env_vars{$name}\n";
-			}
-		}
-		print BASH $command_with_log;
-		close BASH;
-		if ($? & 0xFF) {
-			log_printf "$indent($run_id) aborted by signal %d (%s coredump)\n",
-				($? & 0x7F), ($? & 0x80) ? 'with' : 'without';
-			return undef;
-		}
-		$ret = ($? >> 8);
-		if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker') {
-			my $end_time = time;
-			log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
-				time_string($end_time), time_elapse_string($start_time, $end_time);
-		}
+		return 0;
 	}
-	return { ret => $ret, log_file => $log_file };
+
+	my $out = '';
+	my $err = '';
+	if ($procedure_type eq 'sysinfo') {
+		$err = '2>&1';
+		$out = '>>' . LOG_DIR . '/sysinfo';
+	} else {
+		my $name = $cmd_name;
+		$name = try_guess_name($command) if $name eq '';
+		$err = '2>>' . LOG_DIR . "/$run_id.$name.err";
+		$out = '>>' . LOG_DIR . "/$run_id.$name.log";
+		append_file LOG_DIR . "/$run_id.$name.cmd", $command, "\n";
+	}
+
+	my $start_time = time;
+	if ($procedure_type ne 'sysinfo') {
+		log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
+	}
+	
+	if (not open SHELL, '|-', $shell) {
+		log_print "$indent($run_id) starts failed! (error: $!)\n";
+		return undef;
+	}
+	print SHELL join("\n", '(', get_env_cmds(), $command, ')'), " $err $out";
+	close SHELL;
+	if ($? & 0xFF) {
+		log_printf "$indent($run_id) aborted by signal %d (%s coredump)\n",
+			($? & 0x7F), ($? & 0x80) ? 'with' : 'without';
+		return undef;
+	}
+	my $ret = ($? >> 8);
+	if ($procedure_type ne 'sysinfo') {
+		my $end_time = time;
+		log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
+			time_string($end_time), time_elapse_string($start_time, $end_time);
+	}
+	return $ret;
 }
 
 sub eval_text_in_shell
@@ -1595,10 +1624,10 @@ sub eval_text_in_shell
 		return $result;
 	}
 	my $cmd = "echo $result";
-	if (open FILE, '-|', "echo $cmd|$shell") {
-		$result = join('', <FILE>);
+	if (open SHELL, '-|', "echo $cmd|$shell") {
+		$result = join('', <SHELL>);
 		chomp $result;
-		close FILE;
+		close SHELL;
 		if (not $test_mode) {
 			my $run_id = get_new_run_id;
 			log_print "$indent($run_id) [eval] $text\n";
@@ -1644,17 +1673,16 @@ sub run_cmd
 			if (exists $cond_ref->{bash}) {
 				$cmd = "$cond_ref->{command} $cond_ref->{negative}($cond_ref->{bash})";
 				my $cmd_result = eval_text($cond_ref->{bash}, $args_ref, \%proc_vars, $global_vars_ref);
-				my $ret_ref = run_shell($cmd_result, 'checker', 'checker', $run_id, $indent);
-				return undef if not defined $ret_ref;
-				$yes = ($ret_ref->{ret} == 0) ^ ($cond_ref->{negative} ne '');
+				$yes = run_checker($cmd, $cmd_result, $run_id, $cond_ref->{negative}, $indent);
+				return undef if not defined $yes;
 			} else {
 				$cmd = "$cond_ref->{command} $cond_ref->{text}";
 				my $s = eval_text_in_shell($cond_ref->{text}, $indent, $args_ref, \%proc_vars, $global_vars_ref);
 				return undef if not defined $s;
 				$yes = ($s ne '');
-			}
-			if (not $test_mode) {
-				log_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+				if (not $test_mode) {
+					log_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+				}
 			}
 			if ($yes) {
 				$ret = run_block($blocks[$cond_ref->{block}], $indent, $args_ref, \%proc_vars);
@@ -1701,10 +1729,8 @@ sub run_cmd
 		my $cmd = "SP_while $cmd_ref->{negative}($cmd_ref->{bash})";
 		while (1) {
 			my $cmd_result = eval_text($cmd_ref->{bash}, $args_ref, \%proc_vars, $global_vars_ref);
-			my $ret_ref = run_shell($cmd_result, 'checker', 'checker', $run_id, $indent);
-			return undef if not defined $ret_ref;
-			my $yes = ($ret_ref->{ret} == 0) ^ ($cmd_ref->{negative} ne '');
-			log_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+			my $yes = run_checker($cmd, $cmd_result, $run_id, $cmd_ref->{negative}, $indent);
+			return undef if not defined $ret;
 			last if (not $yes);
 			$ret = run_block($blocks[$cmd_ref->{block}], $indent, $args_ref, \%proc_vars);
 			return undef if not defined $ret;
@@ -1782,13 +1808,12 @@ sub run_cmd
 				}
 			}
 
-			my $ret_ref = run_shell($cmd_result, '', $cmd_ref->{name}, $run_id, $indent);
+			$ret = run_shell($cmd_result, '', $cmd_ref->{name}, $run_id, $indent);
 			if ($max_thread_number > 1) {
 				lock($thread_number);
 				$thread_number--;
 			}
-			return undef if not defined $ret_ref;
-			$ret = $ret_ref->{ret};
+			return undef if not defined $ret;
 			if (not $test_mode and $ret != 0) {
 				log_print "$indent($run_id) returns $ret\n";
 				foreach my $output (keys %{$cmd_ref->{outputs}}) {
