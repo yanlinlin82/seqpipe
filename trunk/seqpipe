@@ -1560,6 +1560,14 @@ sub run_checker
 	return $yes;
 }
 
+sub run_sysinfo
+{
+	if (open SHELL, '|-', $shell) {
+		print SHELL join("\n", '(', @_, ') 2>&1 >>' . LOG_DIR . '/sysinfo');
+		close SHELL;
+	}
+}
+
 sub run_shell
 {
 	my ($command, $procedure_type, $cmd_name, $run_id, $indent) = @_;
@@ -1569,23 +1577,14 @@ sub run_shell
 		return 0;
 	}
 
-	my $out = '';
-	my $err = '';
-	if ($procedure_type eq 'sysinfo') {
-		$err = '2>&1';
-		$out = '>>' . LOG_DIR . '/sysinfo';
-	} else {
-		my $name = $cmd_name;
-		$name = try_guess_name($command) if $name eq '';
-		$err = '2>>' . LOG_DIR . "/$run_id.$name.err";
-		$out = '>>' . LOG_DIR . "/$run_id.$name.log";
-		append_file LOG_DIR . "/$run_id.$name.cmd", $command, "\n";
-	}
+	my $name = $cmd_name;
+	$name = try_guess_name($command) if $name eq '';
+	my $err = '2>>' . LOG_DIR . "/$run_id.$name.err";
+	my $out = '>>' . LOG_DIR . "/$run_id.$name.log";
+	append_file LOG_DIR . "/$run_id.$name.cmd", $command, "\n";
 
 	my $start_time = time;
-	if ($procedure_type ne 'sysinfo') {
-		log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
-	}
+	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 	
 	if (not open SHELL, '|-', $shell) {
 		log_print "$indent($run_id) starts failed! (error: $!)\n";
@@ -1599,11 +1598,10 @@ sub run_shell
 		return undef;
 	}
 	my $ret = ($? >> 8);
-	if ($procedure_type ne 'sysinfo') {
-		my $end_time = time;
-		log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
-			time_string($end_time), time_elapse_string($start_time, $end_time);
-	}
+	my $end_time = time;
+	log_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
+		time_string($end_time), time_elapse_string($start_time, $end_time);
+	log_print "$indent($run_id) returns $ret\n" if $ret != 0;
 	return $ret;
 }
 
@@ -1757,7 +1755,7 @@ sub run_cmd
 
 		} elsif ($proc_name =~ /_sysinfo$/) {
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
-			run_shell($cmd_result, 'sysinfo', 'sysinfo', 0, '');
+			run_sysinfo($cmd_result);
 		} else {
 			my $run_id = get_new_run_id;
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
@@ -1815,7 +1813,6 @@ sub run_cmd
 			}
 			return undef if not defined $ret;
 			if (not $test_mode and $ret != 0) {
-				log_print "$indent($run_id) returns $ret\n";
 				foreach my $output (keys %{$cmd_ref->{outputs}}) {
 					my $file = eval_text($output, $args_ref, \%proc_vars, $global_vars_ref);
 					if (-e $file) {
