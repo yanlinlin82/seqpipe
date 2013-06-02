@@ -1616,6 +1616,7 @@ sub eval_text_in_shell
 		last if $result =~ /\$\(\(.*\)\)/;
 		last if $result =~ /{[0-9]+\.\.[0-9]+}/;
 		last if $result =~ /{\S\.\.\S}/;
+		last if $result =~ /{.*,.*}/;
 		last if $result =~ /\$\(.*\)/;
 		last if $result =~ /\*/;
 		last if $result =~ /\?/;
