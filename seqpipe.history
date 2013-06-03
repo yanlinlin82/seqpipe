@@ -131,7 +131,7 @@ function do_remove_log
 		elif [ -d ${SEQPIPE_DIR}/${ID}/ ]; then
 			ln -sf ${ID} ${SEQPIPE_DIR}/last
 		elif [ -f ${SEQPIPE_DIR}/${ID}.tar.gz ]; then
-			ln -sv ${ID}.tar.gz ${SEQPIPE_DIR}/last
+			ln -sf ${ID}.tar.gz ${SEQPIPE_DIR}/last
 		fi
 	fi
 }
