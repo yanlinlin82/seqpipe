@@ -2015,7 +2015,7 @@ if ($#ARGV < 0) {
 			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
 			$max_thread_number = shift @ARGV;
 			die "ERROR: Invalid max thread number: $max_thread_number!\n" if $max_thread_number <= 0;
-			if ($max_thread_number > 1 and $can_use_threads) {
+			if ($max_thread_number > 1 and not $can_use_threads) {
 				print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
 			}
 		} elsif ($arg eq '-e') {
