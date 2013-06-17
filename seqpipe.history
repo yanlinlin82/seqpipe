@@ -110,7 +110,7 @@ function do_remove_log
 		fi
 	fi
 
-	if [ -z "${FORCE}"]; then
+	if [ -z "${FORCE}" ]; then
 		echo -n "Are you sure to remove seqpipe run '${ID}' (y/n)? "
 		read C
 		if [ "$(echo $C | cut -c1)" != "y" -a "$(echo $C | cut -c1)" != "Y" ]; then
