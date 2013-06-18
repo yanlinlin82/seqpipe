@@ -1923,7 +1923,7 @@ sub run_block
 		foreach my $cmd_ref (@cmds) {
 			my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent . '  ', $args_ref, $proc_vars_ref, $global_vars_ref);
 			if (not defined $cmd_ret) {
-				undef $cmd_ret;
+				undef $ret;
 				last;
 			}
 			$ret = $cmd_ret->{ret};
@@ -1955,7 +1955,7 @@ sub run_block
 				my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent . '  ',
 					$args_ref, $proc_vars_ref, $global_vars_ref);
 				if (not defined $cmd_ret) {
-					undef $cmd_ret;
+					undef $ret;
 					last;
 				}
 				$ret = $cmd_ret->{ret};
