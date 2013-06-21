@@ -1,5 +1,42 @@
+2013-05-07  v0.4.10 (r245)
+* Support '...' in SP_run.
+
+2013-05-05  v0.4.9 (r244)
+* Enable test mode (-T) option again.
+* Enable 'name' attribute for commands.
+
+2012-12-21  v0.4.8 (r232)
+* Do not treat intermediate files as temporary files.
+
+2012-11-29  v0.4.7 (r229)
+* Enable to 'export' shell environment variables in bash script.
+
+2012-11-24  v0.4.6 (r228)
+* Fix bug about pipeline script parsing.
+* Improve perl-thread supports checking.
+
+2012-11-22  v0.4.5 (r225)
+* Use a bash wrapper to solve the forks::shared problem.
+* Fix bug about intermediate files processing.
+
+2012-11-19  v0.4.4 (r222)
+* Fix bug and improve variable and file dependency checking.
+* Change configure filenames.
+* Improve bioseq pipelines.
+
+2012-11-17  v0.4.3 (r214)
+* Fix bug and improve variable and file dependency checking.
+* Remove quiet mode and verbose mode.
+* Change '-e' shell command from 'qsub' to 'qsub_sync' automatically.
+
+2012-11-12  v0.4.2 (r201)
+* Support 'SP_else_if'.
+
+2012-11-10  v0.4.1 (r199)
+* Support 'SP_for_parallel'.
+
 2012-11-09  v0.4.0 (r194)
-* Support new syntax: '{{', '}}', 'SP_if', 'SP_set', 'SP_for', 'SP_while'.
+* Support new syntax: '{{', '}}', 'SP_if', 'SP_else', 'SP_set', 'SP_for', 'SP_while'.
 * Support multi-line command in inline mode.
 * Improve log filename and format.
 * Improve qsub support.
