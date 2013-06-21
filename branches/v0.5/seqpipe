@@ -777,7 +777,7 @@ sub read_one_line
 
 sub load_global_var
 {
-	my ($fp, $module) = @_;
+	my ($fp, $module, $allow_overwrite) = @_;
 	die "ERROR: Parse global variable definition failed at " . file_pos($fp) . "\n$die_msg_tailing" unless $fp->{line} =~ /$VAR_LINE/;
 	my $name = $1;
 	my ($value, $comment) = split_bash_and_comment($2);
@@ -785,21 +785,22 @@ sub load_global_var
 	$value =~ s/^\s+//g;  # Remove leading white-spaces.
 	$value =~ s/\s+$//g;  # Remove tailing white-spaces.
 	$value =~ s/^"(.*?)"$/$1/;  # Remove quot marks.
-	die "ERROR: Redeclaration of global variable '$name' at " . file_pos($fp) . "\n$die_msg_tailing" if exists $global_vars_ref->{$module}{$name};
+	die "ERROR: Redeclaration of global variable '$name' at " . file_pos($fp) . "\n$die_msg_tailing"
+		if not $allow_overwrite and exists $global_vars_ref->{$module}{$name};
 	$global_vars_ref->{$module}{$name} = $value;
 	chk_vars_dep({}, {}, {}, $global_vars_ref->{$module});
 }
 
 sub load_module_conf
 {
-	my ($conf_file, $module) = @_;
+	my ($conf_file, $module, $allow_overwrite) = @_;
 	print "Load config: $conf_file\n" if $verbose;
 	open my $handle, '<', $conf_file or die "ERROR: Can not open file '$conf_file'!\n$die_msg_tailing";
 	my $fp = { handle => $handle, file => $conf_file, line_no => 0, line => '' };
 	my $line_no = 0;
 	while (read_one_line($fp)) {
 		if ($fp->{line} =~ /$VAR_LINE/s) {
-			load_global_var($fp, $module);
+			load_global_var($fp, $module, $allow_overwrite);
 		} elsif ($fp->{line} !~ /$EMPTY_LINE/s and $fp->{line} !~ /$COMMENT_LINE/s) {
 			die "ERROR: Invalid syntax of configure file at " . file_pos($fp)
 				. "\n  Only global variable definition could be included in configure file!\n$die_msg_tailing";
@@ -1049,14 +1050,14 @@ sub load_module
 				print "WARNING: SP_include should be defined before procedures at " . file_pos($fp) . "\n" if not $obsolete_warned;
 				$obsolete_warned = 1;
 			}
-			load_module_conf(dirname($file) . '/' . $1, $file);
+			load_module_conf(dirname($file) . '/' . $1, $file, 0);
 			read_one_line($fp);
 		} elsif ($fp->{line} =~ /$VAR_LINE/) {
 			if ($met_proc) {
 				print "WARNING: Global variables should be defined before procedures at " . file_pos($fp) . "\n" if not $obsolete_warned;
 				$obsolete_warned = 1;
 			}
-			load_global_var($fp, $file);
+			load_global_var($fp, $file, 0);
 			read_one_line($fp);
 		} elsif ($fp->{line} =~ /$FUNC_LINE/) {
 			$met_proc = 1;
@@ -1067,7 +1068,7 @@ sub load_module
 	}
 	close $fp->{handle};
 	# Load configure file to overwrite the default values of global variables
-	load_module_conf("$file.conf", $file) if -e "$file.conf";
+	load_module_conf("$file.conf", $file, 1) if -e "$file.conf";
 }
 
 ############################################################
