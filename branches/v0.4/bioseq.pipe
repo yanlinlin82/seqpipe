@@ -1,0 +1,900 @@
+#!/bin/bash
+#
+#[version="0.4.0 ($Id$)"]
+#
+
+# Load global parameters
+SP_include config.inc
+
+INPUT_DIR=.
+OUTPUT_DIR=${INPUT_DIR}
+INPUT_NAME=${NAME}
+OUTPUT_NAME=${NAME}
+INPUT=${INPUT_NAME}${INPUT_EXT_NAME}
+OUTPUT=${OUTPUT_NAME}${OUTPUT_EXT_NAME}
+THREAD_NUM=2
+
+VALIDATION_STRINGENCY=SILENT
+
+###########################################################################
+
+function _bioseq_sysinfo
+{
+	echo -n 'FastQC   : '; fastqc --version | cut -d' ' -f2
+	echo -n 'FastX    : '; fastx_trimmer -h | grep FASTX | sed 's/^.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*$/\1/g'
+	echo -n 'bwa      : '; bwa |& grep Version | cut -d' ' -f2
+	echo -n 'Qualimap : '; qualimap -h | grep '^QualiMap v' | cut -d' ' -f2
+	echo -n 'samtools : '; samtools |& grep Version | cut -d' ' -f2-
+	echo -n 'bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
+	echo -n 'picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
+	echo -n 'gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
+	echo -n 'pindel   : '; pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
+}
+
+function bioseq_system_check
+{
+	which fastqc
+	which fastx_trimmer
+	which bwa
+	which qualimap
+	which samtools
+	which bcftools
+	which java
+	which pindel
+	ls ${PICARD_ROOT}/ViewSam.jar
+	ls ${GATK_ROOT}/GenomeAnalysisTK.jar
+	ls ${GATK_VCF_DBSNP}
+	ls ${GATK_VCF_HAPMAP}
+	ls ${GATK_VCF_OMNI}
+}
+
+###########################################################################
+
+function fastqc_check
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.fastqc.zip
+	SP_set _TEMP_FILE=$(dirname ${OUTPUT_DIR}/${OUTPUT})/$(basename ${INPUT} | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g')
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	fastqc --noextract --nogroup -o $(dirname ${OUTPUT_DIR}/${OUTPUT}) ${INPUT_DIR}/${INPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT} ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}; fi
+}
+
+function convert_fastq_33to64
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.q64.fq.gz
+
+	# Check if it is base-33
+	#[require="${INPUT_DIR}/${INPUT}"]
+	test -n "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} \
+		| perl -e 'while($a=<>){$b=<>;$c=<>;$d=<>;print "$a$b$c"; print($_ eq "\n" ? "\n" : pack("C", unpack("C*",$_)-33+64)) for(split(//,$d));}' \
+		| gzip -9c \
+		> ${OUTPUT_DIR}/${OUTPUT}
+}
+
+function convert_fastq_64to33
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.q33.fq.gz
+
+	# Check if it is base-64
+	#[require="${INPUT_DIR}/${INPUT}"]
+	test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')"
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} \
+		| perl -e 'while($a=<>){$b=<>;$c=<>;$d=<>;print "$a$b$c"; print($_ eq "\n" ? "\n" : pack("C", unpack("C*",$_)-64+33)) for(split(//,$d));}' \
+		| gzip -9c \
+		> ${OUTPUT_DIR}/${OUTPUT}
+}
+
+function trim_fastq
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.trimmed.fq.gz
+
+	SP_set START_POS=1
+	SP_set _QUAL_OPT=
+
+	# Check if it is base-64
+	#[require="${INPUT_DIR}/${INPUT}"]
+	SP_if (test -n "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	{
+		SP_set _QUAL_OPT=-Q33
+	}
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} \
+		| fastx_trimmer -f ${START_POS} -l ${END_POS} ${_QUAL_OPT} \
+		| gzip -9c \
+		> ${OUTPUT_DIR}/${OUTPUT}
+}
+
+###########################################################################
+
+function bwa_build_index
+{
+	SP_set INPUT_EXT_NAME=.fasta
+	SP_set OUTPUT_EXT_NAME=${INPUT_EXT_NAME}.bwt
+
+	SP_set _ALGORITHM=is
+	SP_if $(ls -lL ${INPUT_DIR}/${INPUT} | awk '$5>=2e9')
+	{
+		# Treat >=2GB .fasta file as long genome, use '-a bwtsw' instead of '-a is'
+		SP_set _ALGORITHM=bwtsw
+	}
+
+	test "${INPUT_DIR}/${INPUT}.bwt" == "${OUTPUT_DIR}/${OUTPUT}"
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	bwa index -a ${_ALGORITHM} ${INPUT_DIR}/${INPUT}
+}
+
+function bwa_map_pe
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set SAI_EXT_NAME=.sai
+	SP_set OUTPUT_EXT_NAME=.bam
+	SP_set INPUT_1=${NAME}1${INPUT_EXT_NAME}
+	SP_set INPUT_2=${NAME}2${INPUT_EXT_NAME}
+	SP_set SAI_FILE_1=${NAME}1${SAI_EXT_NAME}
+	SP_set SAI_FILE_2=${NAME}2${SAI_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
+
+	SP_set RGID=${NAME}
+	SP_set RGSM=${RGID}        # Sample
+	SP_set RGLB=${RGID}        # Library
+	SP_set RGPL=illumina       # Platform: e.g. illumina, solid
+	SP_set RGCN=               # Sequencing center
+
+	SP_set _RG=
+	SP_if ${RGID}
+	{
+		SP_set _RG=${_RG}\tID:${RGID}
+
+		SP_if ${RGSM}
+		{
+			SP_set _RG=${_RG}\tSM:${RGSM}
+		}
+		SP_if ${RGLB}
+		{
+			SP_set _RG=${_RG}\tLB:${RGLB}
+		}
+		SP_if ${RGPL}
+		{
+			SP_set _RG=${_RG}\tPL:${RGPL}
+		}
+		SP_if ${_RG}
+		{
+			SP_set _RG=-r "@RG${_RG}"
+		}
+	}
+
+	SP_set MAX_INSERT_SIZE=500
+	SP_set BWA_END_IND=5    # do not put an indel within INT bp towards the ends.
+	SP_set BWA_GAP_EXT=-1   # maximum number of gap extensions, -1 for disabling long gaps.
+
+	SP_set BWA_ALN_OPTS=
+	SP_set BWA_SAMPE_OPTS=
+
+	SP_set _BWA_ALN_QUAL_OPT=
+	#[require="${INPUT_DIR}/${INPUT_1}"]
+	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT_1} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	{
+		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
+		SP_set _BWA_ALN_QUAL_OPT=-I
+	}
+
+	# This will be skipped if the index files exist.
+	SP_set _REF_FILE=$(basename ${REF})
+	SP_set _REF_DIR=$(dirname ${REF})
+	SP_run bwa_build_index INPUT_DIR=${_REF_DIR} NAME=${_REF_FILE} INPUT_EXT_NAME=
+
+	{{
+		#[require="${REF}"]
+		#[input="${INPUT_DIR}/${INPUT_1}"]
+		#[output.temp="${OUTPUT_DIR}/${SAI_FILE_1}"]
+		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+			${REF} ${INPUT_DIR}/${INPUT_1} -f ${OUTPUT_DIR}/${SAI_FILE_1} \
+			${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
+		
+		#[require="${REF}"]
+		#[input="${INPUT_DIR}/${INPUT_2}"]
+		#[output.temp="${OUTPUT_DIR}/${SAI_FILE_2}"]
+		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+			${REF} ${INPUT_DIR}/${INPUT_2} -f ${OUTPUT_DIR}/${SAI_FILE_2} \
+			${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
+	}}
+
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT_1}"]
+	#[input="${INPUT_DIR}/${INPUT_2}"]
+	#[input="${OUTPUT_DIR}/${SAI_FILE_1}"]
+	#[input="${OUTPUT_DIR}/${SAI_FILE_2}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	bwa sampe -P ${REF} -a ${MAX_INSERT_SIZE} \
+		${OUTPUT_DIR}/${SAI_FILE_1} ${OUTPUT_DIR}/${SAI_FILE_2} \
+		${INPUT_DIR}/${INPUT_1} ${INPUT_DIR}/${INPUT_2} \
+		${_RG} ${BWA_SAMPE_OPTS} \
+		| samtools view -Sb - \
+		> ${OUTPUT_DIR}/${OUTPUT}
+}
+
+function bwa_map_se
+{
+	SP_set INPUT_EXT_NAME=.fq.gz
+	SP_set OUTPUT_EXT_NAME=.bam
+	SP_set SAI_EXT_NAME=.sai
+	SP_set SAI_NAME=${NAME}
+	SP_set SAI_FILE=${SAI_NAME}${SAI_EXT_NAME}
+
+	SP_set RGID=${NAME}
+	SP_set RGSM=${RGID}        # Sample
+	SP_set RGLB=${RGID}        # Library
+	SP_set RGPL=illumina       # Platform: e.g. illumina, solid
+	SP_set RGCN=               # Sequencing center
+
+	SP_set _RG=
+	SP_if ${RGID}
+	{
+		SP_set _RG=${_RG}\tID:${RGID}
+
+		SP_if ${RGSM}
+		{
+			SP_set _RG=${_RG}\tSM:${RGSM}
+		}
+		SP_if ${RGLB}
+		{
+			SP_set _RG=${_RG}\tLB:${RGLB}
+		}
+		SP_if ${RGPL}
+		{
+			SP_set _RG=${_RG}\tPL:${RGPL}
+		}
+		SP_if ${_RG}
+		{
+			SP_set _RG=-r "@RG${_RG}"
+		}
+	}
+
+	SP_set BWA_END_IND=5    # do not put an indel within INT bp towards the ends.
+	SP_set BWA_GAP_EXT=-1   # maximum number of gap extensions, -1 for disabling long gaps.
+
+	SP_set BWA_ALN_OPTS=
+	SP_set BWA_SAMSE_OPTS=
+
+	SP_set _BWA_ALN_QUAL_OPT=
+	#[require="${INPUT_DIR}/${INPUT}"]
+	SP_if (test -z "$(${_SEQPIPE_ROOT}/uxcat ${INPUT_DIR}/${INPUT} | head -n4000 | sed -n '4~4p' | grep '[0-9]')")
+	{
+		# Check first 1000 reads' quality, if digit characters not exist, treat it as base-64 rather than base-33.
+		SP_set _BWA_ALN_QUAL_OPT=-I
+	}
+
+	# This will be skipped if the index files exist.
+	SP_set _REF_FILE=$(basename ${REF})
+	SP_set _REF_DIR=$(dirname ${REF})
+	SP_run bwa_build_index INPUT_DIR=${_REF_DIR} NAME=${_REF_FILE} INPUT_EXT_NAME=
+
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output.temp="${OUTPUT_DIR}/${SAI_FILE}"]
+	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${REF} ${INPUT_DIR}/${INPUT} -f ${OUTPUT_DIR}/${SAI_FILE} \
+		${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
+
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${OUTPUT_DIR}/${SAI_FILE}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	bwa samse ${REF} ${OUTPUT_DIR}/${SAI_FILE} ${INPUT_DIR}/${INPUT} ${_RG} ${BWA_SAMSE_OPTS} \
+		| samtools view -Sb - \
+		> ${OUTPUT_DIR}/${OUTPUT}
+}
+
+###########################################################################
+
+function sort_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.sorted.bam
+
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+	
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/SortSam.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false SORT_ORDER=coordinate \
+		INPUT=${INPUT_DIR}/${INPUT} \
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function build_bam_index
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=${INPUT_EXT_NAME}.bai
+
+	test "${INPUT_DIR}/${INPUT}.bai" == "${OUTPUT_DIR}/${OUTPUT}"
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	samtools index ${INPUT_DIR}/${INPUT}
+}
+
+function flagstat_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.flagstat.txt
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	samtools flagstat ${INPUT_DIR}/${INPUT} > ${OUTPUT_DIR}/${OUTPUT}
+}
+
+function bamqc_check
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.bamqc
+
+	SP_set SPECIES=HUMAN
+	SP_if !(echo ${SPECIES} | egrep '^(HUMAN|MOUSE)$')
+	{
+		echo "SPECIES can be only set to HUMAN or MOUSE!"; false
+	}
+	
+	SP_set THREAD_NUM=2
+	SP_set WINDOW_NUM=400
+	SP_set EXT_OPTS=
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}/qualimapReport.html"]
+	qualimap bamqc -bam ${INPUT_DIR}/${INPUT} -gd ${SPECIES} \
+		-nt ${THREAD_NUM} -nw ${WINDOW_NUM} \
+		-outformat HTML -outdir ${OUTPUT_DIR}/${OUTPUT} ${EXT_OPTS}
+}
+
+function merge_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.sorted.bam
+	SP_set INPUT_1=${NAME_1}${INPUT_EXT_NAME}
+	SP_set INPUT_2=${NAME_2}${INPUT_EXT_NAME}
+	SP_set OUTPUT=${NAME}${OUTPUT_EXT_NAME}
+
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT_DIR}/${INPUT_1}"]
+	#[input="${INPUT_DIR}/${INPUT_2}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT_DIR}/${INPUT_1} \
+		INPUT=${INPUT_DIR}/${INPUT_2} \
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function merge_bam_3
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.sorted.bam
+	SP_set INPUT_1=${NAME_1}${INPUT_EXT_NAME}
+	SP_set INPUT_2=${NAME_2}${INPUT_EXT_NAME}
+	SP_set INPUT_3=${NAME_3}${INPUT_EXT_NAME}
+
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT_DIR}/${INPUT_1}"]
+	#[input="${INPUT_DIR}/${INPUT_2}"]
+	#[input="${INPUT_DIR}/${INPUT_3}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT_DIR}/${INPUT_1} \
+		INPUT=${INPUT_DIR}/${INPUT_2} \
+		INPUT=${INPUT_DIR}/${INPUT_3} \
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function merge_bam_4
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.sorted.bam
+	SP_set INPUT_1=${NAME_1}${INPUT_EXT_NAME}
+	SP_set INPUT_2=${NAME_2}${INPUT_EXT_NAME}
+	SP_set INPUT_3=${NAME_3}${INPUT_EXT_NAME}
+	SP_set INPUT_4=${NAME_4}${INPUT_EXT_NAME}
+
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT_DIR}/${INPUT_1}"]
+	#[input="${INPUT_DIR}/${INPUT_2}"]
+	#[input="${INPUT_DIR}/${INPUT_3}"]
+	#[input="${INPUT_DIR}/${INPUT_4}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT_DIR}/${INPUT_1} \
+		INPUT=${INPUT_DIR}/${INPUT_2} \
+		INPUT=${INPUT_DIR}/${INPUT_3} \
+		INPUT=${INPUT_DIR}/${INPUT_4} \
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function build_fasta_dict
+{
+	SP_set INPUT_EXT_NAME=.fasta
+	SP_set OUTPUT_EXT_NAME=.dict
+
+	test "$(echo ${INPUT_DIR}/${INPUT} | sed 's/\(\.fa|\.fasta\)$//')" == "$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\.dict$//')"
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/CreateSequenceDictionary.jar ${_PICARD_OPTS} \
+		REFERENCE=${INPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT}
+}
+
+function reorder_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.reordered.bam
+	
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _REF_FILE=$(basename ${REF})
+	SP_set _REF_DIR=$(dirname ${REF})
+	SP_run build_fasta_dict INPUT_DIR=${_REF_DIR} NAME=${_REF_FILE} INPUT_EXT_NAME=
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	# This procedure requires input bam is sorted, although PICARD ReorderSam dosn't.
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/ReorderSam.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		REFERENCE=${REF} INPUT=${INPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function mkdup_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.mkdup.bam
+	SP_set METRICS_EXT_NAME=.mkdup.metrics
+	SP_set METRICS_NAME=${NAME}
+	SP_set METRICS=${METRICS_NAME}${METRICS_EXT_NAME}
+
+	SP_set ASSUME_SORTED=false
+	test "${ASSUME_SORTED}" == "false" -o "${ASSUME_SORTED}" == "true"
+
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${METRICS}"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT_DIR}/${INPUT} \
+		OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+		METRICS_FILE=${OUTPUT_DIR}/${METRICS} \
+		REMOVE_DUPLICATES=false \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function rmdup_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.rmdup.bam
+	SP_set METRICS_EXT_NAME=.rmdup.metrics
+	SP_set METRICS_NAME=${NAME}
+	SP_set METRICS=${METRICS_NAME}${METRICS_EXT_NAME}
+
+	SP_set ASSUME_SORTED=false
+	test "${ASSUME_SORTED}" == "false" -o "${ASSUME_SORTED}" == "true"
+
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${METRICS}"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT} OUTPUT=${OUTPUT} METRICS_FILE=${METRICS} \
+		REMOVE_DUPLICATES=true \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function set_bam_rg
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.rg.bam
+
+	SP_set RGSM=${RGID}        # Sample
+	SP_set RGLB=${RGID}        # Library
+	SP_set RGPL=illumina       # Platform: e.g. illumina, solid
+	SP_set RGPU=flowcell.lane  # Platform unit: e.g. run barcode
+	SP_set RGCN=               # Sequencing center
+	SP_set RGDS=               # Description
+	
+	test -n "${RGID}" -a -n "${RGPL}" -a -n "${RGPU}"
+	SP_set _RG="RGID=${RGID} RGPL=${RGPL} RGPU=${RGPU}"
+	SP_if ${RGSM}
+	{
+		SP_set _RG="${_RG} RGSM=${RGSM}"
+	}
+	SP_if ${RGLB}
+	{
+		SP_set _RG="${_RG} RGLB=${RGLB}"
+	}
+	SP_if ${RGCN}
+	{
+		SP_set _RG="${_RG} RGCN=${RGCN}"
+	}
+	SP_if ${RGDS}
+	{
+		SP_set _RG="${_RG} RGDS=\"${RGDS}\""
+	}
+
+	test "${VALIDATION_STRINGENCY}" == "STRICT" -o "${VALIDATION_STRINGENCY}" == "SILENT" -o "${VALIDATION_STRINGENCY}" == "LENIENT"
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	# This procedure requires input bam is sorted, although PICARD AddOrReplaceReadGroups dosn't.
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/AddOrReplaceReadGroups.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${INPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT} ${_RG} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function fixmate_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.fixmate.bam
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[input="${OUTPUT_DIR}/${INPUT}"]
+	#[input="${OUTPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/FixMateInformation.jar ${_PICARD_OPTS} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		INPUT=${OUTPUT_DIR}/${INPUT} OUTPUT=${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function samtools_call_variants
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.samtools.vcf
+
+	SP_set MIN_QUAL=1  # To remove multi-mapped reads (whose MAPQ == 0)
+
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	samtools mpileup -f ${REF} ${INPUT_DIR}/${INPUT} -q ${MIN_QUAL} -u \
+		| bcftools view -vcg - \
+		> ${OUTPUT_DIR}/${OUTPUT}
+}
+
+function gatk_reduce_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.reduced.bam
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T ReduceReads -R ${REF} -I ${INPUT_DIR}/${INPUT} -o ${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function gatk_realign_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.realign.bam
+	SP_set INTERVALS_EXT_NAME=.intervals
+	SP_set INTERVALS_NAME=${NAME}
+	SP_set INTERVALS=${INTERVALS_NAME}${INTERVALS_EXT_NAME}
+
+	#[require="${REF}"]
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai]
+	#[output.temp="${OUTPUT_DIR}/${INTERVALS}"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T RealignerTargetCreator \
+		-R ${REF} -I ${INPUT_DIR}/${INPUT} -o ${OUTPUT_DIR}/${INTERVALS} \
+		-known ${GATK_VCF_DBSNP} \
+		--num_threads ${THREAD_NUM}
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[input="${OUTPUT_DIR}/${INTERVALS}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.bai"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T IndelRealigner \
+		-R ${REF} -I ${INPUT_DIR}/${INPUT} \
+		-targetIntervals ${OUTPUT_DIR}/${INTERVALS} \
+		-o ${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function gatk_recal_bam
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set RECAL_EXT_NAME=.recal
+	SP_set OUTPUT_EXT_NAME=.recal.bam
+	SP_set RECAL_NAME=${NAME}
+	SP_set RECAL=${RECAL_NAME}${RECAL_EXT_NAME}
+
+	#[require="${REF}"]
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output.temp="${OUTPUT_DIR}/${RECAL}"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T BaseRecalibrator \
+		-R ${REF} \
+		-knownSites ${GATK_VCF_DBSNP} \
+		-I ${INPUT_DIR}/${INPUT} \
+		-o ${OUTPUT_DIR}/${RECAL}
+
+	SP_set _TEMP_FILE=$(echo ${OUTPUT_DIR}/${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
+
+	#[require="${REF}"]
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${OUTPUT_DIR}/${RECAL}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T PrintReads \
+		-R ${REF} \
+		-I ${INPUT_DIR}/${INPUT} \
+		-BQSR ${OUTPUT_DIR}/${RECAL} \
+		-o ${OUTPUT_DIR}/${OUTPUT} \
+	&& \
+	if [ ! ${_TEMP_FILE} -ef ${OUTPUT_DIR}/${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT_DIR}/${OUTPUT}.bai; fi
+}
+
+function gatk_genotype
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.vcf
+
+	SP_set STAND_CALL_CONF=30
+	SP_set STAND_EMIT_CONF=10
+	SP_set MIN_BASE_QUALITY_SCORE=20
+
+	#[require="${REF}"]
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T UnifiedGenotyper \
+		-R ${REF} \
+		-I ${INPUT_DIR}/${INPUT} \
+		-o ${OUTPUT_DIR}/${OUTPUT} \
+		-glm BOTH \
+		--min_base_quality_score ${MIN_BASE_QUALITY_SCORE} \
+		--dbsnp ${GATK_VCF_DBSNP} \
+		-stand_call_conf ${STAND_CALL_CONF} \
+		-stand_emit_conf ${STAND_EMIT_CONF} \
+		--num_threads ${THREAD_NUM}
+}
+
+function gatk_call_variants
+{
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${INPUT_DIR}/${NAME}.bam"]
+	#[input="${INPUT_DIR}/${NAME}.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.bam.bai"]
+	SP_run gatk_realign_bam REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} NAME=${NAME}
+
+	#[input="${OUTPUT_DIR}/${NAME}.realign.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam.bai"]
+	SP_run fixmate_bam NAME=${NAME}.realign
+
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam.bai"]
+	SP_run gatk_recal_bam REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} NAME=${NAME}.realign.fixmate
+
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.bam.bai"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam"]
+	#[output.temp="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam.bai"]
+	SP_run gatk_reduce_bam REF=${REF} NAME=${NAME}.realign.fixmate.recal
+
+	#[require="${GATK_VCF_DBSNP}"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam"]
+	#[input="${OUTPUT_DIR}/${NAME}.realign.fixmate.recal.reduced.bam.bai"]
+	#[output="${OUTPUT_DIR}/${NAME}.gatk.vcf"]
+	SP_run gatk_genotype REF=${REF} GATK_VCF_DBSNP=${GATK_VCF_DBSNP} \
+		NAME=${NAME} INPUT_EXT_NAME=.realign.fixmate.recal.reduced.bam OUTPUT_EXT_NAME=.gatk.vcf
+}
+
+function pindel_call_structure_variants
+{
+	SP_set INPUT_EXT_NAME=.bam
+	SP_set OUTPUT_EXT_NAME=.pindel.vcf
+	SP_set PINDEL_EXT_NAME=.pindel
+	SP_set PINDEL_RESULT=${NAME}${PINDEL_EXT_NAME}
+
+	SP_set REF_NAME=$(basename ${REF} | sed 's,\.[^.]*$,,')
+	SP_set REF_DATE=$(stat ${REF} | grep Modify | awk '{print $2}' | sed 's,-,,g')
+
+	# Call structure variants by Pindel
+	#[require="${REF}"]
+	#[input="${INPUT_DIR}/${INPUT}"]
+	#[input="${INPUT_DIR}/${INPUT}.bai"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD"]
+	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI"]
+	pindel -f ${REF} \
+		-i <(echo "${INPUT_DIR}/${INPUT} ${INSERT_SIZE} ${NAME}") \
+		-l -k -s -c ALL -o ${OUTPUT_DIR}/${PINDEL_RESULT}/sv
+
+	# Convert Pindel result to VCF files
+	{{
+		#[require="${REF}"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf"]
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf
+
+		#[require="${REF}"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf"]
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf
+
+		#[require="${REF}"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf"]
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf
+		
+		#[require="${REF}"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf"]
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf
+		
+		#[require="${REF}"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf"]
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf
+		
+		#[require="${REF}"]
+		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI"]
+		#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf"]
+		pindel2vcf -r ${REF} -R ${REF_NAME} -d ${REF_DATE} \
+			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf
+	}}
+
+	# Combine different types of the structure variants
+	#[require="${REF}"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf"]
+	#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf.idx"]
+	#[output.temp="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf.idx"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}"]
+	#[output="${OUTPUT_DIR}/${OUTPUT}.idx"]
+	java ${_JAVA_OPTS} -jar ${GATK_ROOT}/GenomeAnalysisTK.jar ${_GATK_OPTS} \
+		-T CombineVariants \
+		-R ${REF} \
+		--variant:BP ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf \
+		--variant:D ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf \
+		--variant:SI ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf \
+		--variant:INV ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf \
+		--variant:TD ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf \
+		--variant:LI ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf \
+		-o ${OUTPUT_DIR}/${OUTPUT} \
+		-genotypeMergeOptions UNIQUIFY
+}
+
+function DNAseq_analysis
+{
+	SP_set INSERT_SIZE=500
+
+	SP_run bwa_map_pe REF=${REF} NAME=${NAME}
+
+	SP_run sort_bam NAME=${NAME}
+	SP_run mkdup_bam NAME=${NAME}.sorted
+
+	{{
+		SP_run samtools_call_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam
+		SP_run gatk_call_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam
+		SP_run pindel_call_structure_variants REF=${REF} NAME=${NAME} INPUT_EXT_NAME=.sorted.mkdup.bam INSERT_SIZE=${INSERT_SIZE}
+	}}
+}

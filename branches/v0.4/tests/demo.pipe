@@ -1,0 +1,82 @@
+#!/bin/bash
+
+function demo_blocks
+{{
+	echo a; sleep 3; echo b
+	echo c; sleep 2; echo d
+	{
+		echo e
+		sleep 1
+		{{
+			echo f; sleep 4; echo g
+			echo h; sleep 3; echo i
+		}}
+	}
+}}
+
+function demo_SP_if
+{
+	SP_set COND=true
+
+	SP_if (${COND})
+	{
+		echo true
+	}
+	SP_else
+	{
+		echo false
+	}
+
+	SP_if !(${COND})
+	{
+		echo false
+	}
+	SP_else
+	{
+		echo true
+	}
+
+	SP_if (ls *.gz)
+	{
+		wc *.gz
+	}
+
+	SP_if (ls *.mp3)
+	{
+		ls -sh *.mp3
+	}
+}
+
+function demo_SP_set
+{
+	SP_set X=abc *.gz {1..5} $((3+4))
+	echo ${X}
+
+	SP_set TMP_FILE=$(mktemp)
+	ls > ${TMP_FILE}
+	wc ${TMP_FILE}
+	rm -vf ${TMP_FILE}
+}
+
+function demo_SP_for
+{
+	SP_for _X=abc *.gz {1..5} $((3+4))
+	{
+		echo ${_X}
+	}
+}
+
+function demo_SP_while
+{
+	SP_set X=2
+	SP_while (test ${X} -lt 5)
+	{
+		SP_set X=$((${X} + 1))
+		echo "waiting ... (X=${X})"; sleep 1
+	}
+	SP_while !(test ${X} -lt 1)
+	{
+		SP_set X=$((${X} / 2))
+		echo "waiting ... (X=${X})"; sleep 1
+	}
+}

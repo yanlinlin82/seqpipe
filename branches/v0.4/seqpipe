@@ -1,0 +1,1581 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+use File::Basename;
+use File::stat;
+use Cwd 'abs_path';
+use Fcntl qw(:flock);
+use File::Temp qw/tempfile/;
+
+# Check perl multi-thread supporting
+my $can_use_threads = 0;
+if (eval 'use forks; 1') {
+	require forks;
+	require forks::shared;
+	$can_use_threads = 1;
+} elsif (eval 'use threads; 1') {
+	require threads;
+	require threads::shared;
+	$can_use_threads = 1;
+	print "WARNING: 'forks' is not available, use CPAN 'threads' instead.\n";
+} else {
+	print "WARNING: Your Perl does not support threads! Parallel mode is disabled.\n";
+}
+
+# All logs are saved into this directory.
+use constant UNIQ_ID => sprintf('%02d%02d%02d.%d', (localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], $$);
+use constant LOG_ROOT => './.seqpipe';
+use constant LOG_DIR => LOG_ROOT . '/' . UNIQ_ID;
+use constant APP_ROOT => dirname abs_path $0;
+
+# Command line parsing results.
+my $help_mode = 0;
+my $verbose = 0;
+my $list_mode = 0;
+my $show_mode = 0;
+my $quiet_mode = 0;
+my $keep_intermediates = 0;
+my $execute_command = '';
+my $shell = '/bin/bash';
+my $obsolete_warned = 0;
+my $max_thread_number = 2;
+
+# All procedures are loaded at startup.
+my %procedures = ();
+my @blocks = ();
+
+# Global variables (which are defined outside procedures in .pipe files).
+my %global_var = ();
+my %global_var_deps = ();
+
+# Count how many commands have been run so far.
+my $run_counter :shared = 0;
+
+sub get_new_run_id
+{
+	lock($run_counter);
+	$run_counter++;
+	return $run_counter;
+}
+
+# Flag for exiting (when received KILL or Ctrl+C).
+my $exiting :shared = 0;
+
+# Command line entered by user.
+my $command_line = bash_line_encode(abs_path($0), @ARGV);
+
+############################################################
+
+sub safe_print
+{
+	flock LOG_FILE, LOCK_EX;
+	print LOG_FILE @_;
+	flock LOG_FILE, LOCK_UN;
+}
+
+sub safe_printf
+{
+	flock LOG_FILE, LOCK_EX;
+	printf LOG_FILE @_;
+	flock LOG_FILE, LOCK_UN;
+}
+
+############################################################
+
+sub initialize_config
+{
+	if (not -e APP_ROOT . '/config.inc') {
+		if (-e APP_ROOT . '/config.inc.tpl') {
+			system('cp ' . APP_ROOT . '/config.inc.tpl ' . APP_ROOT . '/config.inc');
+		}
+	} else {
+		my %vars = ();
+		my @variable_list = ();
+		open FILE, APP_ROOT . '/config.inc.tpl' or return;
+		while (my $line = <FILE>) {
+			chomp $line;
+			if ($line =~ /^\s*(\w+)=(.*)$/) {
+				my ($name, $value) = ($1, $2);
+				$vars{$name} = $value;
+				push @variable_list, $name;
+			}
+		}
+		close FILE;
+
+		my @lines = ();
+		open FILE, APP_ROOT . '/config.inc' or return;
+		while (my $line = <FILE>) {
+			chomp $line;
+			if ($line =~ /^\s*(\w+)=(.*)$/) {
+				my ($name, $value) = ($1, $2);
+				if (exists $vars{$name}) {
+					delete $vars{$name};
+				} else {
+					$line =~ s/=(.*)/=$value/;
+				}
+			}
+			push @lines, $line;
+		}
+		close FILE;
+		foreach my $name (@variable_list) {
+			if (exists $vars{$name}) {
+				push @lines, "$name=$vars{$name}";
+			}
+		}
+
+		open FILE, '>' . APP_ROOT . '/config.inc' or return;
+		foreach my $line (@lines) {
+			print FILE "$line\n";
+		}
+		close FILE;
+	}
+}
+
+############################################################
+# Catch signals for KILL, Ctrl+C, etc.
+
+sub kill_signal_handler
+{
+	lock($exiting);
+	$exiting = 1;
+	print "ERROR: Catch KILL signal!\n";
+}
+$SIG{'INT'} = \&kill_signal_handler;
+$SIG{'ABRT'} = \&kill_signal_handler;
+$SIG{'QUIT'} = \&kill_signal_handler;
+$SIG{'TERM'} = \&kill_signal_handler;
+
+############################################################
+# Time display helper functions
+
+sub time_string
+{
+	my ($sec, $min, $hour, $mday, $mon, $year) = localtime shift;
+	return sprintf('%04d-%02d-%02d %02d:%02d:%02d', $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
+}
+
+sub time_elapse_string
+{
+	my ($start_time, $end_time) = @_;
+	my $elapsed_time = $end_time - $start_time;
+	my $time_elapse_text = '';
+	if ($elapsed_time >= 86400) {
+		$time_elapse_text .= int($elapsed_time / 86400) . 'd ';
+		$elapsed_time %= 86400;
+	}
+	if ($time_elapse_text ne '' or $elapsed_time >= 3600) {
+		$time_elapse_text .= int($elapsed_time / 3600) . 'h ';
+		$elapsed_time %= 3600;
+	}
+	if ($time_elapse_text ne '' or $elapsed_time >= 60) {
+		$time_elapse_text .= int($elapsed_time / 60) . 'm ';
+		$elapsed_time %= 60;
+	}
+	if ($time_elapse_text eq '' or $elapsed_time > 0) {
+		$time_elapse_text .= $elapsed_time . 's ';
+	}
+	$time_elapse_text =~ s/\s$//g;
+	return $time_elapse_text;
+}
+
+############################################################
+
+sub bash_line_encode {
+	my @argv = @_;
+	foreach my $arg (@argv) {
+		$arg =~ s/\'/\'\\\'\'/g;
+		if ($arg =~ /[\s|><]/) {
+			if ($arg =~ /^(\w+)=(.*)$/) {
+				$arg = "$1='$2'";
+			} else {
+				$arg = "'" . $arg . "'";
+			}
+		} elsif ($arg =~ /^(\w+)=$/) {
+			$arg = "$1=\'\'";
+		}
+	}
+	return join(' ', @argv);
+};
+
+sub split_command_and_comment
+{
+	my ($line) = @_;
+
+	# Split bash command and tailing comments.
+	return undef if $line !~ /^(("[^"]*"|'[^']*'|[^\s'"#]+|\s+)*)(#.*|)$/;
+	my $command = $1;
+	my $comment = $3;
+	return [$command, $comment];
+}
+
+sub bash_line_decode {
+	my ($string) = @_;
+
+	my $ret = split_command_and_comment($string);
+	die 'Bad bash line!' if not defined $ret;
+	my ($command, $comment) = @{$ret};
+
+	# Split bash command line to @argv.
+	my @argv = ();
+	while ($command =~ /(("(\\.|[^"])*"|'[^']*'|[^\s'"]+)+)/g) {
+		push @argv, $1;
+	}
+
+	# Process quot strings.
+	foreach my $arg (@argv) {
+		my $result = '';
+		while ($arg =~ /("((\\.|[^"])*)"|'([^']*)'|([^\s'"]+))/g) {
+			my $part = '';
+			if (defined $2) {
+				$part = $2;
+				$part =~ s/\\(.)/$1/g;
+			} elsif (defined $4) {
+				$part = $4;
+			} elsif (defined $5) {
+				$part = $5;
+			}
+			$result .= $part;
+		}
+		$arg = $result;
+	}
+	return @argv;
+}
+
+sub eval_string
+{
+	my ($string, $vars_ref, $opts_ref) = @_;
+
+	my $ret = split_command_and_comment($string);
+	if (not defined $ret) {
+		print "WARNING: parse string failed '$string'\n";
+		return '';
+	}
+	my ($text, $comment) = @{$ret};
+	$text =~ s/\s*$//g;
+	$text =~ s/^\s*//g;
+
+	# Remove quot marks
+	if ($text =~ /^\s*\"(.*)\"\s*$/) {
+		$text = $1;
+	}
+
+	# Replace variables
+	my %exclude = ();
+	search: while ($text =~ /\${(\w+)}/g) {
+		my $name = $1;
+		while ($text =~ /\${$name}/) {
+			if (exists $opts_ref->{$name}) { # Options can overwrite variables
+				$text =~ s/\${$name}/$opts_ref->{$name}/g;
+			} elsif (exists $vars_ref->{$name}) {
+				$text =~ s/\${$name}/$vars_ref->{$name}/g;
+			} else {
+				$exclude{$name} = '';
+				goto search;
+			}
+		}
+	}
+	return $text;
+}
+
+############################################################
+
+sub check_var
+{
+	my ($proc_name, $opts_ref) = @_;
+	my @req_vars = ();
+	foreach my $var (sort keys %{$procedures{$proc_name}{used_var}}) {
+		next if exists $global_var{$procedures{$proc_name}{module_file}}{$var};
+		next if exists $procedures{$proc_name}{defined_var}{$var};
+		next if exists $procedures{$proc_name}{iterator_var}{$var};
+		next if exists $opts_ref->{$var};
+		push @req_vars, $var;
+	}
+	return @req_vars;
+}
+
+sub parse_cmd
+{
+	my ($command, $l, $module_file, $lines_ref, $commands_ref, $cmd_info_ref, $var_info_ref, $proc_info_ref) = @_;
+
+	my $cmd_ref = { command => $command,
+		requires => $cmd_info_ref->{requires},
+		inputs => $cmd_info_ref->{inputs},
+		outputs => $cmd_info_ref->{outputs},
+		temp_outputs => $cmd_info_ref->{temp_outputs},
+		var_checking => [] };
+
+	my @argv = bash_line_decode($command);
+	if ($argv[0] =~ /^SP_/) {
+		if ($argv[0] eq 'SP_set') {
+			die 'ERROR: Invalid option for SP_set!' if $command !~ /^\s*SP_set\s+(\w+)=(.*)$/;
+			$cmd_ref->{command} = 'SP_set';
+			$cmd_ref->{variable} = $1;
+			$cmd_ref->{text} = $2;
+			if (not exists $var_info_ref->{defined_var}{$1}) {
+				# Treat the first SP_set as the initial value of the variable.
+				$var_info_ref->{defined_var}{$1} = $2;
+			}
+			push @{$cmd_ref->{var_checking}}, $cmd_ref->{text};
+		} elsif ($argv[0] eq 'SP_if') {
+			$cmd_ref->{command} = 'SP_if';
+			if ($command =~ /^SP_if\s*(|!)\s*\((.*)\)\s*$/) {
+				$cmd_ref->{negative} = $1;
+				$cmd_ref->{bash} = $2;
+				push @{$cmd_ref->{var_checking}}, $2;
+			} elsif ($command =~ /^SP_if\s+(.*)\s*$/) {
+				$cmd_ref->{text} = $1;
+				push @{$cmd_ref->{var_checking}}, $1;
+			} else {
+				die 'ERROR: Invalid format for SP_if!';
+			}
+			
+			my $line_ref = shift @{$lines_ref};
+			my $line = $line_ref->{text};
+			die 'ERROR: Invalid format for SP_if' . parsing_error($line_ref) if $line !~ /^\s*(\{|\{\{)\s*$/;
+			my $blocking = $1;
+			push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
+			$cmd_ref->{block} = scalar @blocks - 1;
+
+			while (@{$lines_ref})
+			{
+				next if $lines_ref->[0]->{text} =~ /^\s*#.*$/;
+				last if $lines_ref->[0]->{text} !~ /^\s*SP_else\s*$/;
+				shift @{$lines_ref};
+				$line_ref = shift @{$lines_ref};
+				my $line = $line_ref->{text};
+				die 'ERROR: Invalid option for SP_else!' if $line !~ /^\s*(\{|\{\{)\s*$/;
+				my $blocking = $1;
+				push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
+				$cmd_ref->{else_block} = scalar @blocks - 1;
+				last;
+			}
+		} elsif ($argv[0] eq 'SP_for') {
+			die 'ERROR: Invalid option for SP_for!' if $command !~ /^\s*SP_for\s+(\w+)=(.*)$/;
+			$cmd_ref->{command} = 'SP_for';
+			$cmd_ref->{variable} = $1;
+			$cmd_ref->{text} = $2;
+			push @{$cmd_ref->{var_checking}}, $2;
+			if (not exists $var_info_ref->{iterator_var}{$1}) {
+				$var_info_ref->{iterator_var}{$1} = '';
+			}
+			die "ERROR: Variable of SP_for should start with '_'" . parsing_error($l) if $1 !~ /^_/;
+			
+			my $line_ref = shift @{$lines_ref};
+			my $line = $line_ref->{text};
+			die 'ERROR: Invalid format for SP_for!' if $line !~ /^\s*(\{|\{\{)\s*$/;
+			my $blocking = $1;
+			push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
+			$cmd_ref->{block} = scalar @blocks - 1;
+		} elsif ($argv[0] eq 'SP_while') {
+			die 'ERROR: Invalid option for SP_while!' if $command !~ /^\s*SP_while\s*(|!)\s*\((.*)\)\s*$/;
+			$cmd_ref->{command} = 'SP_while';
+			$cmd_ref->{negative} = $1;
+			$cmd_ref->{bash} = $2;
+			push @{$cmd_ref->{var_checking}}, $2;
+			
+			my $line_ref = shift @{$lines_ref};
+			my $line = $line_ref->{text};
+			die 'ERROR: Invalid format for SP_while!' if $line !~ /^\s*(\{|\{\{)\s*$/;
+			my $blocking = $1;
+			push @blocks, parse_block($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
+			$cmd_ref->{block} = scalar @blocks - 1;
+		} elsif ($argv[0] eq 'SP_run') {
+			$cmd_ref->{command} = shift @argv;
+			$cmd_ref->{proc_name} = shift @argv;
+			die "ERROR: Unknown procedure '$cmd_ref->{proc_name}' for SP_run" . parsing_error($l) if not exists $procedures{$cmd_ref->{proc_name}};
+			die 'ERROR: Invalid option for SP_run!' if $cmd_ref->{proc_name} !~ /^\w+$/;
+			$cmd_ref->{options} = {};
+			for my $opt (@argv) {
+				die 'ERROR: Invalid option for SP_run!' . $opt if $opt !~ /^(\w+)=(.*)$/;
+				die 'ERROR: Duplicate option for SP_run!' . $opt if exists $cmd_ref->{options}{$1};
+				$cmd_ref->{options}{$1} = $2;
+				push @{$cmd_ref->{var_checking}}, $2;
+				my $name = $1;
+				die "ERROR: Invalid option '$name'! Option name starts with '_' is reserved!\n" if $name =~ /^_/;
+			}
+			if (my @req_vars = check_var($cmd_ref->{proc_name}, $cmd_ref->{options})) {
+				die "ERROR: Option(s) required for procedure '$cmd_ref->{proc_name}':\n   " . join(', ', @req_vars) . "\n" . parsing_error($l);
+			}
+		} else {
+			die "ERROR: Invalid primitive line '$argv[0]'!\n";
+		}
+	}
+
+	return $cmd_ref;
+}
+
+sub check_dependency
+{
+	my ($outputs_ref, $proc_info_ref) = @_;
+
+	foreach my $output (keys %{$outputs_ref}) {
+		my %items = ();
+		if ($proc_info_ref->{requires_of}{$output}) {
+			foreach my $file (@{$proc_info_ref->{requires_of}{$output}}) {
+				if (not exists $proc_info_ref->{requires_of}{$file} and not exists $proc_info_ref->{inputs_of}{$file}) {
+					$proc_info_ref->{requires}{$file} = 1;
+				} else {
+					$items{$file} = 1;
+				}
+			}
+		}
+		if ($proc_info_ref->{inputs_of}{$output}) {
+			foreach my $file (@{$proc_info_ref->{inputs_of}{$output}}) {
+				if (not exists $proc_info_ref->{requires_of}{$file} and not exists $proc_info_ref->{inputs_of}{$file}) {
+					$proc_info_ref->{inputs}{$file} = 1;
+				} else {
+					$items{$file} = 1;
+				}
+			}
+		}
+		check_dependency(\%items, $proc_info_ref);
+	}
+}
+
+sub create_cmd_info
+{
+	return ( requires => {}, inputs => {}, outputs => {}, temp_outputs => {}, var_checking => {} );
+}
+
+sub parse_block
+{
+	my ($blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref) = @_;
+
+	my $line = '';
+	my $last_line = '';
+	my @commands = ();
+	my %cmd_info = create_cmd_info();
+
+	while (1) {
+		if (scalar @{$lines_ref} <= 0) {
+			die "ERROR: Invalid procedure declaration! Line '}' or '}}' expected!";
+		}
+		my $l = shift @{$lines_ref};
+		my $line = $l->{text};
+		if ($line =~ /^\s*(\}|\}\}|SP_parallel_end)\s*(|#.*)$/) {
+			if ($blocking eq '{') {
+				last if $1 eq '}';
+				die "ERROR: Unmatched curly bracket! Line '}' expected!";
+			}
+			if ($blocking eq '{{') {
+				last if $1 eq '}}' or $1 eq 'SP_parallel_end';
+				die "ERROR: Unmatched curly bracket! Line '}}' expected!";
+			}
+		} elsif ($line =~ /^\s*(\{|\{\{|SP_parallel_begin)\s*(|#.*)$/) {
+			my $sub_blocking = $1;
+			if ($sub_blocking eq 'SP_parallel_begin') {
+				if (not $quiet_mode and not $obsolete_warned) {
+					print "WARNING: 'SP_parallel_begin' and 'SP_parallel_end' are obsolete, use '{{' and '}}' instead! Found in: $l->{file}($l->{line})\n";
+					$obsolete_warned = 1;
+				}
+				$sub_blocking = '{{';
+			}
+			push @blocks, parse_block($sub_blocking, $module_file, $lines_ref, $proc_info_ref, $var_info_ref);
+			my $block_index = scalar @blocks - 1;
+			push @commands, { command => '', block => $block_index, requires => {}, inputs => {}, outputs => {} };
+			next;
+		}
+
+		my $ret = split_command_and_comment($line);
+		print "Parse failed!" if not defined $ret;
+		my ($text, $comment) = @{$ret};
+		$line = $text;
+
+		if ($last_line eq '') {
+			$line =~ s/^\s+//g;
+		} else {
+			my $b1 = $last_line =~ s/\s+$//g;
+			my $b2 = $line =~ s/^\s+//g;
+			$line = $last_line . (($b1 or $b2) ? ' ' : '') . $line;
+			$last_line = '';
+		}
+
+		if ($line =~ s/\\$//) {
+			$last_line = $line;
+		} elsif ($line =~ /^\s*$/) {
+			if ($comment =~ /^#\[(command\s+|)(require|input|output|output\.temp)=.*\]$/) {
+				if ($1 =~ /^command\s+$/ and not $quiet_mode and not $obsolete_warned) {
+					print "WARNING: '#[procedure ...]' and '#[command ...]' are obsolete, use '#[attr=\"...\"]' instead! Found in: $l->{file}($l->{line})\n";
+					$obsolete_warned = 1;
+				}
+				while ($comment =~ /(require|input|output|output\.temp)="(.*?)"/g) {
+					if ($1 eq 'require') {
+						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
+							die "ERROR: Duplicated attribute for require file '$2'!";
+						}
+						$cmd_info{requires}{$2} = 1;
+					} elsif ($1 eq 'input') {
+						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
+							die "ERROR: Duplicated attribute for input file '$2'!";
+						}
+						$cmd_info{inputs}{$2} = 1;
+					} else {
+						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
+							die "ERROR: Duplicated attribute for output file '$2'!";
+						}
+						$cmd_info{outputs}{$2} = 1;
+						$cmd_info{temp_outputs}{$2} = 1 if $1 eq 'output.temp';
+					}
+				}
+			}
+		} else {
+			my $cmd_ref = parse_cmd($line, $l, $module_file, $lines_ref, \@commands, \%cmd_info, $var_info_ref, $proc_info_ref);
+
+			foreach my $item ($cmd_ref->{command}, keys %{$cmd_info{requires}}, keys %{$cmd_info{inputs}}, keys %{$cmd_info{outputs}}, @{$cmd_ref->{var_checking}}) {
+				while ($item =~ /\${(\w+)}/g) {
+					if (not exists $var_info_ref->{used_var}{$1}) {
+						$var_info_ref->{used_var}{$1} = '';
+					}
+				}
+			}
+			
+			push @commands, $cmd_ref;
+			if (keys %{$cmd_info{temp_outputs}}) {
+				foreach my $file (keys %{$cmd_info{temp_outputs}}) {
+					$proc_info_ref->{temp_outputs}{$file} = '';
+				}
+			}
+			if (keys %{$cmd_info{outputs}}) {
+				foreach my $file (keys %{$cmd_info{outputs}}) {
+					$proc_info_ref->{outputs}{$file} = '';
+				}
+			}
+			foreach my $output (keys %{$cmd_info{outputs}}) {
+				@{$proc_info_ref->{requires_of}{$output}} = keys %{$cmd_info{requires}};
+				@{$proc_info_ref->{inputs_of  }{$output}} = keys %{$cmd_info{inputs  }};
+			}
+			%cmd_info = create_cmd_info();
+		}
+	}
+	if ($last_line ne '') {
+		die 'ERROR: Invalid procedure declaration! Last command line not finished!';
+	}
+
+	foreach my $variable (keys %{$proc_info_ref->{requires}}, keys %{$proc_info_ref->{inputs}}, keys %{$proc_info_ref->{outputs}}) {
+		while ($variable =~ /\${(\w+)}/g) {
+			if (not exists $var_info_ref->{used_var}{$1}) {
+				$var_info_ref->{used_var}{$1} = '';
+			}
+		}
+	}
+
+	return { requires => $proc_info_ref->{requires},
+		inputs => $proc_info_ref->{inputs},
+		outputs => $proc_info_ref->{outputs},
+		commands => \@commands,
+		parallel => ($blocking eq '{{' ? 1 : 0),
+		module_file => $module_file };
+}
+
+sub load_lines
+{
+	my ($file, $loaded_ref, $including_ref) = @_;
+	my @lines = ();
+
+	if (not exists $loaded_ref->{$file}) {
+
+		open my $handle, $file or die join("\n\t",
+			("ERROR: Can't open file '$file', which is included by:", @{$including_ref})) . "\nFailed";
+		$loaded_ref->{$file} = 1;
+
+		my $line_no = 0;
+		while (my $line = <$handle>) {
+			chomp $line;
+			$line_no++;
+
+			if ($line =~ /^\s*(SP_include|\.)\s+(.*)$/) { # Process file including
+				my $inc_file = $2;
+				$inc_file = dirname($file) . '/' . $inc_file unless $inc_file =~ /^\//;
+				push @lines, load_lines(abs_path($inc_file), $loaded_ref, [ "$file($line_no)", @{$including_ref} ]);
+			} else {
+				push @lines, { text => $line, file => $file, line => $line_no };
+			}
+		}
+		close $handle;
+	}
+	return @lines;
+}
+
+sub parsing_error
+{
+	my ($line) = @_;
+	return " in $line->{file}($line->{line}). It failed";
+}
+
+sub create_proc_info
+{
+	return ( requires_of => {}, inputs_of => {}, requires => {}, inputs => {}, outputs => {}, temp_outputs => {} );
+}
+
+sub load_modules
+{
+	foreach my $file (@_) {
+		if (not exists $global_var{$file}) {
+			$global_var{$file} = { _SEQPIPE => (basename abs_path $0), _SEQPIPE_ROOT => APP_ROOT };
+			$global_var_deps{$file} = {};
+		}
+		my @lines = load_lines($file, {}, []);
+		while (@lines) {
+			parse_proc($file, \@lines);
+		}
+	}
+	printf "All %d module file(s) loaded, including %d procedure(s).\n",
+		scalar @_, scalar keys %procedures if $verbose;
+}
+
+sub detect_cyclic_deps
+{
+	my ($file, $name, $depended) = @_;
+	return 1 if exists $global_var_deps{$file}{$depended}{$name};
+	foreach (keys %{$global_var_deps{$file}{$depended}}) {
+		return 1 if detect_cyclic_deps($file, $name, $_);
+	}
+	return 0;
+}
+
+sub parse_proc
+{
+	my ($file, $lines_ref) = @_;
+	my %requires = ();
+	my %inputs = ();
+	my %outputs = ();
+
+	while (@{$lines_ref}) {
+		my $l = shift @{$lines_ref};
+
+		if ($l->{text} =~ /^#\[/) {
+			next if $l->{text} =~ /^#\[(seqpipe|version)/;
+			if ($l->{text} !~ /^#\[(procedure\s+|)(type|require|input|output)="(.*?)"+\s*\]$/) {
+				die 'ERROR: Bad procedure attribute declaration' . parsing_error($l);
+			}
+			if ($1 =~ /^procedure\s+$/ and not $quiet_mode and not $obsolete_warned) {
+				print "WARNING: '#[procedure ...]' and '#[command ...]' are obsolete, use '#[attr=\"...\"]' instead! Found in: $l->{file}($l->{line})\n";
+				$obsolete_warned = 1;
+			}
+			if ($2 eq 'type' and not $quiet_mode and not $obsolete_warned) {
+				print "WARNING: 'type' attribute of procedure is obsolete!\n";
+				$obsolete_warned = 1;
+			}
+			while ($l->{text} =~ /(require|input|output)="(.*?)"/g) {
+				if ($1 eq 'require') {
+					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
+						die "ERROR: Duplicated attribute for require file '$2'" . parsing_error($l);
+					}
+					$requires{$2} = 1;
+				} elsif ($1 eq 'input') {
+					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
+						die "ERROR: Duplicated attribute for input file '$2'" . parsing_error($l);
+					}
+					$inputs{$2} = 1;
+				} elsif ($1 eq 'output') {
+					if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
+						die "ERROR: Duplicated attribute for output file '$2'" . parsing_error($l);
+					}
+					$outputs{$2} = 1;
+				}
+				next;
+			}
+		} elsif ($l->{text} =~ /^\s*function\s+/) {
+			die 'ERROR: Invalid procedure declaration!' if $l->{text} !~ /^function\s+(\w+)\s*(\{|\{\{|)\s*$/;
+			my $proc_name = $1;
+			my $blocking = $2;
+
+			if (exists $procedures{$proc_name}) {
+				print "WARNING: Redeclaration of procedure '$proc_name'" . parsing_error($l) . "\n";
+			}
+
+			if ($blocking eq '') {
+				while (1) {
+					$l = shift @{$lines_ref};
+					next if $l->{text} =~ /^\s*$/;
+					if ($l->{text} =~ /^\s*(\{|\{\{)\s*$/) {
+						$blocking = $1;
+						last;
+					}
+					die "ERROR: Invalid procedure declaration! Line '{' or '{{' expected" . parsing_error($l);
+				}
+			}
+
+			my %proc_info = create_proc_info();
+			my %var_info = ( defined_var => {}, used_var => {}, iterator_var => {} );
+			my $proc_ref = parse_block($blocking, $file, $lines_ref, \%proc_info, \%var_info);
+
+			if (%{$proc_info{outputs}}) {
+				check_dependency $proc_info{outputs}, \%proc_info;
+				foreach my $file (keys $proc_info{temp_outputs}) {
+					delete $proc_info{outputs}{$file};
+				}
+			}
+			foreach my $file (keys %requires) {
+				$proc_info{requires}{$file} = 1;
+			}
+			foreach my $file (keys %inputs) {
+				$proc_info{inputs}{$file} = 1;
+			}
+			foreach my $file (keys %outputs) {
+				$proc_info{outputs}{$file} = 1;
+			}
+			foreach my $name (keys %requires, keys %inputs, keys %outputs) {
+				while ($name =~ /\${(\w+)}/g) {
+					$var_info{used_var}{$1} = '';
+				}
+			}
+
+			foreach my $name (keys $var_info{used_var}) {
+				next if exists $var_info{iterator_var}{$name};
+				next if exists $var_info{defined_var}{$name};
+				next if exists $global_var{$file}{$name};
+				die "ERROR: Invalid option '$name'! Required option can not start with '_'!\n" if $name =~ /^_/;
+			}
+
+			$proc_ref->{requires}     = $proc_info{requires};
+			$proc_ref->{inputs}       = $proc_info{inputs};
+			$proc_ref->{outputs}      = $proc_info{outputs};
+			$proc_ref->{temp_outputs} = $proc_info{temp_outputs};
+			$proc_ref->{defined_var}  = $var_info{defined_var};
+			$proc_ref->{iterator_var} = $var_info{iterator_var};
+			$proc_ref->{used_var}     = $var_info{used_var};
+			$procedures{$proc_name} = $proc_ref;
+
+			%requires = ();
+			%inputs = ();
+			%outputs = ();
+
+		} elsif ($l->{text} =~ /^\s*(\w+)=(.*)$/) {
+			my $name = $1;
+			my $ret = split_command_and_comment($2);
+			die "ERROR: Parse failed for global variable '$name'" .parsing_error($l) if not defined($ret);
+
+			my ($value, $comment) = @{$ret};
+			$value =~ s/^\s*//g;
+			$value =~ s/\s*$//g;
+			$value =~ s/^"(.*?)"$/$1/g;  # Remove quot marks.
+			if (exists $global_var{$file}{$name}) {
+				die "ERROR: Redeclaration of global variable '$name' for '$file'" . parsing_error($l);
+			}
+			$global_var{$file}{$name} = $value;
+			$global_var_deps{$file}{$name} = {};
+			while ($value =~ /\${(\w+)}/g) {
+				if (detect_cyclic_deps($file, $name, $1)) {
+					die "ERROR: Cyclic dependency deteced between '$name' and '$1'" .parsing_error($l);
+				}
+				$global_var_deps{$file}{$name}{$1} = 1;
+			}
+		}
+	}
+}
+
+sub print_usage
+{
+	print '
+SeqPipe: a SEQuencing data analsysis PIPEline framework
+Version: 0.4.0 ($Rev$)
+Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
+Copyright: 2012, Centre for Bioinformatics, Peking University, China
+
+Usage: ' . basename($0) . ' [options] <procedure> [NAME=VALUE ...]
+
+Options:
+   -h / -H     Show this or procedure usage. -H for more details.
+   -m <file>   Load procedure module file, this option can be used many times.
+   -l          List current available procedures.
+   -t <int>    Max thread number, 0 for unlimited. default: ' . $max_thread_number . '
+   -T          Print the raw procedure declaration.
+   -v          Show verbose message.
+   -q          Do not show warning messages.
+   -k          Keep intermediate files.
+   -e <cmd>    Inline mode, run a bash command directly.
+   -s <shell>  Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
+
+';
+}
+
+sub show_parameters
+{
+	my ($proc_name, $opts_ref) = @_;
+	return if $proc_name eq '';
+
+	my $file = $procedures{$proc_name}{module_file};
+	my @used_vars = keys $procedures{$proc_name}{used_var};
+	my %req_vars = ();
+	my %def_vars = ();
+	while (my $name = shift @used_vars) {
+		next if $name =~ /^_/;
+		next if exists $req_vars{$name};
+		next if exists $def_vars{$name};
+		if (exists $global_var_deps{$file}{$name}) {
+			push @used_vars, keys $global_var_deps{$file}{$name};
+		}
+
+		if (exists $procedures{$proc_name}{iterator_var}{$name}) {
+			$def_vars{$name} = '(runtime-evaluate)';
+		} elsif (exists $opts_ref->{$name}) {
+			$def_vars{$name} = $opts_ref->{$name};
+		} elsif (exists $procedures{$proc_name}{defined_var}{$name}) {
+			$def_vars{$name} = $procedures{$proc_name}{defined_var}{$name};
+		} elsif (exists $global_var{$procedures{$proc_name}{module_file}}{$name}) {
+			$def_vars{$name} = $global_var{$file}{$name};
+		} else {
+			$req_vars{$name} = '';
+		}
+	}
+	print "\nParameters for procedure '$proc_name':\n";
+	foreach my $name (sort keys %req_vars) {
+		printf "   %-30s  Required\n", $name;
+	}
+	if ($help_mode == 2) {
+		if (%def_vars) {
+			print "\n";
+			foreach my $name (sort keys %def_vars) {
+				printf "   %-30s  Default: %s\n", $name, $def_vars{$name};
+			}
+		}
+	}
+
+	if (%{$procedures{$proc_name}{requires}}) {
+		print "\nRequire file(s):\n";
+		foreach my $text (sort keys %{$procedures{$proc_name}{requires}}) {
+			my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+			if (length($eval_text) > 30) {
+				print "   $eval_text\n";
+				printf "   %-30s  Definition: %s\n", '', $text;
+			} else {
+				printf "   %-30s  Definition: %s\n", $eval_text, $text;
+			}
+		}
+	}
+	if (%{$procedures{$proc_name}{inputs}}) {
+		print "\nInput file(s):\n";
+		foreach my $text (sort keys %{$procedures{$proc_name}{inputs}}) {
+			my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+			if (length($eval_text) > 30) {
+				print "   $eval_text\n";
+				printf "   %-30s  Definition: %s\n", '', $text;
+			} else {
+				printf "   %-30s  Definition: %s\n", $eval_text, $text;
+			}
+		}
+	}
+	if (%{$procedures{$proc_name}{outputs}}) {
+		print "\nOutput file(s):\n";
+		foreach my $text (sort keys %{$procedures{$proc_name}{outputs}}) {
+			my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+			if (length($eval_text) > 30) {
+				print "   $eval_text\n";
+				printf "   %-30s  Definition: %s\n", '', $text;
+			} else {
+				printf "   %-30s  Definition: %s\n", $eval_text, $text;
+			}
+		}
+	}
+	if ($help_mode == 2) {
+		if (%{$procedures{$proc_name}{temp_outputs}}) {
+			print "\nTemporary file(s):\n";
+			foreach my $text (sort keys %{$procedures{$proc_name}{temp_outputs}}) {
+				my $eval_text = eval_string($text, \%def_vars, $opts_ref);
+				if (length($eval_text) > 30) {
+					print "   $eval_text\n";
+					printf "   %-30s  Definition: %s\n", '', $text;
+				} else {
+					printf "   %-30s  Definition: %s\n", $eval_text, $text;
+				}
+			}
+		}
+	}
+	print "\n";
+}
+
+sub list_proc
+{
+	my ($proc_name) = @_;
+	print "\nCurrent available procedures";
+	print " (search for '$proc_name')" if $proc_name;
+	print ":\n";
+	foreach my $name (sort keys %procedures) {
+		next if $name =~ /^_/;
+		print "   $name\n" if $name =~ /$proc_name/;
+	}
+	print "\n";
+	exit 1;
+}
+
+sub display_block
+{
+	my ($block_ref, $indent) = @_;
+	my %procedure = %{$block_ref};
+
+	printf "$indent%s\n", ($procedure{parallel} ? '{{' : '{');
+
+	my $block_start = 1;
+	foreach my $cmd_ref (@{$procedure{commands}}) {
+
+		if ($cmd_ref->{command} eq '{{' or %{$cmd_ref->{requires}} or %{$cmd_ref->{inputs}} or %{$cmd_ref->{outputs}}) {
+			if (not $block_start and $cmd_ref->{command} ne 'SP_set') {
+				print "\n";
+			}
+
+			foreach my $file (keys %{$cmd_ref->{requires}}) {
+				print "$indent\t#[require=\"$file\"]\n";
+			}
+			foreach my $file (keys %{$cmd_ref->{inputs}}) {
+				print "$indent\t#[input=\"$file\"]\n";
+			}
+			foreach my $file (keys %{$cmd_ref->{outputs}}) {
+				print "$indent\t#[output";
+				print '.temp' if exists $cmd_ref->{temp_outputs}{$file};
+				print "=\"$file\"]\n";
+			}
+		}
+
+		if ($cmd_ref->{command} eq '') {
+			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
+		} elsif ($cmd_ref->{command} eq 'SP_set') {
+			print "$indent\tSP_set $cmd_ref->{variable}=$cmd_ref->{text}\n";
+		} elsif ($cmd_ref->{command} eq 'SP_run') {
+			print "$indent\tSP_run $cmd_ref->{proc_name}";
+			print " $_=$cmd_ref->{options}->{$_}" foreach (keys %{$cmd_ref->{options}});
+			print "\n";
+		} elsif ($cmd_ref->{command} eq 'SP_if') {
+			if (exists $cmd_ref->{bash}) {
+				print "$indent\tSP_if $cmd_ref->{negative}($cmd_ref->{bash})\n";
+			} else {
+				print "$indent\tSP_if $cmd_ref->{text}\n";
+			}
+			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
+			if (exists $cmd_ref->{else_block}) {
+				print "$indent\tSP_else\n";
+				display_block($blocks[$cmd_ref->{else_block}], $indent . "\t");
+			}
+		} elsif ($cmd_ref->{command} eq 'SP_for') {
+			print "$indent\tSP_for $cmd_ref->{variable}=$cmd_ref->{text}\n";
+			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
+		} elsif ($cmd_ref->{command} eq 'SP_while') {
+			print "$indent\tSP_while $cmd_ref->{negative}($cmd_ref->{bash})\n";
+			display_block($blocks[$cmd_ref->{block}], $indent . "\t");
+		} else {
+			print "$indent\t$cmd_ref->{command}\n";
+		}
+		$block_start = ($cmd_ref->{command} eq '{{');
+	}
+
+	printf "$indent%s\n", ($procedure{parallel} ? '}}' : '}');
+}
+
+sub show_raw_code
+{
+	my ($proc_name) = @_;
+
+	if ($proc_name eq '') {
+		print "ERROR: <proc_name> is required for '-T'!\n";
+		return;
+	}
+	if (not exists $procedures{$proc_name}) {
+		print "ERROR: Unknown procedure '$proc_name'! Use '-l' option to list available procedures.\n";
+		return;
+	}
+	my %procedure = %{$procedures{$proc_name}};
+
+	print "#[require=\"$_\"]\n" for (keys %{$procedure{requires}});
+	print "#[input=\"$_\"]\n" for (keys %{$procedure{inputs}});
+	print "#[output=\"$_\"]\n" for (keys %{$procedure{outputs}});
+	print "function $proc_name\n";
+
+	display_block \%procedure, '';
+	exit 1;
+}
+
+sub check_for_skip
+{
+	my ($vars_ref, $opts_ref, $requires_ref, $inputs_ref, $outputs_ref, $indent) = @_;
+	
+	my %requires = ();
+	foreach my $require (keys %{$requires_ref}) {
+		my $file = eval_string($require, $vars_ref, $opts_ref);
+		safe_print "$indent(*) Checking require file '$file' ($require)\n" if $verbose;
+		if (not -e $file) {
+			safe_print "ERROR: Required file '$file' does not exist!\n";
+			exit 1;
+		}
+		$requires{$file} = 1;
+	}
+	
+	my %inputs = ();
+	foreach my $input (keys %{$inputs_ref}) {
+		my $file = eval_string($input, $vars_ref, $opts_ref);
+		safe_print "$indent(*) Checking input file '$file' ($input)\n" if $verbose;
+		if (not -e $file) {
+			safe_print "ERROR: Input file '$file' does not exist!\n";
+			exit 1;
+		}
+		$inputs{$file} = 1;
+	}
+	
+	if (%{$outputs_ref}) {
+		foreach my $output (keys %{$outputs_ref}) {
+			my $file = eval_string($output, $vars_ref, $opts_ref);
+			safe_print "$indent(*) Checking output file '$file' ($output)\n" if $verbose;
+			if (exists $requires{$file} or exists $inputs{$file}) {
+				safe_print "ERROR: Output file '$file' has also been defined as require or input!\n";
+				exit 1;
+			}
+			if (-e $file) {
+				foreach my $input (keys %inputs) {
+					if ((stat($input))->mtime > (stat($file))->mtime) {
+						return 0;
+					}
+				}
+			} else {
+				my $output_dir = dirname $file;
+				system 'mkdir', '-p', $output_dir unless -d $output_dir;
+				return 0;
+			}
+		}
+		return 1;
+	} else {
+		# Force to run pipeline if no any output file defined.
+		return 0;
+	}
+}
+
+sub save_command
+{
+	my ($cmd, $file) = @_;
+	open FILE, ">>$file";
+	print FILE "$cmd\n";
+	close FILE;
+}
+
+sub run_shell
+{
+	my ($command, $procedure_type, $run_id, $indent) = @_;
+
+	my $command_with_log = '';
+	my $log_file = '';
+
+	if ($procedure_type eq 'sysinfo') {
+		$command_with_log = "($command) 2>&1 >>" . LOG_DIR . '/sysinfo';
+	} elsif ($procedure_type eq 'checker') {
+		my $name = LOG_DIR . "/$run_id.check";
+		$command_with_log = "($command) >>/dev/null 2>>/dev/null";
+		save_command $command, "$name.cmd";
+	} elsif ($procedure_type eq 'evaluator') {
+		if ($run_id == 0) {
+			(undef, $log_file) = tempfile();
+		} else {
+			my $name = LOG_DIR . "/$run_id.eval";
+			$log_file = "$name.result";
+			save_command $command, "$name.cmd";
+		}
+		$command_with_log = "($command) >>$log_file 2>>/dev/null";
+	} else {
+		my @argv = bash_line_decode($command);
+		my $name = $argv[0];
+		$name =~ s/\W//g;
+		$name = LOG_DIR . "/$run_id." . $name;
+		$name .= "_$argv[1]" if defined $argv[1] and $argv[1] =~ /^\w+$/;
+		$command_with_log = "($command) >>$name.log 2>>$name.err";
+		save_command $command, "$name.cmd";
+	}
+	
+	my $start_time = time;
+	if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
+		safe_print "$indent($run_id) [shell] $command\n";
+		safe_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
+	}
+	
+	if (not open BASH, "|$shell") {
+		safe_print "$indent($run_id) starts failed!\n";
+		return undef;
+	}
+	print BASH $command_with_log;
+	close BASH;
+	if ($? == -1) {
+		safe_print "$indent($run_id) starts failed!\n";
+		return undef;
+	} elsif ($? & 127) {
+		safe_printf "$indent($run_id) starts failed! Child died with signal %d (%s coredump)\n",
+			($? & 127), ($? & 128) ? 'with' : 'without';
+		return undef;
+	}
+	my $ret = ($? >> 8);
+
+	if ($procedure_type ne 'sysinfo' and $procedure_type ne 'checker' and $procedure_type ne 'evaluator') {
+		my $end_time = time;
+		safe_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
+			time_string($end_time), time_elapse_string($start_time, $end_time);
+	}
+	return { ret => $ret, log_file => $log_file };
+}
+
+sub eval_string_in_shell
+{
+	my ($text, $vars_ref, $opts_ref, $indent) = @_;
+
+	my $string = eval_string($text, $vars_ref, $opts_ref);
+	while (1) {
+		last if $string =~ /\${\w+}/;
+		last if $string =~ /\$\(\(.*\)\)/;
+		last if $string =~ /{[0-9]+\.\.[0-9]+}/;
+		last if $string =~ /{\S\.\.\S}/;
+		last if $string =~ /\$\(.*\)/;
+		last if $string =~ /\*/;
+		last if $string =~ /\?/;
+		return $string;
+	}
+
+	my $run_id = get_new_run_id;
+	safe_print "$indent($run_id) [eval] $text\n";
+	my $shell_return = run_shell(eval_string("echo $text", $vars_ref, $opts_ref), 'evaluator', $run_id, $indent);
+	return undef if not defined $shell_return;
+
+	open FILE, $shell_return->{log_file} or return '';
+	my @text = ();
+	while (my $line = <FILE>) {
+		chomp $line;
+		push @text, $line;
+	}
+	close FILE;
+	unlink $shell_return->{log_file} if $run_id == 0;
+	return join("\n", @text);
+}
+
+sub run_cmd
+{
+	my ($proc_name, $command, $cmd_ref, $outputs_ref, $indent, $vars_ref, $opts_ref) = @_;
+
+	#   Since run_cmd may be started as in a new thread, copy the variable list
+	# to record the changes, and after all return the copy to parent thread.
+	my %vars = %{$vars_ref};
+	my $ret = 0;
+
+	{
+		lock($exiting);
+		return undef if $exiting;
+	}
+
+	if ($command eq 'SP_set') {
+		my $name = $cmd_ref->{variable};
+		if (not exists $opts_ref->{$name}) {
+			my $value = eval_string_in_shell($cmd_ref->{text}, \%vars, $opts_ref, $indent);
+			return undef if not defined $value;
+			$vars{$name} = $value;
+			safe_print "$indent(*) SP_set $name=$value ($cmd_ref->{text})\n" if $verbose;
+		}
+
+	} elsif ($command =~ 'SP_run') {
+		my %options = %{$cmd_ref->{options}};
+		foreach my $name (keys %options) {
+			$options{$name} = eval_string_in_shell($options{$name}, \%vars, $opts_ref, $indent);
+		}
+		$ret = run_proc($cmd_ref->{proc_name}, \%options, $indent);
+
+	} elsif ($command eq 'SP_if') {
+		my $yes;
+		my $cmd;
+		my $run_id = get_new_run_id;
+		if (exists $cmd_ref->{bash}) {
+			$cmd = "SP_if $cmd_ref->{negative}($cmd_ref->{bash})";
+			my $shell_return = run_shell(eval_string($cmd_ref->{bash}, \%vars, $opts_ref), 'checker', $run_id, $indent);
+			return undef if not defined $shell_return;
+			$yes = ($shell_return->{ret} == 0) ^ ($cmd_ref->{negative} ne '');
+		} else {
+			$cmd = "SP_if $cmd_ref->{text}";
+			my $s = eval_string_in_shell($cmd_ref->{text}, \%vars, $opts_ref, $indent);
+			return undef if not defined $s;
+			$yes = ($s ne '');
+		}
+		safe_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+		if ($yes) {
+			$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
+		} else {
+			if (exists $cmd_ref->{else_block}) {
+				$ret = run_block($proc_name, $blocks[$cmd_ref->{else_block}], $indent, \%vars, $opts_ref);
+			}
+		}
+
+	} elsif ($command eq 'SP_for') {
+		my $run_id = get_new_run_id;
+		my $name = $cmd_ref->{variable};
+		my $value = eval_string_in_shell($cmd_ref->{text}, \%vars, $opts_ref, $indent);
+		return undef if not defined $value;
+		foreach my $each_value (split(/\s/, $value)) {
+			$vars{$name} = $each_value;
+			$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
+			return undef if not defined $ret;
+			last if $ret != 0;
+		}
+
+	} elsif ($command eq 'SP_while') {
+		my $run_id = get_new_run_id;
+		my $cmd = "SP_while $cmd_ref->{negative}($cmd_ref->{bash})";
+		while (1) {
+			my $shell_return = run_shell(eval_string($cmd_ref->{bash}, \%vars, $opts_ref), 'checker', $run_id, $indent);
+			return undef if not defined $shell_return;
+			my $yes = ($shell_return->{ret} == 0) ^ ($cmd_ref->{negative} ne '');
+			safe_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+			last if (not $yes);
+			$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
+			return undef if not defined $ret;
+			last if $ret != 0;
+		}
+
+	} elsif ($command eq '') {
+		# code block
+		$ret = run_block($proc_name, $blocks[$cmd_ref->{block}], $indent, \%vars, $opts_ref);
+		return undef if not defined $ret;
+
+	} else {
+		# For single bash command
+		if ($proc_name =~ /_sysinfo$/) {
+			run_shell(eval_string($command, \%vars, $opts_ref), 'sysinfo', 0, '');
+		} else {
+			my $run_id = get_new_run_id;
+			my $shell_return = run_shell(eval_string($command, \%vars, $opts_ref), '', $run_id, $indent);
+			return undef if not defined $shell_return;
+			$ret = $shell_return->{ret};
+			if ($ret != 0) {
+				safe_print "$indent($run_id) returns $ret\n";
+				foreach my $output_file (@{$outputs_ref}) {
+					if (-e $output_file) {
+						safe_print "$indent($run_id) removes bad output file '$output_file'!\n" if $verbose;
+						unlink $output_file;
+					}
+				}
+			}
+		}
+	}
+	return { ret => $ret, vars => \%vars };
+}
+
+sub run_proc
+{
+	my ($proc_name, $opts_ref, $indent) = @_;
+
+	if (not exists $procedures{$proc_name}) {
+		safe_print "ERROR: Unknown procedure '$proc_name'! Use 'seqpipe -l' to list available procedures.\n";
+		return undef;
+	}
+
+	my %procedure = %{$procedures{$proc_name}};
+
+	# Variables are not shared between procedures except global vars.
+	# However, global vars can be overwriten but not changed in run-time.
+	my %vars = %{$global_var{$procedures{$proc_name}{module_file}}};
+	foreach my $name (keys %{$opts_ref}) {
+		$vars{$name} = $opts_ref->{$name};
+	}
+	foreach my $name (keys %{$procedures{$proc_name}{defined_var}}) {
+		$vars{$name} = eval_string($procedures{$proc_name}{defined_var}{$name}, \%vars, $opts_ref);
+	}
+	
+	# If it is sysinfo, run without other checking
+	if ($proc_name =~ /_sysinfo$/) {
+		run_block($proc_name, \%procedure, '', \%vars, $opts_ref);
+		return 0;
+	}
+
+	# Otherwise (not a sysinfo)
+	my $cmd = "SP_run $proc_name";
+	$cmd .= " $_=$opts_ref->{$_}" foreach (keys%{$opts_ref});
+
+	if (check_for_skip(\%vars, $opts_ref, $procedure{requires}, $procedure{inputs}, $procedure{outputs}, $indent)) {
+		safe_print "$indent(Skip) $cmd\n";
+		return 0;
+	}
+
+	my $run_id = get_new_run_id;
+	my $start_time = time;
+	safe_print "$indent($run_id) $cmd\n";
+	safe_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
+
+	my $ret = run_block($proc_name, \%procedure, $indent, \%vars, $opts_ref);
+	return undef if not defined $ret;
+
+	# When successeed, remove intermediate files
+	if ($ret == 0 and not $keep_intermediates) {
+		foreach my $item (keys %{$procedure{temp_outputs}}) {
+			my $file = eval_string($item, \%vars, $opts_ref);
+			if (-e $file) {
+				safe_printf "$indent($run_id) removes intemediate file '%s'\n", $file;
+				unlink $file;
+			}
+		}
+	}
+
+	# Record the finish time
+	my $end_time = time;
+	safe_printf "$indent($run_id) ends at %s (elapsed: %s)\n",
+		time_string($end_time), time_elapse_string($start_time, $end_time);
+
+	return $ret;
+}
+
+sub run_block
+{
+	my ($proc_name, $block_ref, $indent, $vars_ref, $opts_ref) = @_;
+	my $ret = 0;
+
+	{
+		lock($exiting);
+		return undef if $exiting;
+	}
+
+	my @cmds = ();
+	if ($proc_name !~ /_sysinfo$/) {
+		@cmds = @{$block_ref->{commands}};
+	} else {
+		my $ok = 0;
+		foreach my $cmd_ref (@{$block_ref->{commands}}) {
+			if (%{$cmd_ref->{requires}} or %{$cmd_ref->{inputs}} or %{$cmd_ref->{outputs}}) {
+				push @cmds, $cmd_ref;
+				$ok = 0;
+			} elsif (not $ok) {
+				push @cmds, $cmd_ref;
+				$ok = 1;
+			} else {
+				$cmds[-1]->{command} .= "\n" . $cmd_ref->{command};
+			}
+		}
+	}
+
+	my @thread_list = ();
+	foreach my $cmd_ref (@cmds) {
+		my $command = $cmd_ref->{command};
+		my $requires_ref = $cmd_ref->{requires};
+		my $inputs_ref = $cmd_ref->{inputs};
+		my $outputs_ref = $cmd_ref->{outputs};
+		my @output_set = ();
+		foreach my $output_file (keys %{$outputs_ref}) {
+			my $filename = $output_file;
+			while ($filename =~ /\${(\w+)}/) {
+				my $option_name = $1;
+				$filename =~ s/\${$option_name}/$vars_ref->{$option_name}/g;
+			}
+			push @output_set, $filename;
+		}
+		if (check_for_skip($vars_ref, $opts_ref, $requires_ref, $inputs_ref, $outputs_ref, $indent)) {
+			safe_print "$indent(Skip) $command\n";
+			next;
+		}
+
+		if ($can_use_threads and $max_thread_number != 1) {
+			if ($max_thread_number > 0) {
+				while (1) {
+					my $thread_number = 0;
+					$thread_number += ($_->is_running()) foreach (threads->list());
+					last if $thread_number < $max_thread_number;
+					sleep 1;
+				}
+			}
+			my $thd = threads->create({'context' => 'list'}, \&run_cmd,
+				$proc_name, $command, $cmd_ref, \@output_set, $indent . '  ', $vars_ref, $opts_ref);
+
+			if ($block_ref->{parallel}) {
+				push @thread_list, $thd;
+			} else {
+				my $thread_ret = $thd->join();
+				if (not defined $ret) {
+					undef $ret;
+					last;
+				}
+				$ret = $thread_ret->{ret};
+				foreach my $name (keys %{$thread_ret->{vars}}) {
+					$vars_ref->{$name} = $thread_ret->{vars}->{$name};
+				}
+			}
+		} else {
+			my $cmd_ret = run_cmd($proc_name, $command, $cmd_ref, \@output_set, $indent . '  ', $vars_ref, $opts_ref);
+			if (not defined $cmd_ret) {
+				undef $cmd_ret;
+				last;
+			}
+			$ret = $cmd_ret->{ret};
+			foreach my $name (keys %{$cmd_ret->{vars}}) {
+				$vars_ref->{$name} = $cmd_ret->{vars}->{$name};
+			}
+		}
+		last if not defined $ret or $ret != 0;
+	}
+	if (scalar @thread_list > 0) {
+		foreach my $thd (@thread_list) {
+			my $ret = $thd->join();
+			if (not defined $ret) {
+				undef $ret;
+			} elsif ($ret->{ret} != 0) {
+				$ret = $ret->{ret} if defined $ret;
+			} else {
+				foreach my $name (keys %{$ret->{vars}}) {
+					$vars_ref->{$name} = $ret->{vars}->{$name};
+				}
+			}
+		}
+		@thread_list = ();
+	}
+	return $ret;
+}
+
+############################################################
+# Main program start from here.
+
+initialize_config;
+
+my $proc_name = '';
+my %opts = ();
+
+my @module_files = glob(APP_ROOT . '/*.pipe');
+
+if ($#ARGV < 0) {
+	$help_mode = 1;
+} else {
+	while (my $arg = shift @ARGV) {
+		if ($arg eq '-h') {
+			$help_mode = 1;
+		} elsif ($arg eq '-H') {
+			$help_mode = 2;
+		} elsif ($arg eq '-m') {
+			if ($#ARGV < 0) {
+				print "ERROR: missing argument for option '$arg'!\n";
+				exit 1;
+			}
+			push(@module_files, shift @ARGV);
+		} elsif ($arg eq '-l') {
+			$list_mode = 1;
+		} elsif ($arg eq '-t') {
+			if ($#ARGV < 0) {
+				print "ERROR: missing argument for option '$arg'!\n";
+				exit 1;
+			}
+			$max_thread_number = shift @ARGV;
+			if ($max_thread_number < 0) {
+				print "ERROR: invalid max thread number: $max_thread_number!\n";
+				exit 1;
+			}
+		} elsif ($arg eq '-T') {
+			$show_mode = 1;
+		} elsif ($arg eq '-v') {
+			$verbose = 1;
+		} elsif ($arg eq '-q') {
+			$quiet_mode = 1;
+		} elsif ($arg eq '-k') {
+			$keep_intermediates = 1;
+		} elsif ($arg eq '-e') {
+			if ($#ARGV < 0) {
+				print "ERROR: missing argument for option '$arg'!\n";
+				exit 1;
+			}
+			if ($execute_command ne '') {
+				print "ERROR: duplicated '-e' option!\n";
+				exit 1;
+			}
+			$execute_command = shift @ARGV;
+		} elsif ($arg eq '-s') {
+			if ($#ARGV < 0) {
+				print "ERROR: missing argument for option '$arg'!\n";
+				exit 1;
+			}
+			$shell = shift @ARGV;
+		} elsif ($arg =~ '^-') {
+			print "ERROR: Unknown option '$arg'!\n";
+			exit 1;
+		} else {
+			if ($arg =~ /^(\w+)=(.*)$/) {
+				die "ERROR: duplicated option '$1'!\n" if exists $opts{$1};
+				my $name = $1;
+				$opts{$name} = $2;
+				die "ERROR: Invalid option '$name'! Option name starts with '_' is reserved.\n" if $name =~ /^_/;
+			} else {
+				if ($proc_name eq '') {
+					$proc_name = $arg;
+				} else {
+					print "ERROR: Invalid format of option: $arg\n";
+					exit 1;
+				}
+			}
+		}
+	}
+}
+
+if ($proc_name ne '' and $execute_command ne '') {
+	print "ERROR: can not use both '-e' and '<proc_name>'!\n";
+	exit 1;
+}
+load_modules @module_files;
+
+list_proc $proc_name if $list_mode;
+show_raw_code $proc_name if $show_mode;
+
+if ($execute_command ne '') {
+	my $line_no = 0;
+	my @lines = ();
+	foreach my $line (split(/\n/, $execute_command), '}') {
+		$line_no++;
+		push @lines, { text => $line, file => '', line => $line_no };
+	}
+	my %proc_info = create_proc_info();
+	my $module_file = '';
+	my %var_info = ( defined_var => {}, used_var => {}, iterator_var => {} );
+	push @blocks, parse_block('{', $module_file, \@lines, \%proc_info, \%var_info);
+}
+
+if ($proc_name ne '' and not exists $procedures{$proc_name}) {
+	print "ERROR: Unknown procedure '$proc_name'! Use '-l' option to list available procedures.\n";
+	exit 1;
+}
+
+if ($help_mode) {
+	if ($proc_name eq '') {
+		print_usage;
+	} else {
+		show_parameters $proc_name, \%opts;
+	}
+	exit 1;
+}
+
+if ($proc_name eq '' and $execute_command eq '') {
+	print "ERROR: No procedure name provided!\n";
+	print_usage;
+	exit 1;
+}
+
+if (my @req_vars = check_var($proc_name, \%opts)) {
+	print "ERROR: Option(s) required for procedure '$proc_name':\n   " . join(', ', @req_vars) . "\n";
+	exit 1;
+}
+
+mkdir LOG_ROOT or die "ERROR: Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
+mkdir LOG_DIR or die "ERROR: Can't create directory '" . LOG_DIR . "'!";
+
+open LOG_FILE, '>>' . LOG_ROOT . '/history.log';
+safe_print UNIQ_ID . "\t$command_line\n";
+close LOG_FILE;
+
+open LOG_FILE, '| tee -ai ' . LOG_DIR . '/log';
+
+safe_print '[' . UNIQ_ID . "] $command_line\n";
+
+foreach my $name (keys %procedures) {
+	if ($name =~ /_sysinfo$/) {
+		if ($name eq '_sysinfo' or ($proc_name ne '' and $procedures{$name}{module_file} eq $procedures{$proc_name}{module_file})) {
+			safe_print "Log sysinfo: $name\n";
+			run_proc $name, {}, '';
+		}
+	}
+}
+
+my $ret = 0;
+if ($proc_name eq '') {
+	my %vars = %{$global_var{APP_ROOT . '/default.pipe'}};
+	$ret = run_block('', $blocks[-1], '', \%vars, \%opts);
+} else {
+	$ret = run_proc($proc_name, \%opts, '');
+}
+if (not defined $ret) {
+	safe_print "Pipeline finished abnormally!\n";
+} elsif ($ret != 0) {
+	safe_print "Pipeline finished abnormally with exit value: $ret!\n";
+} else {
+	safe_print "Pipeline finished successfully!\n";
+}
+close LOG_FILE;
+
+exit $ret;
