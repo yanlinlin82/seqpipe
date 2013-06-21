@@ -1,0 +1,41 @@
+#!/bin/bash
+#
+#[version="0.4.0 ($Id$)"]
+#
+
+###########################################################################
+
+function _sysinfo
+{
+	echo '===== System Information ====='
+	echo -n 'System : '; uname -a
+	echo -n 'CPU    : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
+	echo -n 'Memory : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
+	echo -n 'Date   : '; date '+%Y-%m-%d %H:%M:%S'
+	echo -n 'Pwd    : '; pwd
+	echo
+	echo -n 'Bash   : '; bash --version | head -n1
+	echo -n 'GCC    : '; gcc --version | head -n1
+	echo -n 'Make   : '; make --version | head -n1
+	echo -n 'Perl   : '; perl --version | egrep -o '\(v[0-9.]+\)' | awk -F '[()]' '{print $2}'
+	echo -n 'Python : '; python --version |& cut -d' ' -f2
+	echo -n 'Python3: '; python3 --version |& cut -d' ' -f2
+	echo 'Java:'; java -version |& sed 's/^/   /'
+	echo 'R:'; Rscript -e 'sessionInfo()' | sed 's/^/   /g'
+	echo
+
+	echo '===== SeqPipe Version ====='
+	echo 'SeqPipe:'
+	echo    "   "${_SEQPIPE_ROOT}/${_SEQPIPE}
+	echo -n "      "; ${_SEQPIPE_ROOT}/${_SEQPIPE} | grep Version
+	echo 'Modules: '
+	ls ${_SEQPIPE_ROOT}/*.pipe \
+		| while read FILE; do \
+			echo    "   $FILE"; \
+			echo -n "      "; \
+			egrep '^#\[(seqpipe\s+|)version' $FILE; \
+		done
+	echo
+}
+
+###########################################################################

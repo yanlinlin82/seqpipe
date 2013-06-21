@@ -1,0 +1,104 @@
+2013-05-07  v0.4.10 (r245)
+* Support '...' in SP_run.
+
+2013-05-05  v0.4.9 (r244)
+* Enable test mode (-T) option again.
+* Enable 'name' attribute for commands.
+
+2012-12-21  v0.4.8 (r232)
+* Do not treat intermediate files as temporary files.
+
+2012-11-29  v0.4.7 (r229)
+* Enable to 'export' shell environment variables in bash script.
+
+2012-11-24  v0.4.6 (r228)
+* Fix bug about pipeline script parsing.
+* Improve perl-thread supports checking.
+
+2012-11-22  v0.4.5 (r225)
+* Use a bash wrapper to solve the forks::shared problem.
+* Fix bug about intermediate files processing.
+
+2012-11-19  v0.4.4 (r222)
+* Fix bug and improve variable and file dependency checking.
+* Change configure filenames.
+* Improve bioseq pipelines.
+
+2012-11-17  v0.4.3 (r214)
+* Fix bug and improve variable and file dependency checking.
+* Remove quiet mode and verbose mode.
+* Change '-e' shell command from 'qsub' to 'qsub_sync' automatically.
+
+2012-11-12  v0.4.2 (r201)
+* Support 'SP_else_if'.
+
+2012-11-10  v0.4.1 (r199)
+* Support 'SP_for_parallel'.
+
+2012-11-09  v0.4.0 (r194)
+* Support new syntax: '{{', '}}', 'SP_if', 'SP_else', 'SP_set', 'SP_for', 'SP_while'.
+* Support multi-line command in inline mode.
+* Improve log filename and format.
+* Improve qsub support.
+* Cancel test mode, strict mode and default-pipeline-disabling.
+* Improve dependency checking and option name parsing.
+* Enable to set max thread number.
+* Improve bioseq pipelines (including GATK 2.0 supports).
+
+2012-10-24  v0.3.3 (r127)
+* Support history manipulating (by script seqpipe.history).
+* Fix bug in processing comment sign ('#') in command lines merging.
+* Check required options before procedure running.
+* Load all module files in seqpipe directory by default.
+
+2012-10-23  v0.3.2 (r115)
+* Store log files in separated sub-directories for each seqpipe run.
+
+2012-09-13  v0.3.1 (r111)
+* Support '-S' to enable strict mode (check every command's return value).
+
+2012-09-12  v0.3.0 (r107)
+* Auto calculate requires/inputs/outputs from its commands.
+* Overwrite variables by options from command line.
+* Improve some pipelines.
+
+2012-08-01  v0.2.8 (r94)
+* Support '-s' to change default shell.
+* Add qsub_sync for '-s' to support seqpipe in Torque envionment.
+
+2012-07-23  v0.2.7 (r91)
+* Support '-T' to show raw pipeline declaration.
+
+2012-07-23  v0.2.6 (r89)
+* Declare global variables in config.inc file.
+
+2012-07-21  v0.2.5 (r86)
+* Support inline mode (-e).
+
+2012-07-19  v0.2.4 (r82)
+* Disable removing output files for procedure.
+
+2012-07-16  v0.2.3 (r76)
+* Add date number before pid number of log files' names.
+
+2012-07-18  v0.2.2 (r74)
+* Enable to include pipeline file.
+* Support '-D' to disable loading default.pipe.
+* Support implicit '#[procedure type="stage"]'.
+* Enable to set global variables in command line.
+* Handle KILL signals to remove unfinished output files.
+
+2012-07-04  v0.2.1 (r46)
+* Use Perl' thread for parallel mode to parallelize SP_run.
+* Limit variable scope in function (procedure).
+
+2012-07-04  v0.2.0 (r45)
+* Add support of 'SP_eval'.
+* Cancel support of bash envionment variables.
+* Automatcally create directories for outputs.
+* Remove sysinfo mode (-s option of seqpipe).
+* Improve bash line parser, support quot marks.
+* Enables to set inputs, outputs and requires for single command.
+
+2012-06-21  v0.1.0 (r44)
+* Implement basic functions.
