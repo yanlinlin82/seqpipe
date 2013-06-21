@@ -535,25 +535,6 @@ function idxstats_bam
 	samtools idxstats ${INPUT} > ${OUTPUT}
 }
 
-function bamqc_check
-{
-	SP_set EXT_PREFIX=.sorted
-	SP_set INPUT_EXT_NAME=${EXT_PREFIX}.bam
-	SP_set OUTPUT_EXT_NAME=${EXT_PREFIX}.bamqc
-
-	SP_set SPECIES=HUMAN
-	test "${SPECIES}" == "HUMAN" -o "${SPECIES}" == "MOUSE"
-	
-	SP_set THREAD_NUM=2
-	SP_set WINDOW_NUM=400
-	SP_set EXT_OPTS=
-
-	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}/qualimapReport.html"]
-	qualimap bamqc -bam ${INPUT} -gd ${SPECIES} \
-		-nt ${THREAD_NUM} -nw ${WINDOW_NUM} \
-		-outformat HTML -outdir ${OUTPUT} ${EXT_OPTS}
-}
-
 function merge_bam
 {
 	SP_set INPUT_EXT_NAME=${EXT_PREFIX}.bam
@@ -1045,7 +1026,7 @@ function DNAseq_analysis
 
 	SP_run sort_bam INPUT_DIR=${OUTPUT_DIR} NAME=${NAME}
 
-	#[output.save="${INPUT_DIR}/${NAME}.sorted.mkdup.bam"]
+	#[output.final="${INPUT_DIR}/${NAME}.sorted.mkdup.bam"]
 	#[output.temp="${INPUT_DIR}/${NAME}.sorted.mkdup.metrics"]
 	SP_run mkdup_bam INPUT_DIR=${OUTPUT_DIR} NAME=${NAME} EXT_PREFIX=.sorted
 

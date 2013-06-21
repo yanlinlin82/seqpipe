@@ -8,22 +8,52 @@
 function _sysinfo
 {
 	echo '===== System Information ====='
-	echo -n 'System : '; uname -a
-	echo -n 'CPU    : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
-	echo -n 'Memory : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
-	echo -n 'Date   : '; date '+%Y-%m-%d %H:%M:%S'
-	echo -n 'Pwd    : '; pwd
+	echo -n 'System: ' && uname -a
+	
 	echo
-	echo -n 'Bash   : '; bash --version | head -n1
-	echo -n 'GCC    : '; gcc --version | head -n1
-	echo -n 'Make   : '; make --version | head -n1
-	echo -n 'Perl   : '; perl --version | egrep -o '\(v[0-9.]+\)' | awk -F '[()]' '{print $2}'
-	echo -n 'Python : '; python --version 2>&1 | cut -d' ' -f2
-	echo -n 'Python3: '; python3 --version 2>&1 | cut -d' ' -f2
-	echo 'Java:'; java -version 2>&1 | sed 's/^/   /'
-	echo 'R:'; Rscript -e 'sessionInfo()' | sed 's/^/   /g'
-	echo
+	echo -n 'Date: ' && date '+%Y-%m-%d %H:%M:%S'
+	echo -n 'Pwd : ' && pwd
 
+	echo -e '\nCPU:' && \
+	if [ "$(uname -s)" == "Darwin" ]; then \
+		sysctl machdep.cpu.brand_string | cut -d: -f2-;
+	else \
+		lscpu;
+	fi
+
+	echo -e '\nMemory:' && \
+	if [ "$(uname -s)" == "Darwin" ]; then \
+		top -l 1 | awk '/PhysMem/'; \
+	else \
+		free -h; \
+	fi
+
+	echo
+	echo -n 'Bash   : ' && bash --version | head -n1
+
+	if [ -z "$(which gcc >/dev/null)" ]; then \
+		echo -n 'GCC    : ' && gcc --version | head -n1; \
+	fi
+	if [ -z "$(which make >/dev/null)" ]; then \
+		echo -n 'Make   : ' && make --version | head -n1; \
+	fi
+	if [ -z "$(which perl >/dev/null)" ]; then \
+		echo -n 'Perl   : ' && perl --version | grep -E -o '(v[0-9\.]+)'; \
+	fi
+	if [ -z "$(which python >/dev/null)" ]; then \
+		echo -n 'Python : ' && python --version 2>&1 | cut -d' ' -f2; \
+	fi
+	if [ -z "$(which python3 >/dev/null)" ]; then \
+		echo -n 'Python3: ' && python3 --version 2>&1 | cut -d' ' -f2; \
+	fi
+	if [ -z "$(which java >/dev/null)" ]; then \
+		echo -e '\nJava:' && java -version 2>&1 | sed 's/^/   /'; \
+	fi
+	if [ -z "$(which Rscript >/dev/null)" ]; then \
+		echo -e '\nR:' && Rscript -e 'sessionInfo()' | sed 's/^/   /g'; \
+	fi
+
+	echo
 	echo '===== SeqPipe Version ====='
 	echo 'SeqPipe:'
 	echo    "   "${_SEQPIPE_ROOT}/${_SEQPIPE}
@@ -37,5 +67,3 @@ function _sysinfo
 		done
 	echo
 }
-
-###########################################################################
