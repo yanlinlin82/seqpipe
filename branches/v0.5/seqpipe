@@ -1599,7 +1599,7 @@ sub run_sp_set
 	my ($cmd_ref, $args_ref, $proc_vars_ref, $indent) = @_;
 	my $name = $cmd_ref->{var_name};
 	if (not exists $args_ref->{$name}) {
-		my $value = eval_text_in_shell($cmd_ref->{text}, $indent, $args_ref, $proc_vars_ref,
+		my $value = eval_text_in_shell($cmd_ref->{value}, $indent, $args_ref, $proc_vars_ref,
 			$global_vars_ref->{$cmd_ref->{file}});
 		return undef if not defined $value;
 		$proc_vars_ref->{$name} = $value;
