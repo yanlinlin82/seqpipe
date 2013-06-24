@@ -1764,9 +1764,16 @@ sub run_cmd
 			my $run_id = get_new_run_id;
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars,
 				$global_vars_ref->{$cmd_ref->{file}});
+			my @cmd_lines = split("\n", $cmd_result);
+			$cmd_result = join("\\\n", @cmd_lines);
+			foreach my $cmd_line (@cmd_lines) {
+				$cmd_line =~ s/^\s+//g;
+				$cmd_line =~ s/\s+$//g;
+			}
+			my $cmd_result_in_one_line = join(' ', @cmd_lines);
 
 			if (not $test_mode) {
-				log_print "$indent($run_id) [shell] $cmd_result\n";
+				log_print "$indent($run_id) [shell] $cmd_result_in_one_line\n";
 
 				my $info_ref = { requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
 				foreach my $require (keys %{$cmd_ref->{requires}}) {
@@ -1968,7 +1975,7 @@ sub run_proc
 sub run_sysinfo
 {
 	my ($proc_name) = @_;
-	my @cmds = '';
+	my @cmds = ();
 	foreach my $cmd_ref (@{$procs_ref->{$proc_name}->{commands}}) {
 		my $cmd = check_text($cmd_ref->{command}, (), (),
 			$global_vars_ref->{$cmd_ref->{file}}, {});
