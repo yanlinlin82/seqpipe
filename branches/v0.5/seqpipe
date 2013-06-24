@@ -569,49 +569,6 @@ sub transform_info
 	transform_deps($info_ref->{inputs_of}, $options_ref, $args_ref, $proc_vars_ref, $gvars_ref);
 }
 
-sub chk_files
-{
-	my ($info_ref, $indent, $run_id) = @_;
-
-	foreach my $require (keys %{$info_ref->{requires}}) {
-		if (not -e $require) {
-			log_print "$indent($run_id) ERROR: Required file '$require' does not exist!\n";
-			return -1;
-		}
-	}
-
-	foreach my $input (keys %{$info_ref->{inputs}}) {
-		if (not -e $input) {
-			log_print "$indent($run_id) ERROR: Input file '$input' does not exist!\n";
-			return -1;
-		}
-	}
-	
-	if (exists $info_ref->{outputs} and %{$info_ref->{outputs}}) {
-		foreach my $output (keys %{$info_ref->{outputs}}) {
-			if (exists $info_ref->{requires}{$output} or exists $info_ref->{inputs}{$output}) {
-				log_print "$indent($run_id) ERROR: Output file '$output' has also been defined as require or input!\n";
-				return -1;
-			}
-			if (-e $output) {
-				foreach my $input (keys %{$info_ref->{inputs}}) {
-					if ((stat($input))->mtime > (stat($output))->mtime) {
-						return 0;
-					}
-				}
-			} else {
-				my $output_dir = dirname $output;
-				system 'mkdir', '-p', $output_dir unless -d $output_dir;
-				return 0;
-			}
-		}
-		return 1;
-	} else {
-		# Force to run pipeline if no any output file defined.
-		return 0;
-	}
-}
-
 sub append_file
 {
 	my $file = shift;
@@ -1594,6 +1551,53 @@ sub check_proc
 ############################################################
 # Run the pipeline
 
+sub check_files
+{
+	my ($info_ref, $indent, $run_id) = @_;
+	# check if all required files exist
+	foreach my $require (keys %{$info_ref->{require}}) {
+		if (not -e $require) {
+			log_print "$indent($run_id) ERROR: Required file '$require' does not exist!\n";
+			return -1;
+		}
+	}
+	# check if all input files exists
+	foreach my $input (keys %{$info_ref->{input}}) {
+		if (not -e $input) {
+			log_print "$indent($run_id) ERROR: Input file '$input' does not exist!\n";
+			return -1;
+		}
+	}
+	# check if all output files not exists or are older than any input file
+	my %output_all = ();
+	@output_all{keys %{$info_ref->{output}}} = values %{$info_ref->{output}};
+	@output_all{keys %{$info_ref->{'output.temp'}}} = values %{$info_ref->{'output.temp'}};
+	@output_all{keys %{$info_ref->{'output.final'}}} = values %{$info_ref->{'output.final'}};
+	if (%output_all) {
+		foreach my $output (keys %output_all) {
+			if (exists $info_ref->{require}{$output} or exists $info_ref->{input}{$output}) {
+				log_print "$indent($run_id) ERROR: Output file '$output' has also been defined as require or input!\n";
+				return -1;
+			}
+			if (-e $output) {
+				foreach my $input (keys %{$info_ref->{input}}) {
+					if ((stat($input))->mtime > (stat($output))->mtime) {
+						return 0;
+					}
+				}
+			} else {
+				my $output_dir = dirname $output;
+				system 'mkdir', '-p', $output_dir unless -d $output_dir;
+				return 0;
+			}
+		}
+		return 1;
+	} else {
+		# Force to run pipeline if no any output file defined.
+		return 0;
+	}
+}
+
 sub run_sp_set
 {
 	my ($cmd_ref, $args_ref, $proc_vars_ref, $indent) = @_;
@@ -1775,37 +1779,12 @@ sub run_cmd
 			if (not $test_mode) {
 				log_print "$indent($run_id) [shell] $cmd_result_in_one_line\n";
 
-				my $info_ref = { requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
-				foreach my $require (keys %{$cmd_ref->{requires}}) {
-					my $file = eval_text($require, $args_ref, \%proc_vars,
-						$global_vars_ref->{$cmd_ref->{file}});
-					$info_ref->{requires}{$file} = '';
-				}
-				foreach my $input (keys %{$cmd_ref->{inputs}}) {
-					my $file = eval_text($input, $args_ref, \%proc_vars,
-						$global_vars_ref->{$cmd_ref->{file}});
-					$info_ref->{inputs}{$file} = '';
-				}
-				foreach my $output (keys %{$cmd_ref->{outputs}}) {
-					my $file = eval_text($output, $args_ref, \%proc_vars,
-						$global_vars_ref->{$cmd_ref->{file}});
-					$info_ref->{outputs}{$file} = '';
-				}
-				foreach my $save (keys %{$cmd_ref->{saves}}) {
-					my $file = eval_text($save, $args_ref, \%proc_vars,
-						$global_vars_ref->{$cmd_ref->{file}});
-					$info_ref->{saves}{$file} = '';
-				}
-				foreach my $temp (keys %{$cmd_ref->{temps}}) {
-					my $file = eval_text($temp, $args_ref, \%proc_vars,
-						$global_vars_ref->{$cmd_ref->{file}});
-					$info_ref->{temps}{$file} = '';
-				}
-				my $chk_ret = chk_files($info_ref, $indent, $run_id);
+				my $info_ref = check_cmd($cmd_ref, $args_ref, \%proc_vars);
+				my $chk_ret = check_files($info_ref, $indent, $run_id);
 				if ($chk_ret < 0) {
 					return { ret => $chk_ret, vars => \%proc_vars };
 				} elsif ($chk_ret > 0) {
-					log_print "$indent($run_id) [skip] $cmd_ref->{command}\n";
+					log_print "$indent($run_id) [skip] $cmd_result_in_one_line\n";
 					return { ret => 0, vars => \%proc_vars };
 				}
 
@@ -1932,10 +1911,9 @@ sub run_proc
 		log_print "$indent($run_id) [pipeline] $cmd\n";
 	}
 	
-	my $info_ref = check_proc($proc_name, $args_ref, \%proc_vars);
-	
 	if (not $test_mode) {
-		$ret = chk_files($info_ref, $indent, $run_id);
+		my $info_ref = check_proc($proc_name, $args_ref, \%proc_vars);
+		$ret = check_files($info_ref, $indent, $run_id);
 		return $ret if $ret < 0;
 		if ($ret > 0) {
 			log_print "$indent($run_id) [skip] $cmd\n";
