@@ -524,6 +524,8 @@ sub eval_text_in_shell
 		if (not $test_mode) {
 			my $run_id = get_new_run_id();
 			log_print "$indent($run_id) [eval] $text\n";
+			append_file LOG_DIR . "/$run_id.eval.cmd", $text, "\n";
+			append_file LOG_DIR . "/$run_id.eval.value", $result, "\n";
 		}
 	}
 	return $result;
@@ -1187,11 +1189,11 @@ sub check_text
 		if (exists $info_ref->{dyn_vars}{$name}) {
 			$value .= '${' . $name . '}';
 		} elsif (exists $args_ref->{$name}) {
-			$value .= $args_ref->{$name};
+			$value .= check_text($args_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref);
 		} elsif (exists $vars_ref->{$name}) {
-			$value .= $vars_ref->{$name};
+			$value .= check_text($vars_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref);
 		} elsif (exists $gvars_ref->{$name}) {
-			$value .= $gvars_ref->{$name};
+			$value .= check_text($gvars_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref);
 		} else {
 			$info_ref->{req_vars}{$name} = '' unless exists $info_ref->{req_vars}{$name} or $info_ref->{dyn_vars}{$name};
 			$value .= '${' . $name . '}';
