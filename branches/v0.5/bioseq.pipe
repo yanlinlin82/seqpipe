@@ -107,15 +107,16 @@ function _bioseq_sysinfo
 
 	echo -n 'EMBOSS   : '; embossversion 2>/dev/null
 
-	echo -n 'bwa      : '; bwa |& grep Version | cut -d' ' -f2
+	echo -n 'bwa      : '; bwa 2>&1 | grep Version | cut -d' ' -f2
 	echo -n 'bowtie   : '; bowtie --version | sed -n '1p' | cut -d' ' -f3
 	echo -n 'bowtie2  : '; bowtie2 --version | sed -n '1p' | cut -d' ' -f3
 
-	echo -n 'Qualimap : '; qualimap -h | grep '^QualiMap v' | cut -d' ' -f2
-	echo -n 'samtools : '; samtools |& grep Version | cut -d' ' -f2-
-	echo -n 'bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
-	echo -n 'picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
+	echo -n 'samtools : '; samtools 2>&1 | grep Version | cut -d' ' -f2-
+	echo -n 'bcftools : '; bcftools 2>&1 | grep Version | cut -d' ' -f2-
+
+	echo -n 'picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h 2>&1 | grep Version | cut -d' ' -f2
 	echo -n 'gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
+
 	echo -n 'pindel   : '; pindel | grep 'Pindel version' | sed -n '1p' | cut -d' ' -f3 | sed 's/,$//'
 }
 
@@ -128,7 +129,6 @@ function bioseq_syscheck
 	which bowtie
 	which bowtie2
 
-	which qualimap
 	which samtools
 	which bcftools
 
