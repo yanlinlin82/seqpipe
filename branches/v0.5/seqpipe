@@ -446,12 +446,13 @@ sub run_checker
 {
 	my ($cmd, $cmd_result, $run_id, $negative, $indent) = @_;
 	
-	append_file LOG_DIR . "/$run_id.checker.cmd", $cmd_result, "\n";
-
+	if (not $test_mode) {
+		append_file LOG_DIR . "/$run_id.checker.cmd", $cmd_result, "\n";
+	}
 	if (not open SHELL, '|-', $shell) {
 		return undef;
 	}
-	print SHELL $cmd_result;
+	print SHELL $cmd_result . ">/dev/null 2>/dev/null";
 	close SHELL;
 	
 	if ($? & 0xFF) {
@@ -1269,17 +1270,29 @@ sub check_sp_if
 	my ($cmd_ref, $args_ref, $vars_ref) = @_;
 	my $info_ref = {};
 	# TODO: deal with different file dependency in different block
+	my $yes = 0;
 	foreach my $cond_ref (@{$cmd_ref->{condition}}) {
-		my $text = (exists $cmd_ref->{shell} ? $cmd_ref->{shell} : $cmd_ref->{text});
-		my $value = check_text($text, $args_ref, $vars_ref,
-			$global_vars_ref->{$cmd_ref->{file}}, $info_ref);
-		if (is_unresolved($value)) {
-			# TODO: Only check the matched block if determined
+		if (exists $cond_ref->{shell}) {
+			my $value = check_text($cond_ref->{shell}, $args_ref, $vars_ref,
+				$global_vars_ref->{$cmd_ref->{file}}, $info_ref);
+		} else {
+			my $value = check_text($cond_ref->{text}, $args_ref, $vars_ref,
+				$global_vars_ref->{$cmd_ref->{file}}, $info_ref);
+			if (not is_unresolved($value)) {
+				$value =~ s/^\s+//s;
+				$value =~ s/\s+$//s;
+				if ($value eq '') {
+					next;
+				} else {
+					$yes = 1;
+				}
+			}
 		}
 		my $sub_info_ref = check_block($cond_ref->{block}, $args_ref, $vars_ref);
 		merge_info($info_ref, $sub_info_ref, $cmd_ref);
+		last if $yes;
 	}
-	if (exists $cmd_ref->{else}) {
+	if (not $yes and exists $cmd_ref->{else}) {
 		my $sub_info_ref = check_block($cmd_ref->{else}, $args_ref, $vars_ref);
 		merge_info($info_ref, $sub_info_ref, $cmd_ref);
 	}
@@ -1293,12 +1306,9 @@ sub check_sp_for
 	my $info_ref = {};
 	my $value = check_text($cmd_ref->{value}, $args_ref, $vars_ref,
 		$global_vars_ref->{$cmd_ref->{file}}, $info_ref);
-	if (not defined $value) {
-		$value = '';	
-	}
-	if (is_unresolved($value)) {
+	if (not defined $value or is_unresolved($value)) {
 		# TODO: When not determine, how to calculate file dependency of loop block?
-		print 'WARNING: Can not determine the value for SP_for at ' . file_pos($cmd_ref) . "\n";
+		$value = '';
 	}
 	if ($cmd_ref->{primitive} eq 'SP_for') {
 		foreach my $each_value (split(/\s+/, $value)) {
@@ -1362,7 +1372,7 @@ sub check_cmd
 			my $value = check_text($text, $args_ref, $vars_ref,
 				$global_vars_ref->{$cmd_ref->{file}}, $info_ref);
 			# TODO: expand text to multiple-files
-			if (is_unresolved($value)) {
+			if (not $test_mode and not $show_mode and not $help_mode and is_unresolved($value)) {
 				die "ERROR: Can not determine the $type file '$text' before running.\n"
 					. "  at " . file_pos($cmd_ref) . "\n$die_msg_tailing";
 			}
@@ -1528,7 +1538,7 @@ sub run_sp_if
 	foreach my $cond_ref (@{$cmd_ref->{condition}}) {
 		if (exists $cond_ref->{shell}) {
 			my $cmd = "$cond_ref->{primitive} $cond_ref->{negative}($cond_ref->{shell})";
-			my $cmd_result = eval_text($cond_ref->{bash}, $args_ref, $proc_vars_ref,
+			my $cmd_result = eval_text($cond_ref->{shell}, $args_ref, $proc_vars_ref,
 				$global_vars_ref->{$cmd_ref->{file}});
 			$yes = run_checker($cmd, $cmd_result, $run_id, $cond_ref->{negative}, $indent);
 			return undef if not defined $yes;
@@ -1543,7 +1553,7 @@ sub run_sp_if
 			}
 		}
 		if ($yes) {
-			$ret = run_block($cmd_ref, $args_ref, $proc_vars_ref, $indent);
+			$ret = run_block($cond_ref->{block}, $args_ref, $proc_vars_ref, $indent);
 			last;
 		}
 	}
