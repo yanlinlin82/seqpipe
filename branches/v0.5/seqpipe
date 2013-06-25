@@ -1216,7 +1216,7 @@ sub check_sp_set
 			$info_ref->{opt_vars}{$name} = $text;
 			$vars_ref->{$name} = $text;
 		} else {
-			die "ERROR: Variable '$name' has been changed again at " . file_pos($cmd_ref) . "\n$die_msg_tailing";
+			# TODO: Ensure there is no side effect to change variable value.
 		}
 	}
 	return $info_ref;
