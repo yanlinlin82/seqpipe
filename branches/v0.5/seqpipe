@@ -148,10 +148,13 @@ sub log_printf
 ############################################################
 # Handling signal of Ctrl+C.
 
-$SIG{'INT'} = sub {
-	my $now = time_string time;
-	log_print "(0) Aborts at $now\n";
-};
+sub init_sig_int
+{
+	$SIG{'INT'} = sub {
+		my $now = time_string time;
+		log_print "(0) Aborts at $now\n";
+	};
+}
 
 ############################################################
 # Run ID allocation
@@ -1179,21 +1182,32 @@ sub is_unresolved
 
 sub check_text
 {
-	my ($text, $args_ref, $vars_ref, $gvars_ref, $info_ref) = @_;
+	my ($text, $args_ref, $vars_ref, $gvars_ref, $info_ref, $skip_ref) = @_;
 	my $value = '';
 	# TODO: keep those ${XXX} in single quote marks not replaced.
 	while ($text =~ /^(.*?)\${(\w+)}(.*)$/s) {
 		my $name = $2;
 		$text = $3;
 		$value .= $1;
-		if (exists $info_ref->{dyn_vars}{$name}) {
+		if (defined $skip_ref and exists $skip_ref->{$name}) {
+			$value .= '${' . $name . '}';
+		} elsif (exists $info_ref->{dyn_vars}{$name}) {
 			$value .= '${' . $name . '}';
 		} elsif (exists $args_ref->{$name}) {
-			$value .= check_text($args_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref);
+			my $sub_skip_ref;
+			%{$sub_skip_ref} = %{$skip_ref} if defined $skip_ref;
+			$sub_skip_ref->{$name} = 1;
+			$value .= check_text($args_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref, $sub_skip_ref);
 		} elsif (exists $vars_ref->{$name}) {
-			$value .= check_text($vars_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref);
+			my $sub_skip_ref;
+			%{$sub_skip_ref} = %{$skip_ref} if defined $skip_ref;
+			$sub_skip_ref->{$name} = 1;
+			$value .= check_text($vars_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref, $sub_skip_ref);
 		} elsif (exists $gvars_ref->{$name}) {
-			$value .= check_text($gvars_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref);
+			my $sub_skip_ref;
+			%{$sub_skip_ref} = %{$skip_ref} if defined $skip_ref;
+			$sub_skip_ref->{$name} = 1;
+			$value .= check_text($gvars_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref, $sub_skip_ref);
 		} else {
 			$info_ref->{req_vars}{$name} = '' unless exists $info_ref->{req_vars}{$name} or $info_ref->{dyn_vars}{$name};
 			$value .= '${' . $name . '}';
@@ -2026,6 +2040,9 @@ if (not $test_mode) {
 			die "ERROR: Input file '$file' does not exist!\n$die_msg_tailing" unless -e $file;
 		}
 	}
+	
+	init_sig_int();
+
 	# Prepare log directory
 	mkdir LOG_ROOT or die "ERROR: Can not create directory '" . LOG_ROOT . "'!\n$die_msg_tailing" unless -d LOG_ROOT;
 	mkdir LOG_DIR or die "ERROR: Can not create directory '" . LOG_DIR . "'!\n$die_msg_tailing";
