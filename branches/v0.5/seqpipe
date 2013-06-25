@@ -473,11 +473,8 @@ sub run_shell
 		return 0;
 	}
 
-	my $name = $cmd_name;
-	$name = try_guess_name($command) if not defined $name or $name eq '';
-	my $err = '2>>' . LOG_DIR . "/$run_id.$name.err";
-	my $out = '>>' . LOG_DIR . "/$run_id.$name.out";
-	append_file LOG_DIR . "/$run_id.$name.cmd", $command, "\n";
+	my $err = '2>>' . LOG_DIR . "/$run_id.$cmd_name.log.err";
+	my $out = '>>' . LOG_DIR . "/$run_id.$cmd_name.log.out";
 
 	my $start_time = time;
 	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
@@ -869,7 +866,7 @@ sub show_sp_set
 	print $file_handle $indent;
 	print $file_handle '#' if exists $args_ref->{$cmd_ref->{var_name}};
 	print $file_handle 'SP_set ', $cmd_ref->{var_name}, '=', $cmd_ref->{value};
-	print $file_handle $cmd_ref->{comment} if $verbose;
+	print $file_handle $cmd_ref->{comment};
 	print $file_handle "\n";
 }
 
@@ -940,9 +937,9 @@ sub show_cmd
 	my ($file_handle, $cmd_ref, $indent, $args_ref, $cmd_index) = @_;
 	my $need_new_line = 0;
 	if ($cmd_index > 0) {
-		if ($verbose and (exists $cmd_ref->{name} or exists $cmd_ref->{require}
+		if (exists $cmd_ref->{name} or exists $cmd_ref->{require}
 				or exists $cmd_ref->{input} or exists $cmd_ref->{output}
-				or exists $cmd_ref->{'output.temp'} or exists $cmd_ref->{'output.final'})) {
+				or exists $cmd_ref->{'output.temp'} or exists $cmd_ref->{'output.final'}) {
 			$need_new_line = 1;
 		}
 		if (exists $cmd_ref->{command}) {
@@ -956,11 +953,9 @@ sub show_cmd
 		}
 	}
 	print $file_handle "\n" if $need_new_line;
-	if ($verbose) {
-		print $file_handle "$indent#[name=\"$cmd_ref->{name}\"\n" if $cmd_ref->{name};
-		foreach my $key ('require', 'input', 'output', 'output.temp', 'output.final') {
-			print $file_handle "$indent#[$key=\"$_\"]\n" foreach (keys %{$cmd_ref->{$key}});
-		}
+	print $file_handle "$indent#[name=\"$cmd_ref->{name}\"\n" if $cmd_ref->{name};
+	foreach my $key ('require', 'input', 'output', 'output.temp', 'output.final') {
+		print $file_handle "$indent#[$key=\"$_\"]\n" foreach (keys %{$cmd_ref->{$key}});
 	}
 	if ($cmd_ref->{primitive}) {
 		show_primitive($file_handle, $cmd_ref, $indent, $args_ref);
@@ -1412,7 +1407,14 @@ sub check_proc
 
 sub check_files
 {
-	my ($info_ref, $indent, $run_id) = @_;
+	my ($info_ref, $indent, $run_id, $cmd_name) = @_;
+	if (not $test_mode) {
+		foreach my $type (@FILES_ATTR, 'output.sub') {
+			while (my ($file, $def) = each (%{$info_ref->{$type}})) {
+				append_file LOG_DIR . "/$run_id.$cmd_name.file.$type", $file, "\t", $def, "\n";
+			}
+		}
+	}
 	# check if all required files exist
 	foreach my $require (keys %{$info_ref->{require}}) {
 		if (not -e $require) {
@@ -1641,12 +1643,15 @@ sub run_cmd
 				$cmd_line =~ s/\s+$//g;
 			}
 			my $cmd_result_in_one_line = join(' ', @cmd_lines);
+			my $cmd_name = $cmd_ref->{name};
+			$cmd_name = try_guess_name($cmd_result) if not defined $cmd_name or $cmd_name eq '';
 
 			if (not $test_mode) {
 				log_print "$indent($run_id) [shell] $cmd_result_in_one_line\n";
+				append_file LOG_DIR . "/$run_id.$cmd_name.cmd", $cmd_result, "\n";
 
 				my $info_ref = check_cmd($cmd_ref, $args_ref, \%proc_vars);
-				my $chk_ret = check_files($info_ref, $indent, $run_id);
+				my $chk_ret = check_files($info_ref, $indent, $run_id, $cmd_name);
 				if ($chk_ret < 0) {
 					return { ret => $chk_ret, vars => \%proc_vars };
 				} elsif ($chk_ret > 0) {
@@ -1668,7 +1673,7 @@ sub run_cmd
 				}
 			}
 
-			$ret = run_shell($cmd_result, '', $cmd_ref->{name}, $run_id, $indent);
+			$ret = run_shell($cmd_result, '', $cmd_name, $run_id, $indent);
 			if ($max_thread_number > 1) {
 				lock($thread_number);
 				$thread_number--;
@@ -1776,15 +1781,15 @@ sub run_proc
 		$run_id = get_new_run_id();
 		$start_time = time;
 		log_print "$indent($run_id) [pipeline] $cmd\n";
-		append_file LOG_DIR . "/$run_id.$proc_name.cmd", $cmd, "\n";
-		open my $handle, '>', LOG_DIR . "/$run_id.$proc_name.pipe";
+		append_file LOG_DIR . "/$run_id.$proc_name.cmd", "SP_run " . $cmd, "\n" if $proc_name ne '';
+		open my $handle, '>', LOG_DIR . "/$run_id." . ($proc_name eq '' ? 'shell' : $proc_name) . '.pipe';
 		show_proc($handle, $proc_name, $args_ref);
 		close $handle;
 	}
 	
 	if (not $test_mode) {
 		my $info_ref = check_proc($proc_name, $args_ref);
-		$ret = check_files($info_ref, $indent, $run_id);
+		$ret = check_files($info_ref, $indent, $run_id, ($proc_name eq '' ? 'shell' : $proc_name));
 		return $ret if $ret < 0;
 		if ($ret > 0) {
 			log_print "$indent($run_id) [skip] $cmd\n";
