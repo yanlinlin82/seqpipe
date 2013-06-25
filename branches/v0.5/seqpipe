@@ -1023,7 +1023,7 @@ sub merge_info
 			$info_ref->{$type}{$name} = $value;
 		}
 	}
-	foreach my $cmd_type (@FILES_ATTR) {
+	foreach my $cmd_type (@FILES_ATTR, 'output.sub') {
 		while (my ($file, $def) = each (%{$cmd_info_ref->{$cmd_type}})) {
 			if ($cmd_type eq 'require' or $cmd_type eq 'input') {
 				$info_ref->{$cmd_type}{$file} = $def;
@@ -1035,6 +1035,7 @@ sub merge_info
 				foreach my $proc_type ('require', 'input') {
 					$found = 1 if exists $info_ref->{$proc_type}{$file};
 				}
+				# TODO: ensure if it is OK to warn rather than die about overwriting previous input files.
 				print "WARNING: Previous input file may be overwrited as output at " . file_pos($cmd_ref) . "\n" if $found;
 				$info_ref->{$cmd_type}{$file} = $def;
 			}
@@ -1094,8 +1095,15 @@ sub show_info
 		show_info_files('Input file(s):', $info_ref->{input});
 	}
 	if ($help_mode >= 2) {
-		if (%{$info_ref->{output}}) {
-			show_info_files('Intermediate output file(s) (will not be removed):', $info_ref->{output});
+		if (%{$info_ref->{output}} or %{$info_ref->{'output.sub'}}) {
+			my $outputs_ref = {};
+			while (my ($file, $def) = each (%{$info_ref->{'output'}})) {
+				$outputs_ref->{$file} = $def;
+			}
+			while (my ($file, $def) = each (%{$info_ref->{'output.sub'}})) {
+				$outputs_ref->{$file} = $def;
+			}
+			show_info_files('Intermediate output file(s) (will not be removed):', $outputs_ref);
 		}
 		if (%{$info_ref->{'output.temp'}}) {
 			show_info_files('Intermediate temporary file(s) (will be removed unless using "-k" option):', $info_ref->{'output.temp'});
@@ -1252,10 +1260,10 @@ sub check_sp_run
 		die "ERROR: Variable(s) required for procedure '$cmd_ref->{proc_name}' at " . file_pos($cmd_ref)
 			. ":\n   " . join(', ', sort keys %{$sub_info_ref->{req_vars}}) . "\n$die_msg_tailing";
 	}
-	foreach my $type (@FILES_ATTR) {
-		next unless exists $sub_info_ref->{$type};
+	foreach my $type (@FILES_ATTR, 'output.sub') {
+		my $file_type = ($type eq 'output' ? 'output.sub' : $type);
 		while (my ($file, $def) = each (%{$sub_info_ref->{$type}})) {
-			$info_ref->{$type}->{$file} = check_text($def, $origin_option_ref, {}, {}, {});
+			$info_ref->{$file_type}->{$file} = check_text($def, $origin_option_ref, {}, {}, {});
 		}
 	}
 	return $info_ref;
@@ -1361,7 +1369,7 @@ sub check_block
 {
 	my ($block_ref, $args_ref, $vars_ref) = @_;
 	my $info_ref = {};
-	$info_ref->{$_} = {} foreach (@VARS_TYPE, @FILES_ATTR);
+	$info_ref->{$_} = {} foreach (@VARS_TYPE, @FILES_ATTR, 'output.sub');
 	foreach my $cmd_ref (@{$block_ref->{commands}}) {
 		# TODO: Check if the pipeline changes variables in parallel steps.
 		my $cmd_info_ref = check_cmd($cmd_ref, $args_ref, $vars_ref);
@@ -1389,7 +1397,9 @@ sub check_proc
 	}
 	foreach my $type ('require', 'input') {
 		foreach my $file (keys %{$info_ref->{$type}}) {
-			if (exists $info_ref->{'output.temp'}{$file} or exists $info_ref->{'output.final'}{$file}) {
+			if (exists $info_ref->{'output.sub'}{$file}
+					or exists $info_ref->{'output.temp'}{$file}
+					or exists $info_ref->{'output.final'}{$file}) {
 				delete $info_ref->{$type}{$file};
 			}
 		}
@@ -1419,7 +1429,8 @@ sub check_files
 	}
 	# check if all output files not exists or are older than any input file
 	my %output_all = ();
-	@output_all{keys %{$info_ref->{output}}} = values %{$info_ref->{output}};
+	@output_all{keys %{$info_ref->{'output'}}} = values %{$info_ref->{'output'}};
+	@output_all{keys %{$info_ref->{'output.sub'}}} = values %{$info_ref->{'output.sub'}};
 	@output_all{keys %{$info_ref->{'output.temp'}}} = values %{$info_ref->{'output.temp'}};
 	@output_all{keys %{$info_ref->{'output.final'}}} = values %{$info_ref->{'output.final'}};
 	if (%output_all) {
