@@ -897,7 +897,7 @@ sub show_sp_if
 		} else {
 			print $file_handle $cond_ref->{text};
 		}
-		print "\n";
+		print $file_handle "\n";
 		show_block($file_handle, $cond_ref->{block}, $indent, $args_ref);
 	}
 	if (exists $cmd_ref->{else}) {
@@ -1455,7 +1455,7 @@ sub check_proc
 
 sub check_files
 {
-	my ($info_ref, $indent, $run_id, $cmd_name) = @_;
+	my ($info_ref, $indent, $run_id, $cmd_name, $is_proc) = @_;
 	if (not $test_mode) {
 		foreach my $type (@FILES_ATTR, 'output.sub') {
 			while (my ($file, $def) = each (%{$info_ref->{$type}})) {
@@ -1479,9 +1479,11 @@ sub check_files
 	}
 	# check if all output files not exists or are older than any input file
 	my %output_all = ();
-	@output_all{keys %{$info_ref->{'output'}}} = values %{$info_ref->{'output'}};
-	@output_all{keys %{$info_ref->{'output.sub'}}} = values %{$info_ref->{'output.sub'}};
-	@output_all{keys %{$info_ref->{'output.temp'}}} = values %{$info_ref->{'output.temp'}};
+	if (not $is_proc) {
+		@output_all{keys %{$info_ref->{'output'}}} = values %{$info_ref->{'output'}};
+		@output_all{keys %{$info_ref->{'output.sub'}}} = values %{$info_ref->{'output.sub'}};
+		@output_all{keys %{$info_ref->{'output.temp'}}} = values %{$info_ref->{'output.temp'}};
+	}
 	@output_all{keys %{$info_ref->{'output.final'}}} = values %{$info_ref->{'output.final'}};
 	if (%output_all) {
 		foreach my $output (keys %output_all) {
@@ -1699,7 +1701,7 @@ sub run_cmd
 				append_file LOG_DIR . "/$run_id.$cmd_name.cmd", $cmd_result, "\n";
 
 				my $info_ref = check_cmd($cmd_ref, $args_ref, \%proc_vars);
-				my $chk_ret = check_files($info_ref, $indent, $run_id, $cmd_name);
+				my $chk_ret = check_files($info_ref, $indent, $run_id, $cmd_name, 0);
 				if ($chk_ret < 0) {
 					return { ret => $chk_ret, vars => \%proc_vars };
 				} elsif ($chk_ret > 0) {
@@ -1726,17 +1728,19 @@ sub run_cmd
 				lock($thread_number);
 				$thread_number--;
 			}
-			return undef if not defined $ret;
-			if (not $test_mode and $ret != 0) {
-				foreach my $output (keys %{$cmd_ref->{outputs}}) {
-					my $file = eval_text($output, $args_ref, \%proc_vars,
-						$global_vars_ref->{$cmd_ref->{file}});
-					if (-e $file) {
-						log_print "$indent($run_id) removes bad output file '$file'!\n";
-						unlink $file;
+			if (not $test_mode and ((not defined $ret) or ($ret != 0))) {
+				foreach my $type ('output', 'output.temp', 'output.final') {
+					foreach my $output (keys %{$cmd_ref->{$type}}) {
+						my $file = eval_text($output, $args_ref, \%proc_vars,
+							$global_vars_ref->{$cmd_ref->{file}});
+						if (-e $file) {
+							log_print "$indent($run_id) removes bad output file '$file'!\n";
+							unlink $file;
+						}
 					}
 				}
 			}
+			return undef if not defined $ret;
 		}
 	}
 	return { ret => $ret, vars => \%proc_vars };
@@ -1837,7 +1841,7 @@ sub run_proc
 	
 	if (not $test_mode) {
 		my $info_ref = check_proc($proc_name, $args_ref);
-		$ret = check_files($info_ref, $indent, $run_id, ($proc_name eq '' ? 'shell' : $proc_name));
+		$ret = check_files($info_ref, $indent, $run_id, ($proc_name eq '' ? 'shell' : $proc_name), 1);
 		return $ret if $ret < 0;
 		if ($ret > 0) {
 			log_print "$indent($run_id) [skip] $cmd\n";
@@ -2075,5 +2079,6 @@ if (not $test_mode) {
 		log_print "Pipeline finished successfully!\n";
 	}
 	close LOG_FILE;
+	# TODO: compress log files by default
 }
 exit (defined $ret ? $ret : 1);
