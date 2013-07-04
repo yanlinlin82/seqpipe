@@ -1241,6 +1241,10 @@ sub check_sp_set
 sub check_sp_run
 {
 	my ($cmd_ref, $args_ref, $vars_ref) = @_;
+	if (not exists $procs_ref->{$cmd_ref->{proc_name}}) {
+		die "ERROR: Unknown procedure '$cmd_ref->{proc_name}' at "
+			. file_pos($cmd_ref) . "\n$die_msg_tailing";
+	}
 	my $info_ref = {};
 	my $sub_args_ref = {};
 	my $origin_option_ref = {};
@@ -1264,8 +1268,9 @@ sub check_sp_run
 			}
 		}
 	}
-	die "ERROR: Unknown procedure '$cmd_ref->{proc_name}' at " . file_pos($cmd_ref) . "\n$die_msg_tailing"
-		unless exists $procs_ref->{$cmd_ref->{proc_name}};
+	foreach my $name (keys %{$sub_args_ref}) {
+		$sub_args_ref->{$name} =~ s/\${\w+}//g;
+	}
 	my $sub_info_ref = check_proc($cmd_ref->{proc_name}, $sub_args_ref);
 	# TODO: if no any req_vars, do not create the sub-object.
 	if (exists $sub_info_ref->{req_vars} and %{$sub_info_ref->{req_vars}}) {
