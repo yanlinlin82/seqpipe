@@ -1,7 +1,4 @@
-#!/bin/bash
-#
 #[version="0.4.0 ($Id$)"]
-#
 
 ###########################################################################
 
@@ -31,26 +28,48 @@ function _sysinfo
 	echo
 	echo -n 'Bash   : ' && bash --version | head -n1
 
-	if [ -z "$(which gcc >/dev/null)" ]; then \
+	if [ -n "$(which gcc 2>/dev/null)" ]; then \
 		echo -n 'GCC    : ' && gcc --version | head -n1; \
+	else \
+		echo -e 'GCC    : <none>'; \
 	fi
-	if [ -z "$(which make >/dev/null)" ]; then \
+
+	if [ -n "$(which make 2>/dev/null)" ]; then \
 		echo -n 'Make   : ' && make --version | head -n1; \
+	else \
+		echo -e 'Make   : <none>'; \
 	fi
-	if [ -z "$(which perl >/dev/null)" ]; then \
+
+	if [ -n "$(which perl 2>/dev/null)" ]; then \
 		echo -n 'Perl   : ' && perl --version | grep -E -o '(v[0-9\.]+)'; \
+	else \
+		echo -e 'Perl   : <none>'; \
 	fi
-	if [ -z "$(which python >/dev/null)" ]; then \
+
+	if [ -n "$(which python 2>/dev/null)" ]; then \
 		echo -n 'Python : ' && python --version 2>&1 | cut -d' ' -f2; \
+	else \
+		echo -e 'Python : <none>'; \
 	fi
-	if [ -z "$(which python3 >/dev/null)" ]; then \
+
+	if [ -n "$(which python3 2>/dev/null)" ]; then \
 		echo -n 'Python3: ' && python3 --version 2>&1 | cut -d' ' -f2; \
+	else \
+		echo -e 'Python3: <none>'; \
 	fi
-	if [ -z "$(which java >/dev/null)" ]; then \
-		echo -e '\nJava:' && java -version 2>&1 | sed 's/^/   /'; \
+
+	echo
+	if [ -n "$(which java 2>/dev/null)" ]; then \
+		echo -e 'Java:' && java -version 2>&1 | sed 's/^/   /'; \
+	else \
+		echo -e 'Java: <none>'; \
 	fi
-	if [ -z "$(which Rscript >/dev/null)" ]; then \
-		echo -e '\nR:' && Rscript -e 'sessionInfo()' | sed 's/^/   /g'; \
+
+	echo
+	if [ -n "$(which Rscript 2>/dev/null)" ]; then \
+		echo -e 'R:' && Rscript -e 'sessionInfo()' | sed 's/^/   /g'; \
+	else \
+		echo -e 'R: <none>'; \
 	fi
 
 	echo
@@ -63,7 +82,7 @@ function _sysinfo
 		| while read FILE; do \
 			echo    "   $FILE"; \
 			echo -n "      "; \
-			egrep '^#\[(seqpipe\s+|)version' $FILE; \
+			grep -E '^#\[(seqpipe\s+|)version' $FILE; \
 		done
 	echo
 }
