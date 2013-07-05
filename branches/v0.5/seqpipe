@@ -455,7 +455,9 @@ sub run_checker
 	if (not open SHELL, '|-', $shell) {
 		return undef;
 	}
-	print SHELL $cmd_result . ">/dev/null 2>/dev/null";
+	my @cmd_lines = split("\n", $cmd_result);
+	$cmd_result = join("\\\n", @cmd_lines);
+	print SHELL '(' . $cmd_result . ')>/dev/null 2>/dev/null';
 	close SHELL;
 	
 	if ($? & 0xFF) {
