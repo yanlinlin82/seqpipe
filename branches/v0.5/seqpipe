@@ -445,6 +445,19 @@ sub get_env_cmds
 	return @env_cmds;
 }
 
+sub process_cmd_lines
+{
+	my ($cmd_text) = @_;
+	my @cmd_lines = split("\n", $cmd_text);
+	my $multi_lines = join("\\\n", @cmd_lines);
+	foreach my $line (@cmd_lines) {
+		$line =~ s/^\s+//g;
+		$line =~ s/\s+$//g;
+	}
+	my $single_line = join(' ', @cmd_lines);
+	return ($multi_lines, $single_line);
+}
+
 sub run_checker
 {
 	my ($cmd, $cmd_result, $run_id, $negative, $indent) = @_;
@@ -455,9 +468,8 @@ sub run_checker
 	if (not open SHELL, '|-', $shell) {
 		return undef;
 	}
-	my @cmd_lines = split("\n", $cmd_result);
-	$cmd_result = join("\\\n", @cmd_lines);
-	print SHELL '(' . $cmd_result . ')>/dev/null 2>/dev/null';
+	my ($multi_lines, $single_line) = process_cmd_lines($cmd_result);
+	print SHELL '(' . $multi_lines . ')>/dev/null 2>/dev/null';
 	close SHELL;
 	
 	if ($? & 0xFF) {
@@ -465,17 +477,17 @@ sub run_checker
 	}
 	my $yes = (($? >> 8) == 0) ^ ($negative ne '');
 	if (not $test_mode) {
-		log_print "$indent($run_id) $cmd returns '" . ($yes ? 'yes' : 'no') . "'\n";
+		log_print "$indent($run_id) ($single_line) returns '" . ($yes ? 'yes' : 'no') . "'\n";
 	}
 	return $yes;
 }
 
 sub run_shell
 {
-	my ($command, $procedure_type, $cmd_name, $run_id, $indent) = @_;
+	my ($multi_lines_cmd, $procedure_type, $cmd_name, $run_id, $indent) = @_;
 
 	if ($test_mode) {
-		print "$command\n";
+		print "$multi_lines_cmd\n";
 		return 0;
 	}
 
@@ -489,7 +501,7 @@ sub run_shell
 		log_print "$indent($run_id) starts failed! (error: $!)\n";
 		return undef;
 	}
-	print SHELL join("\n", '(', get_env_cmds(), $command, ')'), " $err $out";
+	print SHELL join("\n", '(', get_env_cmds(), $multi_lines_cmd, ')'), " $err $out";
 	close SHELL;
 	if ($? & 0xFF) {
 		log_printf "$indent($run_id) aborted by signal %d (%s coredump)\n",
@@ -891,6 +903,7 @@ sub show_sp_run
 
 sub show_sp_if
 {
+	# TODO: Show '\' at EOL for wrapped lines.
 	my ($file_handle, $cmd_ref, $indent, $args_ref) = @_;
 	foreach my $cond_ref (@{$cmd_ref->{condition}}) {
 		print $file_handle $indent, $cond_ref->{primitive}, ' ';
@@ -1693,26 +1706,20 @@ sub run_cmd
 			my $run_id = get_new_run_id();
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars,
 				$global_vars_ref->{$cmd_ref->{file}});
-			my @cmd_lines = split("\n", $cmd_result);
-			$cmd_result = join("\\\n", @cmd_lines);
-			foreach my $cmd_line (@cmd_lines) {
-				$cmd_line =~ s/^\s+//g;
-				$cmd_line =~ s/\s+$//g;
-			}
-			my $cmd_result_in_one_line = join(' ', @cmd_lines);
+			my ($multi_lines, $single_line) = process_cmd_lines($cmd_result);
 			my $cmd_name = $cmd_ref->{name};
-			$cmd_name = try_guess_name($cmd_result) if not defined $cmd_name or $cmd_name eq '';
+			$cmd_name = try_guess_name($multi_lines) if not defined $cmd_name or $cmd_name eq '';
 
 			if (not $test_mode) {
-				log_print "$indent($run_id) [shell] $cmd_result_in_one_line\n";
-				append_file LOG_DIR . "/$run_id.$cmd_name.cmd", $cmd_result, "\n";
+				log_print "$indent($run_id) [shell] $single_line\n";
+				append_file LOG_DIR . "/$run_id.$cmd_name.cmd", $multi_lines, "\n";
 
 				my $info_ref = check_cmd($cmd_ref, $args_ref, \%proc_vars);
 				my $chk_ret = check_files($info_ref, $indent, $run_id, $cmd_name, 0);
 				if ($chk_ret < 0) {
 					return { ret => $chk_ret, vars => \%proc_vars };
 				} elsif ($chk_ret > 0) {
-					log_print "$indent($run_id) [skip] $cmd_result_in_one_line\n";
+					log_print "$indent($run_id) [skip] $single_line\n";
 					return { ret => 0, vars => \%proc_vars };
 				}
 
@@ -1730,7 +1737,7 @@ sub run_cmd
 				}
 			}
 
-			$ret = run_shell($cmd_result, '', $cmd_name, $run_id, $indent);
+			$ret = run_shell($multi_lines, '', $cmd_name, $run_id, $indent);
 			if ($max_thread_number > 1) {
 				lock($thread_number);
 				$thread_number--;
