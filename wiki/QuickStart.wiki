@@ -17,7 +17,7 @@ svn checkout http://seqpipe.googlecode.com/svn/trunk seqpipe
 
 Then, add the seqpipe directory to you PATH environment variable:
 {{{
-export PATH=$PATH:$(pwd)/seqpipe
+export PATH=$(pwd)/seqpipe:$PATH
 }}}
 
 Now, you can just type "seqpipe" to run it.
@@ -52,3 +52,19 @@ Options:
 
 
 = Write first pipeline =
+
+Create new text file (named as "hello.pipe") as following:
+{{{
+function hello
+{
+   echo "Hello"
+   echo "World"
+}
+}}}
+
+Then run the command:
+{{{
+seqpipe -m hello.pipe hello
+}}}
+
+If you see message "Pipeline finished successfully!", Congratulations! You have successfully run your first pipeline.
