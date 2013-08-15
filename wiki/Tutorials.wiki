@@ -1,0 +1,28 @@
+Not finished. Coming soon...
+
+=Installation=
+
+ # Preparation
+ # SeqPipe installation
+ # Analysis tools installation
+
+=Run SeqPipe=
+
+ # Hello, SeqPipe!
+   # Multiple commands
+   # Return value
+   # Logical operations
+   # Complex bash script
+ # A real analysis pipeline
+   # Run in parallel
+   # Complex blocks
+   # Inline mode
+   # Inputs & outputs
+   # Workflow attributes
+ # More Flexible
+   # Variables
+   # Sub procedure
+   # Default value
+   # Condition statement
+   # Loop statement
+   # Runtime evaluation
