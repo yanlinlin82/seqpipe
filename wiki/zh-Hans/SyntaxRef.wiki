@@ -1,0 +1,22 @@
+#summary 基本语法说明
+
+= 基本概念 =
+
+  # 流程(pipeline)和步骤(step)
+  # 基本语法
+  # 属性(attribute)
+  # 文件依赖关系
+  # 日志文件
+
+= 基本语法 =
+
+  # 全局变量(global variables)
+  # 过程(procedures)
+  # 语句块(blocks)
+  # 变量(variables)
+  # 条件语句(condition statement)
+  # 循环语句(loop statement)
+    # For循环
+    # While循环
+
+= 历史记录操作工具 =
