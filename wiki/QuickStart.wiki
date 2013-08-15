@@ -1,4 +1,4 @@
-# Quick Start for new users of SeqPipe.
+#summary Quick Start for new users of SeqPipe.
 
 = Installation =
 
