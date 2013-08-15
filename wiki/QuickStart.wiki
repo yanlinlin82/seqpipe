@@ -4,10 +4,10 @@
 
 SeqPipe is written in Perl, so you should ensure perl has been installed before you run seqpipe.
 
-You can download SeqPipe from [Downloads] page and then extract files from the compressed tarball):
+You can download SeqPipe from [Downloads https://code.google.com/p/seqpipe/downloads/list] page and then extract files from the compressed tarball):
 {{{
-wget http://seqpipe.googlecode.com/files/seqpipe-v0.4.8-r232.tar.gz
-tar xvf seqpipe-v0.4.8-r232.tar.gz
+wget http://seqpipe.googlecode.com/files/seqpipe-v0.4.10-r262.tar.gz
+tar xvf seqpipe-v0.4.10-r262.tar.gz
 }}}
 
 Or you can directly checkout the source code from subversion (see [Source] page).
