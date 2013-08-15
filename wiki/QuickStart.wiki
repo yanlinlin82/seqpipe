@@ -1,0 +1,54 @@
+#Quick Start for SeqPipe.
+
+= Installation =
+
+SeqPipe is written in Perl, so you should ensure perl has been installed before you run seqpipe.
+
+You can download SeqPipe from [Downloads] page and then extract files from the compressed tarball):
+{{{
+wget http://seqpipe.googlecode.com/files/seqpipe-v0.4.8-r232.tar.gz
+tar xvf seqpipe-v0.4.8-r232.tar.gz
+}}}
+
+Or you can directly checkout the source code from subversion (see [Source] page).
+{{{
+svn checkout http://seqpipe.googlecode.com/svn/trunk seqpipe
+}}}
+
+Then, add the seqpipe directory to you PATH environment variable:
+{{{
+export PATH=$PATH:$(pwd)/seqpipe
+}}}
+
+Now, you can just type "seqpipe" to run it.
+
+For convenient next time, you can edit your bash profile (such as ~/.bashrc) to add the export line.
+
+= Show usage =
+
+{{{
+$ seqpipe
+
+SeqPipe: a SEQuencing data analsysis PIPEline framework
+Version: 0.4.10 ($Rev: 262 $)
+Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
+Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
+Websites: http://seqpipe.googlecode.com
+          http://www.cbi.pku.edu.cn
+
+Usage: seqpipe [options] <procedure> [NAME=VALUE ...]
+
+Options:
+   -h / -H         Show help messages.
+   -l [<pattern>]  List current available procedures.
+   -m <file>       Load procedure module file, this option can be used many times.
+   -t <int>        Max thread number in parallel. default: 1
+   -e <cmd>        Inline mode, execute a bash command directly.
+   -s <shell>      Send commands to another shell (such as "qsub_sync"), default: /bin/bash
+   -k              Keep intermediate files.
+   -R              Show the raw procedure declaration.
+   -T              Test mode, show commands rather than execute them.
+}}}
+
+
+= Write first pipeline =
