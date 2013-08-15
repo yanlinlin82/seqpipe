@@ -1,0 +1,22 @@
+#summary Syntax Reference
+
+= Overview =
+
+  # Pipelines and steps
+  # Basic syntax
+  # Attributes
+  # File dependency
+  # Log files
+
+= Statement =
+
+  # Global variables
+  # Procedures
+  # Blocks
+  # Variables
+  # Condition statement
+  # Loop statement
+    # For loop
+    # While loop
+
+= History Manipulate Tool =
