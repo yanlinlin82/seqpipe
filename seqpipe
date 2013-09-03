@@ -41,6 +41,7 @@ my $keep_temps = 0;
 my $exec_cmd = '';
 my $shell = '/bin/bash';
 my @files = glob(APP_ROOT . '/*.pipe');  # All *.pipe files in SeqPipe install directory will be loaded automatically.
+my $load_new_modules = 0;
 
 my $obsolete_warned = 0;
 my $max_thread_number = 1;
@@ -920,15 +921,15 @@ Websites: http://seqpipe.googlecode.com
 Usage: seqpipe [options] <procedure> [NAME=VALUE ...]
 
 Options:
-   -h / -H         Show help messages.
-   -l [<pattern>]  List current available procedures.
-   -m <file>       Load procedure module file, this option can be used many times.
-   -t <int>        Max thread number in parallel. default: ' . $max_thread_number . '
-   -e <cmd>        Inline mode, execute a bash command directly.
-   -s <shell>      Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
-   -k              Keep intermediate files.
-   -R              Show the raw procedure declaration.
-   -T              Test mode, show commands rather than execute them.
+   -h / -H              Show help messages.
+   -l / -L [<pattern>]  List current available procedures.
+   -m <file>            Load procedure module file, this option can be used many times.
+   -t <int>             Max thread number in parallel. default: ' . $max_thread_number . '
+   -e <cmd>             Inline mode, execute a bash command directly.
+   -s <shell>           Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
+   -k                   Keep intermediate files.
+   -R                   Show the raw procedure declaration.
+   -T                   Test mode, show commands rather than execute them.
 
 ';
 	exit 1;
@@ -1382,6 +1383,8 @@ sub list_proc
 	print ":\n";
 	foreach my $name (sort keys %proc_list) {
 		next if $name =~ /^_/;
+		my $path = APP_ROOT;
+		next if $list_mode == 1 and $proc_list{$name}{file} =~ /^$path/;
 		print "   $name\n" if $name =~ /$proc_name/;
 	}
 	print "\n";
@@ -2023,8 +2026,11 @@ if ($#ARGV < 0) {
 		} elsif ($arg eq '-m') {
 			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
 			push(@files, abs_path shift @ARGV);
+			$load_new_modules = 1;
 		} elsif ($arg eq '-l') {
 			$list_mode = 1;
+		} elsif ($arg eq '-L') {
+			$list_mode = 2;
 		} elsif ($arg eq '-T') {
 			$test_mode = 1;
 		} elsif ($arg eq '-R') {
@@ -2066,6 +2072,7 @@ if ($#ARGV < 0) {
 }
 die "ERROR: Can not use both '-e' and '<proc_name>'!\n" if $proc_name and $exec_cmd;
 
+$list_mode = 2 if $list_mode and not $load_new_modules;
 load_modules \@files, \%args;
 
 list_proc $proc_name if $list_mode;
