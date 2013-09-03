@@ -853,15 +853,35 @@ sub parse_proc
 	}
 }
 
+sub expand_file_list
+{
+	my @res = ();
+	foreach my $item (@_) {
+		if ($item =~ /\.pipe$/ && -f $item) {
+			push @res, abs_path $item;
+		} elsif ($item =~ /^\./ || -d $item) {
+			my @files = ();
+			opendir(my $dh, $item) || die "Can not opendir '$item': $!";
+			while (my $x = readdir($dh)) {
+				if ($x !~ /^\./ && ($x =~ /\.pipe$/ || -d "$item/$x")) {
+					push @files, abs_path "$item/$x";
+				}
+			}
+			closedir($dh);
+			push @res, expand_file_list(@files);
+		}
+	}
+	return @res;
+}
+
 sub load_modules
 {
 	my ($files_ref, $args_ref) = @_;
 
 	# Load procedure code of modules
-	foreach my $file (@{$files_ref}) {
-		if (not exists $global_vars{$file}) {
-			$global_vars{$file} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => APP_ROOT };
-		}
+	foreach my $file (expand_file_list(@{$files_ref})) {
+		next if exists $global_vars{$file};
+		$global_vars{$file} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => APP_ROOT };
 		my @lines = load_lines($file, {}, []);
 		while (@lines) {
 			parse_proc($file, \@lines, $args_ref);
