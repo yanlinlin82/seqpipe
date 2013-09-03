@@ -1040,6 +1040,8 @@ sub list_proc
 		print ":\n";
 		foreach my $name (sort keys %{$procs_ref}) {
 			next if $name =~ /^_/;
+			my $path = APP_ROOT;
+			next if $list_mode == 1 and $procs_ref->{$name}{file} =~ /^$path/;
 			print "   $name\n" if $name =~ /$pattern/;
 		}
 		print "\n";
@@ -1944,16 +1946,16 @@ Websites: http://seqpipe.googlecode.com
 Usage: seqpipe [options] <procedure> [NAME=VALUE ...]
 
 Options:
-   -h / -H         Show help messages.
-   -l [<pattern>]  List current available procedures.
-   -m <file>       Load procedure module file, this option can be used many times.
-   -D              Disable to load default pipelines.
-   -t <int>        Max thread number in parallel. default: ' . $max_thread_number . '
-   -e <cmd>        Inline mode, execute a bash command directly.
-   -s <shell>      Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
-   -k              Keep intermediate files.
-   -R              Show the raw procedure declaration.
-   -T              Test mode, show commands rather than execute them.
+   -h / -H              Show help messages.
+   -l / -L [<pattern>]  List current available procedures.
+   -m <file>            Load procedure module file, this option can be used many times.
+   -D                   Disable to load default pipelines.
+   -t <int>             Max thread number in parallel. default: ' . $max_thread_number . '
+   -e <cmd>             Inline mode, execute a bash command directly.
+   -s <shell>           Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
+   -k                   Keep intermediate files.
+   -R                   Show the raw procedure declaration.
+   -T                   Test mode, show commands rather than execute them.
 
 ';
 }
@@ -1981,6 +1983,8 @@ while (my $arg = shift @ARGV) {
 		$auto_load = 0;
 	} elsif ($arg eq '-l') {
 		$list_mode = 1;
+	} elsif ($arg eq '-L') {
+		$list_mode = 2;
 	} elsif ($arg eq '-T') {
 		$test_mode = 1;
 	} elsif ($arg eq '-R') {
@@ -2023,6 +2027,7 @@ while (my $arg = shift @ARGV) {
 die "ERROR: Can not use both '-e' and '<proc_name>'!\n" if $proc_name and @exec_cmds;
 
 # Load modules
+$list_mode = 2 if $list_mode and (scalar @files == 0);
 @files = (glob(APP_ROOT . '/*.pipe'), @files) if $auto_load;
 load_module($_, $args_ref) foreach (expand_file_list(@files));
 
