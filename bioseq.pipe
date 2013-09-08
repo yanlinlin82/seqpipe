@@ -1,7 +1,4 @@
-#!/bin/bash
-#
 #[version="0.4.3 ($Id$)"]
-#
 
 ###########################################################################
 # Global variables
@@ -54,7 +51,7 @@ OUTPUT=${OUTPUT_DIR}/${OUTPUT_FILE}
 ###########################################################################
 
 # Common options
-THREAD_NUM=2
+THREAD_NUM=1
 
 # Java options
 JAVA_OPTS=                              # For user configure (in command line)
@@ -65,7 +62,7 @@ _JAVA_OPTS= ${JAVA_OPTS} -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_G
 
 # Picard options
 PICARD_OPTS=                            # For user (command line)
-PICARD_ROOT=/opttools/picard-tools      # Path of picard tools
+PICARD_ROOT=/opt/tools/picard-tools     # Path of picard tools
 MAX_RECORDS_IN_RAM=500000               # For enhance performance of picard
 VALIDATION_STRINGENCY=SILENT            # Default validation stringency
 _PICARD_OPTS=${PICARD_OPTS} MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM}
@@ -101,41 +98,121 @@ GATK_VCF_OMNI=${GATK_BUNDLE_ROOT}/1000G_omni2.5.${GATK_BUNDLE_REF}.vcf
 
 ###########################################################################
 
+FASTQC_PATH=
+_FASTQC=${FASTQC_PATH}fastqc
+
+FASTX_PATH=
+_FASTX_TRIMMER=${FASTX_PATH}fastx_trimmer
+
+EMBOSS_PATH=
+_EMBOSS_VERSION=${EMBOSS_PATH}embossversion
+
+BWA_PATH=
+_BWA=${BWA_PATH}bwa
+
+BOWTIE_PATH=
+_BOWTIE=${BOWTIE_PATH}bowtie
+
+BOWTIE2_PATH=
+_BOWTIE2=${BOWTIE2_PATH}bowtie2
+
+SAMTOOLS_PATH=
+_SAMTOOLS=${SAMTOOLS_PATH}samtools
+
+BCFTOOLS_PATH=
+_BCFTOOLS=${BCFTOOLS_PATH}bcftools
+
+PINDEL_PATH=
+_PINDEL=${PINDEL_PATH}pindel
+_PINDEL2VCF=${PINDEL_PATH}pindel2vcf
+
+###########################################################################
+
 function _bioseq_sysinfo
 {
-	echo -n 'FastQC   : '; fastqc --version | cut -d' ' -f2
-	echo -n 'FastX    : '; fastx_trimmer -h | grep FASTX | sed 's/^.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*$/\1/g'
+	if [ -x ${_FASTQC} ]; then \
+		echo -n "FastQC   : "; ${_FASTQC} --version | cut -d" " -f2; \
+	else \
+		echo -e 'FastQC   : <none>'; \
+	fi
 
-	echo -n 'EMBOSS   : '; embossversion 2>/dev/null
+	if [ -x ${_FASTX_TRIMMER} ]; then \
+		echo -n 'FastX    : '; ${_FASTX_TRIMMER} -h | grep FASTX | sed 's/^.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*$/\1/g'; \
+	else \
+		echo -e 'FastX    : <none>'; \
+	fi
 
-	echo -n 'bwa      : '; bwa |& grep Version | cut -d' ' -f2
-	echo -n 'bowtie   : '; bowtie --version | sed -n '1p' | cut -d' ' -f3
-	echo -n 'bowtie2  : '; bowtie2 --version | sed -n '1p' | cut -d' ' -f3
+	if [ -x ${_EMBOSS_VERSION} ]; then \
+		echo -n 'EMBOSS   : '; ${_EMBOSS_VERSION} 2>/dev/null; \
+	else \
+		echo -e 'EMBOSS   : <none>'; \
+	fi
 
-	echo -n 'Qualimap : '; qualimap -h | grep '^QualiMap v' | cut -d' ' -f2
-	echo -n 'samtools : '; samtools |& grep Version | cut -d' ' -f2-
-	echo -n 'bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
-	echo -n 'picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
-	echo -n 'gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
-	echo -n 'pindel   : '; pindel | grep 'Pindel version' | sed -n '1p' | cut -d' ' -f3 | sed 's/,$//'
+	if [ -x ${_BWA} ]; then \
+		echo -n 'bwa      : '; ${_BWA} 2>&1 | grep Version | cut -d' ' -f2; \
+	else \
+		echo -e 'bwa      : <none>'; \
+	fi
+
+	if [ -x ${_BOWTIE} ]; then \
+		echo -n 'bowtie   : '; ${_BOWTIE} --version | sed -n '1p' | cut -d' ' -f3; \
+	else \
+		echo -e 'bowtie   : <none>'; \
+	fi
+
+	if [ -x ${_BOWTIE2} ]; then \
+		echo -n 'bowtie2  : '; ${_BOWTIE2} --version | sed -n '1p' | cut -d' ' -f3; \
+	else \
+		echo -e 'bowtie2  : <none>'; \
+	fi
+
+	if [ -x ${_SAMTOOLS} ]; then \
+		echo -n 'samtools : '; ${_SAMTOOLS} 2>&1 | grep Version | cut -d' ' -f2-; \
+	else \
+		echo -e 'samtools : <none>'; \
+	fi
+
+	if [ -x ${_BCFTOOLS} ]; then \
+		echo -n 'bcftools : '; ${_BCFTOOLS} 2>&1 | grep Version | cut -d' ' -f2-; \
+	else \
+		echo -e 'bcftools : <none>'; \
+	fi
+
+	if [ -e ${PICARD_ROOT}/ViewSam.jar ]; then \
+		echo -n 'picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h 2>&1 | grep Version | cut -d' ' -f2; \
+	else \
+		echo -e 'picard   : <none>'; \
+	fi
+
+	if [ -e ${GATK_ROOT}/GenomeAnalysisTK.jar ]; then \
+		echo -n 'gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2; \
+	else \
+		echo -e 'gatk     : <none>'; \
+	fi
+
+	if [ -x ${_PINDEL} ]; then \
+		echo -n 'pindel   : '; ${_PINDEL} | grep 'Pindel version' | sed -n '1p' | cut -d' ' -f3 | sed 's/,$//'; \
+	else \
+		echo -e 'pindel   : <none>'; \
+	fi
 }
 
 function bioseq_syscheck
 {
-	which fastqc
-	which fastx_trimmer
-
-	which bwa
-	which bowtie
-	which bowtie2
-
-	which qualimap
-	which samtools
-	which bcftools
-
 	which java
-	which pindel
-	which embossversion
+
+	[ -x ${_FASTQC} ]
+	[ -x ${_FASTX_TRIMMER} ]
+
+	[ -x ${_BWA} ]
+	[ -x ${_BOWTIE} ]
+	[ -x ${_BOWTIE2} ]
+
+	[ -x ${_SAMTOOLS} ]
+	[ -x ${_BCFTOOLS} ]
+
+	[ -x ${_EMBOSS_VERSION} ]
+	[ -x ${_PINDEL} ]
 
 	[ -z "${REF}" ] || ls ${REF}
 
@@ -159,7 +236,7 @@ function fastqc_check
 	SP_set _TEMP_FILE=$(dirname ${OUTPUT})/$(basename ${INPUT} | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g')
 
 	#[input="${INPUT}" output="${OUTPUT}"]
-	fastqc --noextract --nogroup -o $(dirname ${OUTPUT}) ${INPUT} \
+	${_FASTQC} --noextract --nogroup -o $(dirname ${OUTPUT}) ${INPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT} ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}; fi
 }
@@ -171,7 +248,7 @@ function convert_fastq_33to64
 
 	# Check if it is base-33
 	#[require="${INPUT}"]
-	! ${_SEQPIPE_ROOT}/uxcat ${INPUT} | sed -n '4001q;4~4p' \
+	! ${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n 4000 | awk 'NR%4==0' \
 		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}'
 
 	#[input="${INPUT}" output="${OUTPUT}"]
@@ -188,7 +265,7 @@ function convert_fastq_64to33
 
 	# Check if it is base-64
 	#[require="${INPUT}"]
-	${_SEQPIPE_ROOT}/uxcat ${INPUT} | sed -n '4001q;4~4p' \
+	${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n 4000 | awk 'NR%4==0' \
 		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}'
 
 	#[input="${INPUT}" output="${OUTPUT}"]
@@ -208,7 +285,7 @@ function trim_fastq
 
 	# Check if it is base-33
 	#[require="${INPUT}"]
-	SP_if !(${_SEQPIPE_ROOT}/uxcat ${INPUT} | sed -n '4001q;4~4p' \
+	SP_if !(${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n 4000 | awk 'NR%4==0' \
 		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
 	{
 		SP_set _QUAL_OPT=-Q33
@@ -216,7 +293,7 @@ function trim_fastq
 
 	#[input="${INPUT}" output="${OUTPUT}"]
 	${_SEQPIPE_ROOT}/uxcat ${INPUT} \
-		| fastx_trimmer -f ${START_POS} -l ${END_POS} ${_QUAL_OPT} \
+		| ${_FASTX_TRIMMER} -f ${START_POS} -l ${END_POS} ${_QUAL_OPT} \
 		| gzip -9c \
 		> ${OUTPUT}
 }
@@ -236,7 +313,7 @@ function bwa_build_fasta_index
 	}
 
 	#[input="${INPUT}" output="${_OUTPUT}"]
-	bwa index -a ${_ALGORITHM} ${INPUT}
+	${_BWA} index -a ${_ALGORITHM} ${INPUT}
 }
 
 function bowtie_build_fasta_index
@@ -245,7 +322,7 @@ function bowtie_build_fasta_index
 	SP_set _OUTPUT=${INPUT}.1.ebwt
 
 	#[input="${INPUT}" output="${_OUTPUT}"]
-	bowtie-build ${INPUT} ${INPUT}
+	${_BOWTIE}-build ${INPUT} ${INPUT}
 }
 
 function bowtie2_build_fasta_index
@@ -254,7 +331,7 @@ function bowtie2_build_fasta_index
 	SP_set _OUTPUT=${INPUT}.1.bt2
 
 	#[input="${INPUT}" output="${_OUTPUT}"]
-	bowtie2-build ${INPUT} ${INPUT}
+	${_BOWTIE2}-build ${INPUT} ${INPUT}
 }
 
 function samtools_build_fasta_index
@@ -263,7 +340,7 @@ function samtools_build_fasta_index
 	SP_set _OUTPUT=${INPUT}.fai
 
 	#[input="${INPUT}" output="${_OUTPUT}"]
-	samtools faidx ${INPUT}
+	${_SAMTOOLS} faidx ${INPUT}
 }
 
 function build_fasta_dict
@@ -330,7 +407,7 @@ function bwa_map_pe
 
 	SP_set _BWA_ALN_QUAL_OPT=
 	#[require="${INPUT_1}"]
-	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT_1} | sed -n '4001q;4~4p' \
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT_1} | head -n 4000 | awk 'NR%4==0' \
 		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
 	{
 		SP_set _BWA_ALN_QUAL_OPT=-I
@@ -340,19 +417,22 @@ function bwa_map_pe
 
 	{{
 		#[require="${REF}" require="${REF}.bwt" input="${INPUT_1}" output.temp="${SAI_1}"]
-		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-			${REF} ${INPUT_1} -f ${SAI_1} ${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
+		${_BWA} aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+			${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS} \
+			${REF} ${INPUT_1} > ${SAI_1}
 		
 		#[require="${REF}" require="${REF}.bwt" input="${INPUT_2}" output.temp="${SAI_2}"]
-		bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-			${REF} ${INPUT_2} -f ${SAI_2} ${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
+		${_BWA} aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+			${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS} \
+			${REF} ${INPUT_2} > ${SAI_2}
 	}}
 
 	#[require="${REF}" require="${REF}.bwt"]
 	#[input="${SAI_1}" input="${SAI_2}" input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
-	bwa sampe -P ${REF} -a ${MAX_INSERT_SIZE} \
-		${SAI_1} ${SAI_2} ${INPUT_1} ${INPUT_2} ${_RG} ${BWA_SAMPE_OPTS} \
-		| samtools view -Sb - \
+	${_BWA} sampe -P -a ${MAX_INSERT_SIZE} \
+		${_RG} ${BWA_SAMPE_OPTS} \
+		${REF} ${SAI_1} ${SAI_2} ${INPUT_1} ${INPUT_2} \
+		| ${_SAMTOOLS} view -S -b - \
 		> ${OUTPUT}
 }
 
@@ -406,7 +486,7 @@ function bwa_map_se
 
 	SP_set _BWA_ALN_QUAL_OPT=
 	#[require="${INPUT}"]
-	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT} | sed -n '4001q;4~4p' \
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n 4000 | awk 'NR%4==0' \
 		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
 	{
 		SP_set _BWA_ALN_QUAL_OPT=-I
@@ -415,12 +495,13 @@ function bwa_map_se
 	SP_run bwa_build_fasta_index INPUT=${REF}
 
 	#[require="${REF}" require="${REF}.bwt" input="${INPUT}" output.temp="${SAI}"]
-	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
-		${REF} ${INPUT} -f ${SAI} ${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS}
+	${_BWA} aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS} \
+		${REF} ${INPUT} > ${SAI}
 
 	#[require="${REF}" input="${SAI}" input="${INPUT}" output="${OUTPUT}"]
-	bwa samse ${REF} ${SAI} ${INPUT} ${_RG} ${BWA_SAMSE_OPTS} \
-		| samtools view -Sb - \
+	${_BWA} samse ${_RG} ${BWA_SAMSE_OPTS} ${REF} ${SAI} ${INPUT} \
+		| ${_SAMTOOLS} view -Sb - \
 		> ${OUTPUT}
 }
 
@@ -432,7 +513,7 @@ function bowtie_map_pe
 	SP_set BOWTIE_OPTS=
 	SP_set _BOWTIE_ALN_QUAL_OPT=
 	#[require="${INPUT_1}"]
-	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT_1} | sed -n '4001q;4~4p' \
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT_1} | head -n 4000 | awk 'NR%4==0' \
 		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
 	{
 		SP_set _BOWTIE_ALN_QUAL_OPT=--phred64-quals
@@ -441,10 +522,10 @@ function bowtie_map_pe
 	SP_run bowtie_build_fasta_index INPUT=${REF}
 
 	#[require="${REF}" require="${REF}.1.ebwt" input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
-	bowtie ${REF} --best --strata -m 1 ${_BOWTIE_ALN_QUAL_OPT} --sam ${BOWTIE_OPTS} \
+	${_BOWTIE} ${REF} --best --strata -m 1 ${_BOWTIE_ALN_QUAL_OPT} --sam ${BOWTIE_OPTS} \
 		-1 <(${_SEQPIPE_ROOT}/uxcat ${INPUT_1}) \
 		-2 <(${_SEQPIPE_ROOT}/uxcat ${INPUT_2}) \
-		| samtools view -Sb - > ${OUTPUT}
+		| ${_SAMTOOLS} view -Sb - > ${OUTPUT}
 }
 
 function bowtie_map_se
@@ -455,7 +536,7 @@ function bowtie_map_se
 	SP_set BOWTIE_OPTS=
 	SP_set _BOWTIE_ALN_QUAL_OPT=
 	#[require="${INPUT}"]
-	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT} | sed -n '4001q;4~4p' \
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n 4000 | awk 'NR%4==0' \
 		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
 	{
 		SP_set _BOWTIE_ALN_QUAL_OPT=--phred64-quals
@@ -464,9 +545,9 @@ function bowtie_map_se
 	SP_run bowtie_build_fasta_index INPUT=${REF}
 
 	#[require="${REF}" require="${REF}.1.ebwt" input="${INPUT}" output="${OUTPUT}"]
-	bowtie ${REF} --best --strata -m 1 ${_BOWTIE_ALN_QUAL_OPT} --sam ${BOWTIE_OPTS} \
+	${_BOWTIE} ${REF} --best --strata -m 1 ${_BOWTIE_ALN_QUAL_OPT} --sam ${BOWTIE_OPTS} \
 		<(${_SEQPIPE_ROOT}/uxcat ${INPUT}) \
-		| samtools view -Sb - > ${OUTPUT}
+		| ${_SAMTOOLS} view -Sb - > ${OUTPUT}
 }
 
 function bowtie2_map_pe
@@ -477,7 +558,7 @@ function bowtie2_map_pe
 	SP_set BOWTIE2_OPTS=
 	SP_set _BOWTIE2_ALN_QUAL_OPT=
 	#[require="${INPUT_1}"]
-	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT_1} | sed -n '4001q;4~4p' \
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT_1} | head -n 4000 | awk 'NR%4==0' \
 		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
 	{
 		SP_set _BOWTIE2_ALN_QUAL_OPT=--phred64
@@ -486,10 +567,10 @@ function bowtie2_map_pe
 	SP_run bowtie2_build_fasta_index INPUT=${REF}
 
 	#[require="${REF}" require="${REF}.1.bt2" input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
-	bowtie2 ${REF} ${_BOWTIE2_ALN_QUAL_OPT} ${BOWTIE2_OPTS} \
+	${_BOWTIE2} ${REF} ${_BOWTIE2_ALN_QUAL_OPT} ${BOWTIE2_OPTS} \
 		-1 <(${_SEQPIPE_ROOT}/uxcat ${INPUT_1}) \
 		-2 <(${_SEQPIPE_ROOT}/uxcat ${INPUT_2}) \
-		| samtools view -Sb - > ${OUTPUT}
+		| ${_SAMTOOLS} view -Sb - > ${OUTPUT}
 }
 
 function bowtie2_map_se
@@ -500,7 +581,7 @@ function bowtie2_map_se
 	SP_set BOWTIE2_OPTS=
 	SP_set _BOWTIE2_ALN_QUAL_OPT=
 	#[require="${INPUT}"]
-	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT} | sed -n '4001q;4~4p' \
+	SP_if (${_SEQPIPE_ROOT}/uxcat ${INPUT} | head -n 4000 | awk 'NR%4==0' \
 		| perl -ne 'chomp;for(split(//)){exit 1 if unpack("C*")<64}')
 	{
 		SP_set _BOWTIE2_ALN_QUAL_OPT=--phred64
@@ -509,9 +590,9 @@ function bowtie2_map_se
 	SP_run bowtie2_build_fasta_index INPUT=${REF}
 
 	#[require="${REF}" require="${REF}.1.bt2" input="${INPUT}" output="${OUTPUT}"]
-	bowtie2 ${REF} ${_BOWTIE2_ALN_QUAL_OPT} ${BOWTIE2_OPTS} \
+	${_BOWTIE2} ${REF} ${_BOWTIE2_ALN_QUAL_OPT} ${BOWTIE2_OPTS} \
 		<(${_SEQPIPE_ROOT}/uxcat ${INPUT}) \
-		| samtools view -Sb - > ${OUTPUT}
+		| ${_SAMTOOLS} view -Sb - > ${OUTPUT}
 }
 
 ###########################################################################
@@ -522,7 +603,7 @@ function filter_unmapped_bam
 	SP_set OUTPUT_EXT_NAME=${EXT_PREFIX}.mapped.bam
 
 	#[input="${INPUT}" output="${OUTPUT}"]
-	samtools view -F4 -b ${INPUT} > ${OUTPUT}
+	${_SAMTOOLS} view -F4 -b ${INPUT} > ${OUTPUT}
 }
 
 function select_unmapped_bam
@@ -531,7 +612,7 @@ function select_unmapped_bam
 	SP_set OUTPUT_EXT_NAME=${EXT_PREFIX}.unmapped.bam
 
 	#[input="${INPUT}" output="${OUTPUT}"]
-	samtools view -f4 -b ${INPUT} > ${OUTPUT}
+	${_SAMTOOLS} view -f4 -b ${INPUT} > ${OUTPUT}
 }
 
 function sort_bam
@@ -559,7 +640,7 @@ function build_bam_index
 	SP_set _OUTPUT=${INPUT}.bai
 
 	#[input="${INPUT}" output="${_OUTPUT}"]
-	samtools index ${INPUT} && [ -e ${_OUTPUT} ]
+	${_SAMTOOLS} index ${INPUT} && [ -e ${_OUTPUT} ]
 }
 
 function flagstat_bam
@@ -568,7 +649,7 @@ function flagstat_bam
 	SP_set OUTPUT_EXT_NAME=${EXT_PREFIX}.flagstat.txt
 
 	#[input="${INPUT}" output="${OUTPUT}"]
-	samtools flagstat ${INPUT} > ${OUTPUT}
+	${_SAMTOOLS} flagstat ${INPUT} > ${OUTPUT}
 }
 
 function idxstats_bam
@@ -578,26 +659,7 @@ function idxstats_bam
 	SP_set OUTPUT_EXT_NAME=${EXT_PREFIX}.idxstats.txt
 
 	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}"]
-	samtools idxstats ${INPUT} > ${OUTPUT}
-}
-
-function bamqc_check
-{
-	SP_set EXT_PREFIX=.sorted
-	SP_set INPUT_EXT_NAME=${EXT_PREFIX}.bam
-	SP_set OUTPUT_EXT_NAME=${EXT_PREFIX}.bamqc
-
-	SP_set SPECIES=HUMAN
-	test "${SPECIES}" == "HUMAN" -o "${SPECIES}" == "MOUSE"
-	
-	SP_set THREAD_NUM=2
-	SP_set WINDOW_NUM=400
-	SP_set EXT_OPTS=
-
-	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}/qualimapReport.html"]
-	qualimap bamqc -bam ${INPUT} -gd ${SPECIES} \
-		-nt ${THREAD_NUM} -nw ${WINDOW_NUM} \
-		-outformat HTML -outdir ${OUTPUT} ${EXT_OPTS}
+	${_SAMTOOLS} idxstats ${INPUT} > ${OUTPUT}
 }
 
 function merge_bam
@@ -806,7 +868,7 @@ function samtools_call_variants
 	SP_set MIN_QUAL=1  # To remove multi-mapped reads (whose MAPQ == 0)
 
 	#[require="${REF}" input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}"]
-	samtools mpileup -f ${REF} ${INPUT} -q ${MIN_QUAL} -u \
+	${_SAMTOOLS} mpileup -f ${REF} ${INPUT} -q ${MIN_QUAL} -u \
 		| bcftools view -vcg - \
 		> ${OUTPUT}
 }
@@ -978,7 +1040,7 @@ function pindel_call_variants
 	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV"]
 	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD"]
 	#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI"]
-	pindel -f ${REF} \
+	${_PINDEL} -f ${REF} \
 		-i <(echo "${INPUT} ${INSERT_SIZE} ${NAME}") \
 		-l -k -s -c ALL -o ${OUTPUT_DIR}/${PINDEL_RESULT}/sv
 
@@ -987,37 +1049,37 @@ function pindel_call_variants
 		#[require="${REF}"]
 		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP"]
 		#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf"]
-		pindel2vcf -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
+		${_PINDEL2VCF} -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
 			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_BP.vcf
 
 		#[require="${REF}"]
 		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D"]
 		#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf"]
-		pindel2vcf -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
+		${_PINDEL2VCF} -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
 			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_D.vcf
 
 		#[require="${REF}"]
 		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI"]
 		#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf"]
-		pindel2vcf -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
+		${_PINDEL2VCF} -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
 			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_SI.vcf
 		
 		#[require="${REF}"]
 		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV"]
 		#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf"]
-		pindel2vcf -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
+		${_PINDEL2VCF} -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
 			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_INV.vcf
 		
 		#[require="${REF}"]
 		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD"]
 		#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf"]
-		pindel2vcf -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
+		${_PINDEL2VCF} -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
 			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_TD.vcf
 		
 		#[require="${REF}"]
 		#[input="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI"]
 		#[output="${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf"]
-		pindel2vcf -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
+		${_PINDEL2VCF} -r ${REF} -R ${PINDEL_REF_NAME} -d ${PINDEL_REF_DATE} \
 			-p ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI -v ${OUTPUT_DIR}/${PINDEL_RESULT}/sv_LI.vcf
 	}}
 
