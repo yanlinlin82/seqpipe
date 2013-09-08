@@ -6,7 +6,52 @@
 ###########################################################################
 # Global variables
 
-SP_include common.inc
+TMP_DIR=/tmp
+
+INPUT_DIR=.
+OUTPUT_DIR=${INPUT_DIR}
+
+REF_DIR=.
+REF_EXT_NAME=.fasta
+REF_FILE=${REF_NAME}${REF_EXT_NAME}
+REF=${REF_DIR}/${REF_FILE}
+
+NAME_1=${NAME}
+NAME_2=${NAME}
+NAME_3=${NAME}
+NAME_4=${NAME}
+
+INPUT_NAME_SEP=_
+INPUT_NAME=${NAME}
+INPUT_NAME_1=${NAME_1}${INPUT_NAME_SEP}1
+INPUT_NAME_2=${NAME_2}${INPUT_NAME_SEP}2
+INPUT_NAME_3=${NAME_3}${INPUT_NAME_SEP}3
+INPUT_NAME_4=${NAME_4}${INPUT_NAME_SEP}4
+OUTPUT_NAME=${NAME}
+
+EXT_PREFIX=
+INPUT_EXT_NAME=${EXT_PREFIX}
+INPUT_EXT_NAME_1=${EXT_PREFIX}
+INPUT_EXT_NAME_2=${EXT_PREFIX}
+INPUT_EXT_NAME_3=${EXT_PREFIX}
+INPUT_EXT_NAME_4=${EXT_PREFIX}
+OUTPUT_EXT_NAME=${EXT_PREFIX}
+
+INPUT_FILE=${INPUT_NAME}${INPUT_EXT_NAME}
+INPUT_FILE_1=${INPUT_NAME_1}${INPUT_EXT_NAME}
+INPUT_FILE_2=${INPUT_NAME_2}${INPUT_EXT_NAME}
+INPUT_FILE_3=${INPUT_NAME_3}${INPUT_EXT_NAME}
+INPUT_FILE_4=${INPUT_NAME_4}${INPUT_EXT_NAME}
+OUTPUT_FILE=${OUTPUT_NAME}${OUTPUT_EXT_NAME}
+
+INPUT=${INPUT_DIR}/${INPUT_FILE}
+INPUT_1=${INPUT_DIR}/${INPUT_FILE_1}
+INPUT_2=${INPUT_DIR}/${INPUT_FILE_2}
+INPUT_3=${INPUT_DIR}/${INPUT_FILE_3}
+INPUT_4=${INPUT_DIR}/${INPUT_FILE_4}
+OUTPUT=${OUTPUT_DIR}/${OUTPUT_FILE}
+
+###########################################################################
 
 # Common options
 THREAD_NUM=2
@@ -20,7 +65,7 @@ _JAVA_OPTS= ${JAVA_OPTS} -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_G
 
 # Picard options
 PICARD_OPTS=                            # For user (command line)
-PICARD_ROOT=/tools/picard-tools         # Path of picard tools
+PICARD_ROOT=/opttools/picard-tools      # Path of picard tools
 MAX_RECORDS_IN_RAM=500000               # For enhance performance of picard
 VALIDATION_STRINGENCY=SILENT            # Default validation stringency
 _PICARD_OPTS=${PICARD_OPTS} MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM}
@@ -28,10 +73,10 @@ _PICARD_OPTS=${PICARD_OPTS} MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM}
 
 # GATK options
 GATK_OPTS=                                     # For user configure (in command line)
-GATK_ROOT=/tools/gatk                          # Path of GATK
-GATK_BUNDLE_VER=1.5
+GATK_ROOT=/opt/tools/gatk                      # Path of GATK
+GATK_BUNDLE_VER=2.5
 GATK_BUNDLE_REF=b37
-GATK_BUNDLE_ROOT=/data/gatk_bundle/${GATK_BUNDLE_VER}/${GATK_BUNDLE_REF}
+GATK_BUNDLE_ROOT=/opt/data/gatk_bundle/${GATK_BUNDLE_VER}/${GATK_BUNDLE_REF}
                                                # Path of GATK bundle
 _GATK_OPTS=${GATK_OPTS}                        # For system configure (in .conf file)
 
@@ -46,8 +91,9 @@ _GATK_OPTS=${GATK_OPTS}                        # For system configure (in .conf 
 # VariantRecalibrator            X      X                X       X
 # VariantEval             X
 
-GATK_VCF_DBSNP129=${GATK_BUNDLE_ROOT}/dbsnp_135.${GATK_BUNDLE_REF}.excluding_sites_after_129.vcf
-GATK_VCF_DBSNP=${GATK_BUNDLE_ROOT}/dbsnp_135.${GATK_BUNDLE_REF}.vcf
+DBSNP_VER=137
+GATK_VCF_DBSNP129=${GATK_BUNDLE_ROOT}/dbsnp_${DBSNP_VER}.${GATK_BUNDLE_REF}.excluding_sites_after_129.vcf
+GATK_VCF_DBSNP=${GATK_BUNDLE_ROOT}/dbsnp_${DBSNP_VER}.${GATK_BUNDLE_REF}.vcf
 GATK_VCF_MILLS=${GATK_BUNDLE_ROOT}/Mills_and_1000G_gold_standard.indels.${GATK_BUNDLE_REF}.vcf
 GATK_VCF_1KG=${GATK_BUNDLE_ROOT}/1000G_phase1.indels.${GATK_BUNDLE_REF}.vcf
 GATK_VCF_HAPMAP=${GATK_BUNDLE_ROOT}/hapmap_3.3.${GATK_BUNDLE_REF}.vcf
