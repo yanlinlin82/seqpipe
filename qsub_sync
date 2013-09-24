@@ -8,7 +8,7 @@
 RET=0
 STDOUT=$(mktemp)
 STDERR=$(mktemp)
-JOB_ID=$( (cat; echo ';echo $?') | qsub -d "$(pwd)" -o "${STDOUT}" -e "${STDERR}" $*)
+JOB_ID=$( (cat; echo ';echo $?') | qsub -d "$(pwd)" -o "${STDOUT}" -e "${STDERR}")
 
 function kill_job
 {

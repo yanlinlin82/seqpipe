@@ -186,15 +186,3 @@ function demo_failed_in_parallel_2
 		echo ${_X}; sleep 2
 	}
 }}
-
-function demo_dots_sub
-{
-	echo ${A} ${B} ${C}
-}
-
-function demo_dots
-{
-	# SP_run demo_dots_sub A=${A} B=${B} C=${C}
-	#   can be called as:
-	SP_run demo_dots_sub ...
-}
