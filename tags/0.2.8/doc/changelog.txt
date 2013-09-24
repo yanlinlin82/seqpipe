@@ -1,0 +1,40 @@
+2012-08-01  v0.2.8 (r94)
+* Support '-s' to change default shell.
+* Add qsub_sync for '-s' to support seqpipe in Torque envionment.
+
+2012-07-23  v0.2.7 (r91)
+* Support '-T' to show raw pipeline declaration.
+
+2012-07-23  v0.2.6 (r89)
+* Declare global variables in config.inc file.
+
+2012-07-21  v0.2.5 (r86)
+* Support inline mode (-e).
+
+2012-07-19  v0.2.4 (r82)
+* Disable removing output files for procedure.
+
+2012-07-16  v0.2.3 (r76)
+* Add date number before pid number of log files' names.
+
+2012-07-18  v0.2.2 (r74)
+* Enable to include pipeline file.
+* Support '-D' to disable loading default.pipe.
+* Support implicit '#[procedure type="stage"]'.
+* Enable to set global variables in command line.
+* Handle KILL signals to remove unfinished output files.
+
+2012-07-04  v0.2.1 (r46)
+* Use Perl' thread for parallel mode to parallelize SP_run.
+* Limit variable scope in function (procedure).
+
+2012-07-04  v0.2.0 (r45)
+* Add support of 'SP_eval'.
+* Cancel support of bash envionment variables.
+* Automatcally create directories for outputs.
+* Remove sysinfo mode (-s option of seqpipe).
+* Improve bash line parser, support quot marks.
+* Enables to set inputs, outputs and requires for single command.
+
+2012-06-21  v0.1.0 (r44)
+* Implement basic functions.
