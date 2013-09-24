@@ -1,0 +1,23 @@
+#!/bin/bash
+
+if [ -z "$1" ]; then
+	cat
+else
+	while [ -n "$1" ]; do
+		if [ -p "$1" ]; then
+			cat "$1"
+		else
+			FORMAT="$(file -L $1 | cut -d: -f2)"
+			if [ "$(echo ${FORMAT} | grep 'bzip2')" ]; then
+				bzcat "$1"
+			elif [ "$(echo ${FORMAT} | grep 'gzip')" ]; then
+				zcat "$1"
+			elif [ "$(echo ${FORMAT} | grep 'Zip archive')" ]; then
+				unzip -p "$1"
+			else
+				cat "$1"
+			fi
+		fi
+		shift
+	done
+fi

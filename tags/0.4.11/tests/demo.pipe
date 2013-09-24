@@ -1,0 +1,200 @@
+#!/bin/bash
+
+############################################################
+
+#    Commands between '{{' and '}} run at the same time (in
+# threads), while commands between '{' and '}' run one after
+# another.
+#    Hint: Try different max_thread_number by '-t' option.
+function demo_blocks
+{{
+	echo a; sleep 3; echo b
+	echo c; sleep 2; echo d
+	{
+		echo e
+		sleep 1
+		{{
+			echo f; sleep 4; echo g
+			echo h; sleep 3; echo i
+		}}
+	}
+}}
+
+function demo_SP_if_1
+{
+	SP_set COND=true
+
+	SP_if (${COND})
+	{
+		echo true
+	}
+	SP_else
+	{
+		echo false
+	}
+}
+
+function demo_SP_if_2
+{
+	SP_set COND=true
+
+	SP_if !(${COND})
+	{
+		echo false
+	}
+	SP_else
+	{
+		echo true
+	}
+}
+
+function demo_SP_if_3
+{
+	SP_if (ls *.gz)
+	{
+		wc *.gz
+	}
+}
+
+function demo_SP_if_4
+{
+	SP_if (ls *.mp3)
+	{
+		ls -sh *.mp3
+	}
+}
+
+function demo_SP_else_if
+{
+	SP_set C1=false
+	SP_set C2=false
+	SP_set C3=false
+
+	SP_if (${C1})
+	{
+		echo C1
+	}
+	SP_else_if (${C2})
+	{
+		echo C2
+	}
+	SP_else_if (${C3})
+	{
+		echo C3
+	}
+	SP_else
+	{
+		echo C4
+	}
+}
+
+function demo_SP_set
+{
+	SP_set X=abc *.gz {1..5} $((3+4))
+	echo ${X}
+
+	SP_set TMP_FILE=$(mktemp)
+	ls > ${TMP_FILE}
+	wc ${TMP_FILE}
+	rm -vf ${TMP_FILE}
+}
+
+function demo_SP_for
+{
+	SP_set OTHERS=
+	SP_for _X=abc *.gz {1..5} $((3+4)) "A B"{a..c} ${OTHERS}
+	{
+		echo ${_X}
+	}
+}
+
+function demo_SP_for_parallel
+{
+	SP_set OTHERS=
+	SP_for_parallel _X={a..c} g ${OTHERS}
+	{
+		echo "${_X} start"; sleep 1; echo "${_X} end"
+	}
+}
+
+function demo_SP_while
+{
+	SP_set _X=2
+	SP_while (test ${_X} -lt 5)
+	{
+		SP_set _X=$((${_X} + 1))
+		echo "waiting ... (_X=${_X})"; sleep 1
+	}
+	SP_while !(test ${_X} -lt 1)
+	{
+		SP_set _X=$((${_X} / 2))
+		echo "waiting ... (_X=${_X})"; sleep 1
+	}
+}
+
+############################################################
+
+function demo_shell
+{
+	${CMD}
+}
+
+function demo_file_deps
+{
+	{{
+		#[require="${A}" input="${B}" output="${C}"]
+		cat ${A} ${B} > ${C}
+
+		#[require="${D}" input="${E}" output="${F}"]
+		cat ${D} ${E} > ${F}
+	}}
+	#[require="${C}" input="${F}" output.temp="${G}"]
+	cat ${C} ${F} > ${G}
+
+	#[input="${G}" output="${H}"]
+	cat ${G} > ${H}
+}
+
+function demo_file_deps_child
+{
+	#[require="${A}" input="${B}" output.temp="${C}" output="${D}"]
+	cat ${A} ${B} | tee ${C} > ${D}
+}
+
+function demo_file_deps_parent
+{
+	SP_set E=.txt
+	SP_run demo_file_deps_child A=${X}${E} B=${Y}${E} C=${W}${E} D=${Z}${E}
+}
+
+function demo_failed_in_parallel_1
+{{
+	true
+	false
+}}
+
+function demo_failed_in_parallel_2
+{{
+	sleep 1; false
+	{
+		echo a
+		sleep 2
+		echo b
+	}
+	SP_for _X=1 2
+	{
+		echo ${_X}; sleep 2
+	}
+}}
+
+function demo_dots_sub
+{
+	echo ${A} ${B} ${C}
+}
+
+function demo_dots
+{
+	# SP_run demo_dots_sub A=${A} B=${B} C=${C}
+	#   can be called as:
+	SP_run demo_dots_sub ...
+}
