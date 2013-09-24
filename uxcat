@@ -11,11 +11,7 @@ else
 			if [ "$(echo ${FORMAT} | grep 'bzip2')" ]; then
 				bzcat "$1"
 			elif [ "$(echo ${FORMAT} | grep 'gzip')" ]; then
-				if [ -n "$(which gzcat)" ]; then
-					gzcat "$1"
-				else
-					zcat "$1"
-				fi
+				zcat "$1"
 			elif [ "$(echo ${FORMAT} | grep 'Zip archive')" ]; then
 				unzip -p "$1"
 			else

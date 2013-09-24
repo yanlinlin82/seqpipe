@@ -118,22 +118,10 @@ function do_remove_log
 		fi
 	fi
 
-	if [ "$(uname -s)" == "Darwin" ]; then
-		SED_INLINE_OPT='-i ""'
-	else
-		SED_INLINE_OPT=-i
-	fi
-
 	N=$(grep -n "${ID}" ${SEQPIPE_LOG} | cut -d: -f1)
-	if [ -n "${N}" ]; then
-		if [ "$(uname -s)" == "Darwin" ]; then
-			sed -i "" "${N}d" ${SEQPIPE_LOG}
-		else
-			sed -i "${N}d" ${SEQPIPE_LOG}
-		fi
-	fi
-	rm -rf ${SEQPIPE_DIR}/${ID}{/,.tar.gz}
-	echo "SeqPipe run '${ID}' has been removed successfully!"
+	([ -z "${N}" ] || sed -i "${N}d" ${SEQPIPE_LOG}) \
+		&& rm -rf ${SEQPIPE_DIR}/${ID}{/,.tar.gz} \
+		&& echo "SeqPipe run '${ID}' has been removed successfully!"
 
 	LAST=$(readlink ${SEQPIPE_DIR}/last)
 	if [ "${ID}" == "${LAST}" -o "${ID}.tar.gz" == "${LAST}" ]; then
