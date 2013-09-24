@@ -1,88 +1,522 @@
-#[version="0.4.0 ($Id$)"]
+#!/bin/bash
+#
+#[seqpipe version="0.1.0 ($Id$)"]
+#
+###########################################################################
+
+#[global]
+TMP_DIR=/rd/tmp                         # Temporary directory
+JAVA_MAX_MEM_SIZE=8G                    # For Java's -Xmx option
+JAVA_GC_THREAD_NUM=4                    # For Java's -XX:ParallelGCThreads option
+
+THREAD_NUM=1                            # For multiple-thread running
+
+# Sequencing related
+QUALITY_FORMAT_BASE=33                  # Quality format in FASTQ file
+PLATFORM="Illumina"                     # Sequencer platform
+
+# Reference genome (default is human hg19)
+REFERENCE=/rd/data/genomes/human/hg19/hg19.fa
+REFERENCE_NAME=hg19
+REFERENCE_DATE=20110705
+
+# BWA options
+BWA_END_IND=10                           # For: bwa aln -i <value>
+BWA_GAP_EXT=-1                           # For: bwa aln -e <value>
+
+# Picard options
+PICARD_ROOT=/rd/build/picard-tools       # Path of picard tools
+MAX_RECORDS_IN_RAM=1875000               # For enhance performance of picard
+VALIDATION_STRINGENCY=STRICT             # Ignore invalid records or not
+
+# GATK options
+GATK_ROOT=/rd/build/gatk                 # Path of GATK tools
+GATK_KEY=${GATK_ROOT}/gatk_cbi.key       # Key file for offline using GATK
+DBSNP_VCF=/rd/data/public/gatk_bundle/1.5/b37/dbsnp_135.b37.vcf
+                                         # Path of dbSNP VCF file
+
+FILTER_NAME="Filter"
+FILTER_EXPRESSION="(AB ?: 0) > 0.75 || QUAL < 50.0 || DP < 10 || DP > 360 || (SB ?: -1) > -0.1 || MQ0>=4"
+                                         # Filter expression for GATK
+STAND_CALL_CONF=30                       # GATK UnifiedGenotyper -stand_call_conf
+STAND_EMIT_CONF=10                       # GATK UnifiedGenotyper -stand_emit_conf
 
 ###########################################################################
 
-function _sysinfo
+#[primitive]
+# Usage:
+#   SP_run <procedure> [NAME1=value1 ...]
+function SP_run
 {
-	echo '===== System Information ====='
-	echo -n 'System: ' && uname -a
+	PROC_NAME=$1
+	shift
+
+	if [ -z "$(type ${PROC_NAME} 2>/dev/null | grep 'function')" ]; then
+		echo "Procedure '${PROC_NAME}' does not exist!"
+		set -e
+		exit 1
+	fi
+
+	while [ ! -z "$1" ]; do
+		if [ -z "$(echo $1 | egrep '^\w\w*=.*$')"]; then
+			echo "Bad option '$1' for procedure '${PROC_NAME}'!"
+			set -e
+			exit 1
+		fi
+		$1
+		shift
+	done
+
+	${PROC_NAME}
+}
+
+#[primitive]
+# Usage:
+#   SP_set NAME=value [<checker> [NAME1=value1 ...]]
+function SP_set
+{
+	SET=$1
+	shift
+	if [ -z "$@" ]; then
+		${SET}
+	else
+		SP_run $@ && ${SET}
+	fi
+}
+
+#[primitive]
+function SP_parallel_begin
+{
+	:
+}
+
+#[primitive]
+function SP_parallel_end
+{
+	:
+}
+
+###########################################################################
+
+#[procedure type="sysinfo"]
+function sysinfo
+{
+	echo    'System information:'
+	echo -n '   System   : '; uname -a
+	echo -n '   CPU      : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
+	echo -n '   Memory   : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
+	echo -n '   Date     : '; date '+%Y-%m-%d %H:%M:%S'
+	echo -n '   Pwd      : '; pwd
+
+	echo    'SeqPipe version:'
+	echo -n '   Tools    : '; ${SEQPIPE} | grep Version | cut -d' ' -f2-
+	echo -n '   Pipeline : '; egrep '^#\[seqpipe version' ${SEQPIPE_ROOT}/default.pipe | cut -d'"' -f2
+
+	echo    'Program versions:'
+	echo -n '   bwa      : '; bwa |& grep Version | cut -d' ' -f2
+	echo -n '   samtools : '; samtools |& grep Version | cut -d' ' -f2-
+	echo -n '   bcftools : '; bcftools |& grep Version | cut -d' ' -f2-
+	echo -n '   picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h |& grep Version | cut -d' ' -f2
+	echo -n '   gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2
+	echo -n '   pindel   : '; pindel | grep 'Pindel version' | head -n1 | cut -d' ' -f3 | sed 's/,$//'
+}
+
+###########################################################################
+
+#[procedure type="checker"]
+function if_has_arg
+{
+	test -n "${ARG}"
+}
+
+#[procedure type="checker"]
+function if_no_arg
+{
+	test -z "${ARG}"
+}
+
+#[procedure type="checker"]
+#[workflow input="${INPUT}"]
+function if_is_long_genome
+{
+	test -n "$(ls -l ${INPUT} | awk '$5>=1e8')"
+}
+
+#[procedure type="checker"]
+#[workflow input="${INPUT}"]
+function if_fastq_is_base_33
+{
+	test -n "$(less ${INPUT} | sed -n '4~4p' | head | grep '[0-9]')"
+}
+
+###########################################################################
+
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+function fastqc_check
+{
+	[ -d $(dirname ${OUTPUT}) ] || mkdir -p $(dirname ${OUTPUT})
+	fastqc --noextract --nogroup -o $(dirname ${OUTPUT}) ${INPUT}
+	mv $(dirname ${OUTPUT})/$(echo $(basename ${INPUT}) | sed 's/\(.fastq\|\)\(.gz\|.bz2\|\)$/_fastqc.zip/g') ${OUTPUT}
+}
+
+#[procedure type="stage"]
+#[workflow input="${REFERENCE}" output="${REFERENCE}.bwt"]
+function bwa_build_index
+{
+	SP_set ALGORITHM="is"
+	SP_set ALGORITHM="bwtsw" if_is_long_genome INPUT="${REFERENCE}"
+
+	bwa index -a ${ALGORITHM} ${REFERENCE}
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}"]
+function bwa_reads_mapping
+{
+	SP_set BWA_ALN_QUAL_OPT=""
+	SP_set BWA_ALN_QUAL_OPT="-I" if_fastq_is_base_33 INPUT="${INPUT_1}"
+
+	SP_run bwa_build_index REFERENCE="${REFERENCE}"
+
+	SP_parallel_begin
+	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${REFERENCE} ${INPUT_2} -f ${INPUT_1}.sai ${BWA_ALN_QUAL_OPT}
+	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${REFERENCE} ${INPUT_2} -f ${INPUT_2}.sai ${BWA_ALN_QUAL_OPT}
+	SP_parallel_end
+
+	bwa sampe -P ${REFERENCE} -a ${MAX_INSERT_SIZE} \
+		${INPUT_2}.sai ${INPUT_2}.sai ${INPUT_1} ${INPUT_2} \
+		| samtools view -Sb - \
+		> ${OUTPUT}
+	rm -f ${INPUT_1}.sai ${INPUT_2}.sai
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}"]
+function bwa_reads_mapping_se
+{
+	SP_set BWA_ALN_QUAL_OPT=""
+	SP_set BWA_ALN_QUAL_OPT="-I" if_fastq_is_base_33 INPUT="${INPUT_1}"
+
+	SP_run bwa_build_index REFERENCE="${REFERENCE}"
+
+	bwa aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
+		${REFERENCE} ${INPUT} -f ${INPUT}.sai ${BWA_ALN_QUAL_OPT}
+	bwa samse ${REFERENCE} ${INPUT}.sai ${INPUT} \
+		| samtools view -Sb - \
+		> ${OUTPUT}
+	rm -f ${INPUT}.sai
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
+function merge_bam
+{
+	SP_set VALIDATION_STRINGENCY="STRICT" if_no_arg ARG="${VALIDATION_STRINGENCY}"
+	SP_set INPUT_3="${INPUT_3}"
+	SP_set INPUT_4="${INPUT_4}"
+	SP_set MORE_INPUT_FILES=""
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_3}" if_has_arg ARG="${INPUT_3}"
+	SP_set MORE_INPUT_FILES="${MORE_INPUT_FILES} INPUT=${INPUT_4}" if_has_arg ARG="${INPUT_4}"
+
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-jar ${PICARD_ROOT}/MergeSamFiles.jar \
+		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
+		TMP_DIR=${TMP_DIR} \
+		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
+		COMPRESSION_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=true \
+		INPUT=${INPUT_1} \
+		INPUT=${INPUT_2} \
+		${MORE_INPUT_FILES} \
+		OUTPUT=${OUTPUT}
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT_BAM}" output="${MAPPED_BAM}" output="${UNMAPPED_BAM}"]
+function extract_mapped_reads
+{
+	SP_parallel_begin
+	samtools view ${INPUT_BAM} -F4 -b > ${MAPPED_BAM}
+	samtools view ${INPUT_BAM} -f4 -b > ${UNMAPPED_BAM}
+	SP_parallel_end
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+function sort_bam
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-jar ${PICARD_ROOT}/MergeSamFiles.jar \
+		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
+		TMP_DIR=${TMP_DIR} \
+		COMPRESSION_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=true \
+		SORT_ORDER=coordinate \
+		INPUT=${INPUT} \
+		OUTPUT=${OUTPUT}
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+function flagstat_bam
+{
+	samtools flagstat ${INPUT} | gzip -9c > ${OUTPUT}
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT_BAM}" output="${OUTPUT_MPILEUP_BZ2}"]
+function samtools_mpileup
+{
+	samtools mpileup ${INPUT_BAM} | bzip2 -9c > ${OUTPUT_MPILEUP_BZ2}
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+function extract_unique_hit_reads
+{
+	samtools view -h ${INPUT} \
+		| egrep 'XT:A:U|^@' \
+		| samtools view -Sb - \
+		> ${OUTPUT}
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT_BAM}" output="${OUTPUT_BAM}"]
+function remove_duplicate_reads
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-jar ${PICARD_ROOT}/MarkDuplicates.jar \
+		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
+		TMP_DIR=${TMP_DIR} \
+		COMPRESSION_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=true \
+		INPUT=${INPUT_BAM} \
+		OUTPUT=${OUTPUT_BAM} \
+		METRICS_FILE=${OUTPUT_METRICS} \
+		REMOVE_DUPLICATES=true
+}
+
+#[procedure type="stage"]
+#[workflow input="${SORTED_BAM}" output="${OUTPUT_BCF}"]
+#[workflow require="${REFERENCE}"]
+function samtools_call_variants
+{
+	samtools mpileup -f ${REFERENCE} ${SORTED_BAM} -u \
+		| bcftools view -bvcg - \
+		> ${OUTPUT_BCF}
+	(echo -n 'Total variants: '; bcftools view ${OUTPUT_BCF} | grep -v ^# | wc -l) > ${OUTPUT_BCF}.txt
+}
+
+#[procedure type="pipeline"]
+#[workflow input="${FASTQ_1}" input="${FASTQ_2}"]
+#[workflow output="${SAMPLE_NAME}.bcf"]
+#[workflow require="${REFERENCE}"]
+function DNAseq_pe_analysis_bwa_samtools
+{
+	SP_run bwa_reads_mapping \
+		REFERENCE="${REFERENCE}" \
+		INPUT_1="${FASTQ_1}" INPUT_2="${FASTQ_2}" \
+		MAX_INSERT_SIZE="${MAX_INSERT_SIZE}" \
+		OUTPUT="${SAMPLE_NAME}.bam"
+
+	SP_run extract_mapped_reads \
+		INPUT_BAM="${SAMPLE_NAME}.bam" \
+		MAPPED_BAM="${SAMPLE_NAME}.mapped.bam" \
+		UNMAPPED_BAM="${SAMPLE_NAME}.unmapped.bam"
+	rm -f ${SAMPLE_NAME}.bam
+
+	SP_run sort_bam \
+		INPUT="${SAMPLE_NAME}.mapped.bam" \
+		OUTPUT="${SAMPLE_NAME}.mapped.sorted.bam"
+	rm -f ${SAMPLE_NAME}.mapped.bam
+
+	SP_run remove_duplicate_reads \
+		INPUT_BAM="${SAMPLE_NAME}.mapped.sorted.bam" \
+		OUTPUT_BAM="${SAMPLE_NAME}.mapped.sorted.rmdup.bam" \
+		OUTPUT_METRICS="${SAMPLE_NAME}.mapped.sorted.rmdup.metrics"
+	rm -f ${SAMPLE_NAME}.mapped.sorted.bam \
+		${SAMPLE_NAME}.mapped.sorted.bam.md5 \
+		${SAMPLE_NAME}.mapped.sorted.bai
+
+	SP_run samtools_call_variants \
+		REFERENCE="${REFERENCE}" \
+		SORTED_BAM="${SAMPLE_NAME}.mapped.sorted.rmdup.bam" \
+		OUTPUT_BCF="${SAMPLE_NAME}.bcf"
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
+function gatk_indel_realign
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T RealignerTargetCreator \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-o ${INPUT}.intervals \
+		-known ${DBSNP_VCF} \
+		--num_threads ${THREAD_NUM}
+
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T IndelRealigner \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-targetIntervals ${INPUT}.intervals \
+		-o ${INPUT}.realign
 	
-	echo
-	echo -n 'Date: ' && date '+%Y-%m-%d %H:%M:%S'
-	echo -n 'Pwd : ' && pwd
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-jar ${PICARD_ROOT}/FixMateInformation.jar \
+		MAX_RECORDS_IN_RAM=${MAX_RECORDS_IN_RAM} \
+		TMP_DIR=${TMP_DIR} \
+		COMPRESSION_LEVEL=9 \
+		CREATE_INDEX=true \
+		CREATE_MD5_FILE=true \
+		INPUT=${INPUT}.realign \
+		OUTPUT=${OUTPUT}
 
-	echo -e '\nCPU:' && \
-	if [ "$(uname -s)" == "Darwin" ]; then \
-		sysctl machdep.cpu.brand_string | cut -d: -f2-;
-	else \
-		lscpu;
-	fi
+	rm -f ${INPUT}.intervals
+}
 
-	echo -e '\nMemory:' && \
-	if [ "$(uname -s)" == "Darwin" ]; then \
-		top -l 1 | awk '/PhysMem/'; \
-	else \
-		free -h; \
-	fi
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
+function gatk_recalibration
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T CountCovariates \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-knownSites ${DBSNP_VCF} \
+		-cov ReadGroupCovariate \
+		-cov QualityScoreCovariate \
+		-cov CycleCovariate \
+		-cov DinucCovariate \
+		-recalFile ${INPUT}.recal \
+		--num_threads ${THREAD_NUM}
+	
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T TableRecalibration \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-recalFile ${INPUT}.recal \
+		-o ${OUTPUT}
+	
+	rm -f ${INPUT}.recal
+}
 
-	echo
-	echo -n 'Bash   : ' && bash --version | head -n1
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
+function gatk_genotype
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T UnifiedGenotyper \
+		-R ${REFERENCE} \
+		-I ${INPUT} \
+		-glm BOTH \
+		--min_base_quality_score 20 \
+		--dbsnp ${DBSNP_VCF} \
+		-stand_call_conf ${STAND_CALL_CONF} \
+		-stand_emit_conf ${STAND_EMIT_CONF} \
+		-o ${OUTPUT} \
+		--num_threads ${THREAD_NUM}
+}
 
-	if [ -n "$(which gcc 2>/dev/null)" ]; then \
-		echo -n 'GCC    : ' && gcc --version | head -n1; \
-	else \
-		echo -e 'GCC    : <none>'; \
-	fi
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow require="${REFERENCE}" require="${DBSNP_VCF}"]
+function gatk_filter_variants
+{
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T SelectVariants \
+		-R ${REFERENCE} \
+		--variant ${INPUT} \
+		-selectType SNP -selectType MNP \
+		-o ${INPUT}.snp
 
-	if [ -n "$(which make 2>/dev/null)" ]; then \
-		echo -n 'Make   : ' && make --version | head -n1; \
-	else \
-		echo -e 'Make   : <none>'; \
-	fi
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T SelectVariants \
+		-R ${REFERENCE} \
+		--variant ${INPUT} \
+		-selectType INDEL \
+		-o ${INPUT}.indel
 
-	if [ -n "$(which perl 2>/dev/null)" ]; then \
-		echo -n 'Perl   : ' && perl --version | grep -E -o '(v[0-9\.]+)'; \
-	else \
-		echo -e 'Perl   : <none>'; \
-	fi
+	java -Xmx${JAVA_MAX_MEM_SIZE} -XX:ParallelGCThreads=${JAVA_GC_THREAD_NUM} \
+		-Djava.io.tmpdir=${TMP_DIR} \
+		-jar ${GATK_ROOT}/GenomeAnalysisTK.jar -et NO_ET -K ${GATK_KEY} \
+		-T VariantFiltration \
+		-R ${REFERENCE} \
+		--variant ${INPUT}.snp \
+		--filterExpression ${FILTER_EXPRESSION} \
+		--filterName ${FILTER_NAME} \
+		--clusterWindowSize 10 \
+		-o ${OUTPUT}
+}
 
-	if [ -n "$(which python 2>/dev/null)" ]; then \
-		echo -n 'Python : ' && python --version 2>&1 | cut -d' ' -f2; \
-	else \
-		echo -e 'Python : <none>'; \
-	fi
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${INPUT}.final.vcf"]
+function gatk_call_variants
+{
+	SP_set REFERENCE="${REFERENCE}"
+	SP_set DBSNP_VCF="${DBSNP_VCF}"
 
-	if [ -n "$(which python3 2>/dev/null)" ]; then \
-		echo -n 'Python3: ' && python3 --version 2>&1 | cut -d' ' -f2; \
-	else \
-		echo -e 'Python3: <none>'; \
-	fi
+	SP_run gatk_indel_realign \
+		INPUT="${INPUT}" \
+		OUTPUT="${INPUT}.realign"
 
-	echo
-	if [ -n "$(which java 2>/dev/null)" ]; then \
-		echo -e 'Java:' && java -version 2>&1 | sed 's/^/   /'; \
-	else \
-		echo -e 'Java: <none>'; \
-	fi
+	SP_run gatk_recalibration \
+		INPUT="${INPUT}.realign" \
+		OUTPUT="${INPUT}.realign.recal"
 
-	echo
-	if [ -n "$(which Rscript 2>/dev/null)" ]; then \
-		echo -e 'R:' && Rscript -e 'sessionInfo()' | sed 's/^/   /g'; \
-	else \
-		echo -e 'R: <none>'; \
-	fi
+	SP_run gatk_genotype \
+		INPUT="${INPUT}.realign.recal" \
+		OUTPUT="${INPUT}.raw.vcf"
 
-	echo
-	echo '===== SeqPipe Version ====='
-	echo 'SeqPipe:'
-	echo    "   "${_SEQPIPE_ROOT}/${_SEQPIPE}
-	echo -n "      "; ${_SEQPIPE_ROOT}/${_SEQPIPE} | grep Version
-	echo 'Modules: '
-	ls ${_SEQPIPE_ROOT}/*.pipe \
-		| while read FILE; do \
-			echo    "   $FILE"; \
-			echo -n "      "; \
-			grep -E '^#\[(seqpipe\s+|)version' $FILE; \
-		done
-	echo
+	SP_run gatk_filter_variants \
+		INPUT="${INPUT}.raw.vcf" \
+		OUTPUT="${INPUT}.final.vcf"
+}
+
+#[procedure type="stage"]
+#[workflow input="${INPUT}" output="${OUTPUT}"]
+#[workflow output="${OUTPUT}_D.vcf"]
+#[workflow output="${OUTPUT}_SI.vcf"]
+#[workflow output="${OUTPUT}_INV.vcf"]
+#[workflow output="${OUTPUT}_TD.vcf"]
+function call_structure_variants
+{
+	pindel -f ${REFERENCE} \
+		-i <(echo "${INPUT} ${INSERT_SIZE} ${SAMPLE_TAG}") \
+		-l -k -s -c ALL -o ${OUTPUT}
+
+	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		-p ${OUTPUT}_D -v ${OUTPUT}_D.vcf
+	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		-p ${OUTPUT}_SI -v ${OUTPUT}_SI.vcf
+	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		-p ${OUTPUT}_INV -v ${OUTPUT}_INV.vcf
+	pindel2vcf -r ${REFERENCE} -R ${REFERENCE_NAME} -d ${REFERENCE_DATE} \
+		-p ${OUTPUT}_TD -v ${OUTPUT}_TD.vcf
 }
