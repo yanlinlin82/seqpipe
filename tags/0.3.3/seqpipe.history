@@ -1,0 +1,75 @@
+#!/bin/bash
+
+SEQPIPE_DIR=.seqpipe
+SEQPIPE_LOG=${SEQPIPE_DIR}/history.log
+
+if [ -z "$1" ]; then
+	cat <<EOF
+
+Histroy Manipulator for SeqPipe (a SEQuencing data analsysis PIPEline framework)
+Version: 0.0.1 (\$Rev$)
+Copyright: 2012, Centre for Bioinformatics, Peking University, China
+
+Usage: $0 <command> [<options>]
+
+Support commands:
+   list
+   show <id>
+   remove <id>
+   upgrade
+
+EOF
+	exit 1
+fi
+
+if [ ! -f ${SEQPIPE_LOG} ]; then
+	echo "ERROR: Can not find history of seqpipe here!"
+	exit 1
+fi
+
+COMMAND="$1"
+
+if [ "${COMMAND}" == "list" ]; then
+	less ${SEQPIPE_LOG}
+elif [ "${COMMAND}" == "show" ]; then
+	ID=$2
+	if [ -z "${ID}" ]; then
+		echo "Usage: $0 show <id>"
+		exit 1
+	fi
+	cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"'
+elif [ "${COMMAND}" == "remove" ]; then
+	ID=$2
+	if [ -z "${ID}" ]; then
+		echo "Usage: $0 remove (rm) <id>"
+		exit 1
+	fi
+	if [ -z "$(cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"')" -a ! -d ${SEQPIPE_DIR}/${ID}/ ]; then
+		echo "ERROR: Can not find SeqPipe run for '${ID}'!"
+		exit 1
+	fi
+	echo -n "Are you sure to remove seqpipe run '$2' (y/n)? "
+	read C
+	if [ "$(echo $C | cut -c1)" == "y" -o "$(echo $C | cut -c1)" == "Y" ]; then
+		N=$(grep -n "${ID}" ${SEQPIPE_LOG} | cut -d: -f1)
+		([ -z "${N}" ] || sed -i "${N}d" ${SEQPIPE_LOG}) \
+			&& rm -rf ${SEQPIPE_DIR}/${ID}/ \
+			&& echo "SeqPipe run '${ID}' has been removed successfully!"
+	fi
+elif [ "$1" == "upgrade" ]; then
+	ls -F ${SEQPIPE_DIR} | grep -v '/' | egrep '^[0-9]+\.[0-9]+\..*$' | while read NAME; do
+		DIR="$(echo "${NAME}" | cut -d'.' -f1-2)"
+		FILE="$(echo "${NAME}" | cut -d'.' -f3-)"
+		[ -d ${SEQPIPE_DIR}/${DIR} ] || mkdir -pv ${SEQPIPE_DIR}/${DIR}
+		if [ -f ${SEQPIPE_DIR}/${DIR}/${FILE} ]; then
+			echo "ERROR: File '${SEQPIPE_DIR}/${DIR}/${FILE}' has already existed!"
+			exit 1
+		fi
+		mv -iv ${SEQPIPE_DIR}/${NAME} ${SEQPIPE_DIR}/${DIR}/${FILE}
+	done
+else
+	echo "ERROR: Invalid command '${COMMAND}'!"
+	exit 1
+fi
+
+exit 0

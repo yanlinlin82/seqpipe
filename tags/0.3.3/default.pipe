@@ -1,0 +1,38 @@
+#!/bin/bash
+#
+#[seqpipe version="0.3.3 ($Id$)"]
+#
+
+###########################################################################
+
+#[procedure type="sysinfo"]
+function sysinfo
+{
+	echo '===== System Information ====='
+	echo -n 'System : '; uname -a
+	echo -n 'CPU    : '; lscpu | grep '^CPU(s):' | awk '{print $2}'
+	echo -n 'Memory : '; free -g | egrep 'Mem|Swap' | awk '{print $1$2"G"}' | paste - - | sed 's/\\t/ + /g'
+	echo -n 'Date   : '; date '+%Y-%m-%d %H:%M:%S'
+	echo -n 'Pwd    : '; pwd
+	echo -n 'Bash   : '; bash --version | head -n1
+	echo -n 'GCC    : '; gcc --version | head -n1
+	echo -n 'Make   : '; make --version | head -n1
+	echo 'Java:'; java -version |& sed 's/^/   /'
+	echo 'R:'; Rscript -e 'sessionInfo()' | sed 's/^/   /g'
+	echo
+
+	echo '===== SeqPipe Version ====='
+	echo 'SeqPipe:'
+	echo    "   "${SEQPIPE_ROOT}/${SEQPIPE}
+	echo -n "      "; ${SEQPIPE_ROOT}/${SEQPIPE} | grep Version
+	echo 'Modules: '
+	ls $(dirname $(realpath $(which seqpipe)))/*.pipe \
+		| while read FILE; do \
+			echo    "   $FILE"; \
+			echo -n "      "; \
+			egrep '^#\[seqpipe version' $FILE; \
+		done
+	echo
+}
+
+###########################################################################
