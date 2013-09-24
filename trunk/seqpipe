@@ -35,35 +35,32 @@ use constant DEF_PIPE => APP_ROOT . '/default.pipe';
 
 ############################################################
 # Command line parsing results.
+
 my $help_mode = 0;
 my $list_mode = 0;
 my $test_mode = 0;
 my $show_mode = 0;
+
 my $keep_temps = 0;
-my $exec_cmd = '';
 my $shell = '/bin/bash';
 
 my $auto_load = 1;
 my @files = ();
+my @exec_cmds = ();
 
 my $obsolete_warned = 0;
 my $max_thread_number = 1;
 my $thread_number :shared = 0;
 
-# All procedures are loaded at startup.
-my %proc_list = ();
+my %proc_list = ();  # All procedures are loaded at startup.
+my %global_vars = ();  # Global variables (defined outside procedures in .pipe files).
+my %shell_env_vars :shared = ();
 my @blocks = ();
 
-# Global variables (which are defined outside procedures in .pipe files).
-my %global_vars = ();
-
-my %shell_env_vars :shared = ();
-
-# Count how many shell commands have run so far.
-my $run_counter :shared = 0;
+my $run_counter :shared = 0;  # Count how many shell commands have run so far.
 
 # Command line entered by user.
-my $command_line = bash_line_encode(dirname(abs_path($0)) . '/seqpipe', @ARGV);
+my $command_line = bash_line_encode(abs_path($0), @ARGV);
 
 ############################################################
 
@@ -921,7 +918,9 @@ Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
 Websites: http://seqpipe.googlecode.com
           http://www.cbi.pku.edu.cn
 
-Usage: seqpipe [options] <procedure> [NAME=VALUE ...]
+Usage:
+   seqpipe [options] <procedure> [NAME=VALUE ...]
+   seqpipe [options] -e <cmd> [-e <cmd> ...] [NAME=VALUE ...]
 
 Options:
    -h / -H              Show help messages.
@@ -929,7 +928,6 @@ Options:
    -m <file>            Load procedure module file, this option can be used many times.
    -D                   Disable to load default pipelines.
    -t <int>             Max thread number in parallel. default: ' . $max_thread_number . '
-   -e <cmd>             Inline mode, execute a bash command directly.
    -s <shell>           Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
    -k                   Keep intermediate files.
    -R                   Show the raw procedure declaration.
@@ -1333,7 +1331,7 @@ sub show_info
 	print "\n";
 
 	if (%{$info_ref->{req_vars}} or ($help_mode == 2 and %{$info_ref->{opt_vars}})) {
-		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "inline command '$exec_cmd'") . ":\n";
+		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "inline command") . ":\n";
 
 		if (%{$info_ref->{req_vars}}) {
 			foreach my $name (sort keys %{$info_ref->{req_vars}}) {
@@ -2051,10 +2049,10 @@ if ($#ARGV < 0) {
 			}
 		} elsif ($arg eq '-e') {
 			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
-			die "ERROR: Duplicated '$arg' option!\n" if $exec_cmd;
-			$exec_cmd = shift @ARGV;
-			die "ERROR: Empty inline command is not allowed!\n" if $exec_cmd =~ /^\s*$/;
-			die "ERROR: Multi-line inline command is not allowed!\n" if $exec_cmd =~ /\n/;
+			my $cmd = shift @ARGV;
+			die "ERROR: Empty inline command is not allowed!\n" if $cmd =~ /^\s*$/;
+			die "ERROR: Multi-line inline command is not allowed!\n" if $cmd =~ /\n/;
+			push @exec_cmds, $cmd;
 		} elsif ($arg eq '-s') {
 			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
 			$shell = shift @ARGV;
@@ -2069,13 +2067,13 @@ if ($#ARGV < 0) {
 				$args{$name} = $2;
 				die "ERROR: Invalid option '$name'! Option name starts with '_' is reserved.\n" if $name =~ /^_/;
 			} else {
-				die "ERROR: Invalid format of option: $arg\n" if $proc_name or $exec_cmd;
+				die "ERROR: Invalid format of option: $arg\n" if $proc_name or @exec_cmds;
 				$proc_name = $arg;
 			}
 		}
 	}
 }
-die "ERROR: Can not use both '-e' and '<proc_name>'!\n" if $proc_name and $exec_cmd;
+die "ERROR: Can not use both '-e' and '<proc_name>'!\n" if $proc_name and @exec_cmds;
 
 $list_mode = 2 if $list_mode and (scalar @files == 0);
 @files = (glob(APP_ROOT . '/*.pipe'), @files) if $auto_load;
@@ -2083,15 +2081,18 @@ load_modules \@files, \%args;
 
 list_proc $proc_name if $list_mode;
 
-if ($exec_cmd) {
-	# Load inline command as a block
-	push @blocks, { commands => [ { name => 'shell', command => $exec_cmd } ], file => DEF_PIPE, proc_name => '' };
+# Prepare for inline mode
+if (@exec_cmds) {
+	my $block = { commands => [], file => DEF_PIPE, proc_name => '' };
+	foreach my $cmd (@exec_cmds) {
+		push @{$block->{commands}}, { name => 'shell', command => $cmd };
+	}
+	push @blocks, $block;
 
 	if ($show_mode) {
 		show_block $blocks[-1], '', \%args;
 		exit 1;
 	}
-
 } elsif ($proc_name) {
 	die "ERROR: Unknown procedure '$proc_name'! Use '-l' to list available procedures.\n"
 		unless exists $proc_list{$proc_name};
@@ -2113,7 +2114,7 @@ show_info $proc_name, $info_ref if $help_mode;
 
 if (not $test_mode) {
 	if (%{$info_ref->{req_vars}}) {
-		die 'ERROR: Variable(s) required for ' . ($proc_name ? "procedure '$proc_name'" : "inline command '$exec_cmd'")
+		die 'ERROR: Variable(s) required for ' . ($proc_name ? "procedure '$proc_name'" : "inline command")
 			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "\n";
 	}
 	die "ERROR: Can not run internal procedures '$proc_name' directly!\n" if $proc_name =~ /^_/;
