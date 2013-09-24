@@ -8,6 +8,7 @@ use Fcntl qw(:flock);
 
 ############################################################
 # Check perl multi-thread supporting
+
 sub has_module
 {
 	my $name = shift;
@@ -16,17 +17,18 @@ sub has_module
 	return 1;
 }
 
-BEGIN { eval 'use forks; use forks::shared; 1' or eval 'use threads; use threads::shared; 1' };
+BEGIN { eval 'use threads; use threads::shared; 1' or eval 'use forks; use forks::shared; 1' };
 my $can_use_threads = 1;
-if (not has_module('forks.pm') and not has_module('threads.pm')) {
+if (not has_module('threads.pm') and not has_module('forks.pm')) {
 	$can_use_threads = 0;
 }
 
 ############################################################
-# All logs are saved into this directory.
+# Constants
+
 use constant UNIQ_ID => sprintf('%02d%02d%02d.%02d%02d.%d',
 	(localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], (localtime)[2], (localtime)[1], $$);
-use constant LOG_ROOT => './.seqpipe';
+use constant LOG_ROOT => './.seqpipe';  # All log files are saved in this directory.
 use constant LOG_DIR => LOG_ROOT . '/' . UNIQ_ID;
 use constant APP_ROOT => dirname abs_path $0;
 use constant DEF_PIPE => APP_ROOT . '/default.pipe';
