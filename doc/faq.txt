@@ -3,13 +3,13 @@ Frequently Asked Questions
 $Id$
 
 Q: What does 'SeqPipe' stand for?
-A: SeqPipe means "a SEQuencing data analsysis PIPEline framework".
+A: SeqPipe means "a SEQuencing data analsysis PIPEline framework", or "SEQuential PIPEline" for its preference for sequential statements to condition and loop statements.
 
 Q: Where does SeqPipe record logs?
-A: In the .seqpipe/ subdirectory of the directory when you run SeqPipe. You can explore all the history from .seqpipe/history.log as a start or index, then .seqpipe/<date>.<pid>/* for records of each run session.
+A: In the .seqpipe/ subdirectory of the directory when you run SeqPipe. You can explore all the history from .seqpipe/history.log as a start or index, then .seqpipe/<date>.<pid>.* for records of each run session.
 
 Q: Why SeqPipe reports "Warning: Your Perl does not support threads! Parallel mode is disabled."?
-A: SeqPipe use Perl's ithread (or 'forks' package) to support parallel mode. You may re-install Perl with ithread option or use 'forks' packages instead.
+A: SeqPipe use Perl's ithread to support parallel mode. You may re-install Perl with ithread option or use 'forks' packages instead.
 
 Q: How can I avoid to write a .pipe file?
 A: Yes, with the inline mode of SeqPipe. For example: $ seqpipe -e 'ls -l -Fa ${DIR}' DIR=/home
