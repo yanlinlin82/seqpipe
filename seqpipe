@@ -512,18 +512,22 @@ sub parse_cmd
 			$cmd_ref->{command} = shift @argv;
 			$cmd_ref->{proc_name} = shift @argv;
 			die "Bad procedure name '$cmd_ref->{proc_name}' for SP_run in $l->{info}" if $cmd_ref->{proc_name} !~ /^\w+$/;
-			$cmd_ref->{options} = {};
-			for my $opt (@argv) {
+			$cmd_ref->{options} = [];
+			foreach my $opt (@argv) {
 				if ($opt eq '...') {
 					die "Duplicated '...' for SP_run in $l->{info}" if exists $cmd_ref->{dots};
 					$cmd_ref->{dots} = 1;
-					next;
+				} elsif ($opt =~ /^(\w+)=(.*)$/) {
+					die "ERROR: '...' should be the last option for SP_run in $l->{info}." if exists $cmd_ref->{dots};
+					foreach my $opt_ref (@{$cmd_ref->{options}}) {
+						die "Duplicate option '$opt_ref->{name}' for SP_run in $l->{info}" if $opt_ref->{name} eq $1;
+					}
+					push @{$cmd_ref->{options}}, { name => $1, value => $2 };
+					my $name = $1;
+					die "Invalid option '$name'! Option name starts with '_' is reserved!" if $name =~ /^_/;
+				} else {
+					die "Invalid option '$opt' for SP_run in $l->{info}";
 				}
-				die "Invalid option '$opt' for SP_run in $l->{info}" if $opt !~ /^(\w+)=(.*)$/;
-				die "Duplicate option '$opt' for SP_run in $l->{info}" if exists $cmd_ref->{options}{$1};
-				$cmd_ref->{options}{$1} = $2;
-				my $name = $1;
-				die "Invalid option '$name'! Option name starts with '_' is reserved!" if $name =~ /^_/;
 			}
 		} else {
 			die "Invalid primitive line '$argv[0]'!";
@@ -1084,11 +1088,20 @@ sub check_block
 			} elsif ($cmd_ref->{command} eq 'SP_run') {
 				die "Unknown procedure '$cmd_ref->{proc_name}' for SP_run in $cmd_ref->{line_info}." if not exists $procs_ref->{$cmd_ref->{proc_name}};
 
-				my @items = (values %{$cmd_ref->{options}}, keys %{$cmd_ref->{requires}}, keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}}, keys %{$cmd_ref->{saves}}, keys %{$cmd_ref->{temps}});
+				my @keys = ();
+				my @values = ();
+				my %options = ();
+				foreach my $item_ref (@{$cmd_ref->{options}}) {
+					push @keys, $item_ref->{name};
+					push @values, $item_ref->{value};
+					$options{$item_ref->{name}} = $item_ref->{value};
+				}
+
+				my @items = (@values, keys %{$cmd_ref->{requires}}, keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}}, keys %{$cmd_ref->{saves}}, keys %{$cmd_ref->{temps}});
 				check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, @items);
 				
 				my %args = ();
-				foreach my $name (keys %{$cmd_ref->{options}}) {
+				foreach my $name (@keys) {
 					$args{$name} = '${' . $name . '}';
 				}
 				my $info_ref = check_proc($procs_ref->{$cmd_ref->{proc_name}}, \%args, {}, $global_vars_ref);
@@ -1106,7 +1119,7 @@ sub check_block
 						}
 					}
 				}
-				transform_info $info_ref, $cmd_ref->{options}, $args_ref, \%proc_vars, $global_vars_ref;
+				transform_info $info_ref, \%options, $args_ref, \%proc_vars, $global_vars_ref;
 				
 				foreach my $file (keys %{$cmd_ref->{requires}}) {
 					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
@@ -1355,7 +1368,6 @@ sub list_proc
 		print "   $name\n" if $name =~ /$proc_name/;
 	}
 	print "\n";
-	exit 1;
 }
 
 sub show_block
@@ -1398,7 +1410,7 @@ sub show_block
 			}
 		} elsif ($cmd_ref->{command} eq 'SP_run') {
 			print "$indent\tSP_run $cmd_ref->{proc_name}";
-			print " $_=$cmd_ref->{options}->{$_}" foreach (keys %{$cmd_ref->{options}});
+			print " $_->{name}=$_->{value}" foreach (@{$cmd_ref->{options}});
 			print " ..." if exists $cmd_ref->{dots};
 			print "\n";
 		} elsif ($cmd_ref->{command} eq 'SP_if') {
@@ -1643,16 +1655,18 @@ sub run_cmd
 		}
 
 	} elsif ($cmd_ref->{command} eq 'SP_run') {
-		my %options = %{$cmd_ref->{options}};
-		foreach my $name (keys %options) {
-			$options{$name} = eval_text_in_shell($options{$name}, $indent, $args_ref, \%proc_vars, $global_vars_ref);
+		my $sub_args_ref = {};
+		my $sub_args_order_ref = [];
+		foreach my $item_ref (@{$cmd_ref->{options}}) {
+			$sub_args_ref->{$item_ref->{name}} = eval_text_in_shell($item_ref->{value}, $indent, $args_ref, \%proc_vars, $global_vars_ref);
+			push @{$sub_args_order_ref}, $item_ref->{name};
 		}
 		if (exists $cmd_ref->{dots}) {
 			foreach my $name (keys %{$args_ref}) {
-				$options{$name} = eval_text_in_shell($args_ref->{$name}, $indent, $args_ref, \%proc_vars, $global_vars_ref);
+				$sub_args_ref->{$name} = eval_text_in_shell($args_ref->{$name}, $indent, $args_ref, \%proc_vars, $global_vars_ref);
 			}
 		}
-		$ret = run_proc($cmd_ref->{proc_name}, $indent, \%options);
+		$ret = run_proc($cmd_ref->{proc_name}, $sub_args_ref, $sub_args_order_ref, $indent);
 
 	} elsif ($cmd_ref->{command} eq 'SP_if') {
 		my $yes;
@@ -1818,7 +1832,7 @@ sub run_cmd
 
 sub run_proc
 {
-	my ($proc_name, $indent, $args_ref) = @_;
+	my ($proc_name, $args_ref, $args_order_ref, $indent) = @_;
 
 	my $proc_ref = $procs_ref->{$proc_name};
 	my $global_vars_ref = $global_vars_list_ref->{$proc_ref->{file}};
@@ -1832,8 +1846,10 @@ sub run_proc
 	}
 
 	# Otherwise (not a sysinfo)
-	my $cmd = "$proc_name";
-	$cmd .= " $_=$args_ref->{$_}" foreach (keys%{$args_ref});
+	my $cmd = $proc_name;
+	foreach my $name (@{$args_order_ref}) {
+		$cmd .= " $name=" . bash_line_encode($args_ref->{$name});
+	}
 
 	my $run_id;
 	my $start_time;
@@ -1978,7 +1994,8 @@ sub run_block
 
 # Parse command line
 my $proc_name = '';
-my %args = ();
+my $args_ref = {};
+my $args_order_ref = [];
 
 $help_mode = 1 if $#ARGV < 0;
 while (my $arg = shift @ARGV) {
@@ -2026,9 +2043,10 @@ while (my $arg = shift @ARGV) {
 	} else {
 		die "Unknown option '$arg'!" if $arg =~ /^-/;
 		if ($arg =~ /^(\w+)=(.*)$/) {
-			die "duplicated option '$1'!" if exists $args{$1};
+			die "duplicated option '$1'!" if exists $args_ref->{$1};
 			my $name = $1;
-			$args{$name} = $2;
+			$args_ref->{$name} = $2;
+			push @{$args_order_ref}, $name;
 			die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
 		} else {
 			die "Invalid format of option: $arg" if $proc_name or @exec_cmds;
@@ -2038,11 +2056,16 @@ while (my $arg = shift @ARGV) {
 }
 die "Can not use both '-e' and '<proc_name>'!" if $proc_name and @exec_cmds;
 
+# Load modules
 $list_mode = 2 if $list_mode and (scalar @files == 0);
 @files = (glob(APP_ROOT . '/*.pipe'), @files) if $auto_load;
-load_modules \@files, \%args;
+load_modules \@files, $args_ref;
 
-list_proc $proc_name if $list_mode;
+# List procedures
+if ($list_mode) {
+	list_proc($proc_name);
+	exit 1;
+}
 
 # Prepare for inline mode
 if (@exec_cmds) {
@@ -2053,58 +2076,65 @@ if (@exec_cmds) {
 		++$line_no;
 		push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => $line_no, command => $cmd };
 	}
-	if ($show_mode) {
-		show_proc '', \%args;
-		exit 1;
-	}
 } elsif ($proc_name) {
 	die "Unknown procedure '$proc_name'! Use '-l' to list available procedures."
 		unless exists $procs_ref->{$proc_name};
-	
-	show_proc $proc_name, \%args if $show_mode;
-
 } else {
 	print "ERROR: No procedure name provided!\n" unless $help_mode;
 	print_usage;
 	exit 1;
 }
 
-my $info_ref = check_proc($procs_ref->{$proc_name}, \%args, {}, \%args);
-show_info $proc_name, $info_ref if $help_mode;
+# Show pipeline scripts
+if ($show_mode) {
+	show_proc $proc_name, $args_ref;
+	exit 1;
+}
 
+# Check variables and dependencies
+my $info_ref = check_proc($procs_ref->{$proc_name}, $args_ref, {}, $args_ref);
+if ($help_mode) {
+	show_info($proc_name, $info_ref);
+	exit 1;
+}
+
+# Write log files
 if (not $test_mode) {
+	die "Can not run internal procedures '$proc_name' directly!" if $proc_name =~ /^_/;
 	if (%{$info_ref->{req_vars}}) {
 		die "Variable(s) required for " . ($proc_name ? "procedure '$proc_name'" : "inline command")
 			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "";
 	}
-	die "Can not run internal procedures '$proc_name' directly!" if $proc_name =~ /^_/;
+	# TODO: check requires/inputs file before run the pipeline
 
 	init_sig_int();
 
+	# Prepare log directory
 	mkdir LOG_ROOT or die "Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
 	mkdir LOG_DIR or die "Can't create directory '" . LOG_DIR . "'!";
-
 	system "ln -s -f -n " . UNIQ_ID . " " . LOG_ROOT . "/last";
 
+	# Write whole command line to log
 	open LOG_FILE, '>>', LOG_ROOT . '/history.log';
 	log_print UNIQ_ID . "\t$command_line\n";
 	close LOG_FILE;
 
+	# Prepare log file
 	open LOG_FILE, '|-', 'tee -ai ' . LOG_DIR . '/log';
-
 	log_print '[' . UNIQ_ID . "] $command_line\n";
 
+	# Write sysinfo log
 	foreach my $name (keys %{$procs_ref}) {
 		if ($name =~ /_sysinfo$/) {
 			if ($name eq '_sysinfo' or ($proc_name and $procs_ref->{$name}{file} eq $procs_ref->{$proc_name}{file})) {
-				run_proc $name, '', {};
+				run_proc $name, {}, {}, '';
 			}
 		}
 	}
 }
 
-my $ret = run_proc($proc_name, '', \%args);
-
+# Run the pipeline
+my $ret = run_proc($proc_name, $args_ref, $args_order_ref, '');
 if (not $test_mode) {
 	if (not defined $ret) {
 		log_print "Pipeline aborted!\n";
