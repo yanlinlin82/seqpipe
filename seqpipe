@@ -161,6 +161,31 @@ sub get_new_run_id
 }
 
 ############################################################
+# Directory walking
+
+sub dir_walk
+{
+	my ($path, $file_proc, $dir_proc) = @_;
+	if (-d $path) {
+		opendir my $dh, $path or die "Can not open directory '$path': $!";
+		my @res;
+		while (my $item = readdir $dh) {
+			next if $item eq '.' or $item eq '..';
+			push @res, dir_walk("$path/$item", $file_proc, $dir_proc);
+		}
+		return $dir_proc ? $dir_proc->($path, @res) : ();
+	} else {
+		return $file_proc ? $file_proc->($path) : ();
+	}
+}
+
+sub get_all_pipe
+{
+	# Get all .pipe files in directories, including their sub directories.
+	map { dir_walk $_, sub { grep /\.pipe$/, $_[0] }, sub { shift; sort @_ } } @_;
+}
+
+############################################################
 # Bash line parsing
 
 sub bash_line_encode
@@ -822,27 +847,6 @@ sub parse_proc
 			check_vars_dep({}, {}, {}, $global_vars_list_ref->{$file});
 		}
 	}
-}
-
-sub expand_file_list
-{
-	my @res = ();
-	foreach my $item (@_) {
-		if ($item =~ /\.pipe$/ && -f $item) {
-			push @res, abs_path $item;
-		} elsif ($item =~ /^\./ || -d $item) {
-			my @files = ();
-			opendir(my $dh, $item) || die "Can not opendir '$item': $!";
-			while (my $x = readdir($dh)) {
-				if ($x !~ /^\./ && ($x =~ /\.pipe$/ || -d "$item/$x")) {
-					push @files, abs_path "$item/$x";
-				}
-			}
-			closedir($dh);
-			push @res, expand_file_list(@files);
-		}
-	}
-	return @res;
 }
 
 sub init_envs
@@ -2078,7 +2082,7 @@ $list_mode = 2 if $list_mode and (scalar @files == 0);
 if ($auto_load) {
 	load_module $_, $args_ref, 0 foreach sort glob APP_ROOT . '/*.pipe';
 }
-load_module $_, $args_ref, 1 foreach sort expand_file_list @files;
+load_module $_, $args_ref, 1 foreach get_all_pipe @files;
 
 # List procedures
 if ($list_mode) {
