@@ -40,6 +40,7 @@ my $help_mode = 0;
 my $list_mode = 0;
 my $test_mode = 0;
 my $show_mode = 0;
+my $verbose = 0;
 
 my $keep_temps = 0;
 my $shell = '/bin/bash';
@@ -98,6 +99,24 @@ sub time_elapse_string
 
 ############################################################
 # Log out functions
+
+sub set_die_verbose
+{
+	my $stub = q{
+		sub {
+			my $msg = $_[0];
+			$msg =~ s/( at .+ line \d+\.\n)$/\n__REPLACE__/m;
+			die "ERROR: ", $msg;
+		}
+	};
+	if ($_[0]) {
+		$stub =~ s/__REPLACE__/Failed\$1/m;
+	} else {
+		$stub =~ s/__REPLACE__//m;
+	}
+	$SIG{__DIE__} = eval $stub;
+}
+set_die_verbose 0;
 
 sub log_print
 {
@@ -180,7 +199,7 @@ sub bash_line_decode
 	my ($cmd) = @_;
 
 	my ($bash, $comment) = split_bash_and_comment($cmd);
-	die 'Bad bash line!' if not defined $bash;
+	die "Bad bash line!" if not defined $bash;
 	$cmd = $bash;
 
 	# Split bash command line to @argv.
@@ -261,7 +280,7 @@ sub get_vars_dep
 		while ($vars{$name} =~ /\${(\w+)}/g) {
 			next if $name eq $1;           # Ignore self-dependency
 			next if not exists $vars{$1};  # Ignore undefined variable
-			die "ERROR: Cyclic-dependency between variables '$name' and '$1' detected!\n" if has_dep($1, $name, \%deps);
+			die "Cyclic-dependency between variables '$name' and '$1' detected!" if has_dep($1, $name, \%deps);
 			$deps{$name} = {} if not exists $deps{$name};
 			$deps{$name}{$1} = 1;
 		}
@@ -370,7 +389,7 @@ sub check_vars_dep
 		
 		while ($value =~ /\${(\w+)}/g) {
 			my $dep = $1;
-			die "ERROR: Cyclic-dependency between variables '$name' and '$dep' detected!\n" if has_dep($dep, $name, \%deps);
+			die "Cyclic-dependency between variables '$name' and '$dep' detected!" if has_dep($dep, $name, \%deps);
 			add_dep($name, $dep, \%deps);
 		}
 	}
@@ -383,13 +402,13 @@ sub check_files_dep
 	my %deps = ();
 	foreach my $file (keys %{$requires_of_ref}) {
 		foreach my $dep (keys %{$requires_of_ref->{$file}}) {
-			die "ERROR: Cyclic-dependency between files '$file' and '$dep' detected!\n" if has_dep($dep, $file, \%deps);
+			die "Cyclic-dependency between files '$file' and '$dep' detected!" if has_dep($dep, $file, \%deps);
 			add_dep($file, $dep, \%deps);
 		}
 	}
 	foreach my $file (keys %{$inputs_of_ref}) {
 		foreach my $dep (keys %{$inputs_of_ref->{$file}}) {
-			die "ERROR: Cyclic-dependency between files '$file' and '$dep' detected!\n" if has_dep($dep, $file, \%deps);
+			die "Cyclic-dependency between files '$file' and '$dep' detected!" if has_dep($dep, $file, \%deps);
 			add_dep($file, $dep, \%deps);
 		}
 	}
@@ -408,7 +427,7 @@ sub parse_cmd
 	my @argv = bash_line_decode($command);
 	if ($argv[0] =~ /^SP_/) {
 		if ($argv[0] eq 'SP_set') {
-			die 'ERROR: Invalid option for SP_set!' if $command !~ /^\s*SP_set\s+(\w+)=(.*)$/;
+			die "Invalid option for SP_set!" if $command !~ /^\s*SP_set\s+(\w+)=(.*)$/;
 			$cmd_ref->{command} = 'SP_set';
 			$cmd_ref->{variable} = $1;
 			$cmd_ref->{text} = $2;
@@ -422,12 +441,12 @@ sub parse_cmd
 			} elsif ($command =~ /^SP_if\s+(.*)\s*$/) {
 				push @{$cmd_ref->{condition}}, { command => 'SP_if', text => $1 };
 			} else {
-				die 'ERROR: Invalid format of SP_if!';
+				die "Invalid format of SP_if!";
 			}
 			
 			my $l = shift @{$lines_ref};
 			my $line = $l->{text};
-			die "ERROR: Invalid format of SP_if in $l->{info}.\n" if $line !~ /^\s*(\{|\{\{)\s*$/;
+			die "Invalid format of SP_if in $l->{info}." if $line !~ /^\s*(\{|\{\{)\s*$/;
 			my $blocking = $1;
 			push @blocks, parse_block($proc_name, $blocking, $file, $lines_ref, $proc_info_ref);
 			$cmd_ref->{condition}[-1]{block} = scalar @blocks - 1;
@@ -443,12 +462,12 @@ sub parse_cmd
 					} elsif ($line =~ /^\s*SP_else_if\s+(.*)\s*$/) {
 						push @{$cmd_ref->{condition}}, { command => 'SP_else_if', text => $1 };
 					} else {
-						die 'ERROR: Invalid format of SP_else_if!';
+						die "Invalid format of SP_else_if!";
 					}
 
 					$l = shift @{$lines_ref};
 					$line = $l->{text};
-					die "ERROR: Invalid format of SP_else_if in $l->{info}.\n" if $line !~ /^\s*(\{|\{\{)\s*$/;
+					die "Invalid format of SP_else_if in $l->{info}." if $line !~ /^\s*(\{|\{\{)\s*$/;
 					$blocking = $1;
 					push @blocks, parse_block($proc_name, $blocking, $file, $lines_ref, $proc_info_ref);
 					$cmd_ref->{condition}[-1]{block} = scalar @blocks - 1;
@@ -457,7 +476,7 @@ sub parse_cmd
 					shift @{$lines_ref};
 					$l = shift @{$lines_ref};
 					my $line = $l->{text};
-					die 'ERROR: Invalid option for SP_else!' if $line !~ /^\s*(\{|\{\{)\s*$/;
+					die "Invalid option for SP_else!" if $line !~ /^\s*(\{|\{\{)\s*$/;
 					my $blocking = $1;
 					push @blocks, parse_block($proc_name, $blocking, $file, $lines_ref, $proc_info_ref);
 					$cmd_ref->{else_block} = scalar @blocks - 1;
@@ -468,29 +487,29 @@ sub parse_cmd
 			}
 		} elsif ($argv[0] eq 'SP_for' or $argv[0] eq 'SP_for_parallel') {
 			if ($command !~ /^\s*(SP_for(_parallel|))\s+(\w+)=(.*)$/) {
-				die "ERROR: Invalid format for '$argv[0]'!";
+				die "Invalid format for '$argv[0]'!";
 			}
 			$cmd_ref->{command} = $1;
 			$cmd_ref->{variable} = $3;
 			$cmd_ref->{text} = $4;
-			die "ERROR: Variable of $cmd_ref->{command} should start with '_' in $l->{info}.\n" if $3 !~ /^_/;
+			die "Variable of $cmd_ref->{command} should start with '_' in $l->{info}." if $3 !~ /^_/;
 			
 			my $l = shift @{$lines_ref};
 			my $line = $l->{text};
-			die "ERROR: Invalid format of $cmd_ref->{command}!" if $line !~ /^\s*(\{|\{\{)\s*$/;
+			die "Invalid format of $cmd_ref->{command}!" if $line !~ /^\s*(\{|\{\{)\s*$/;
 			my $blocking = $1;
 			push @blocks, parse_block($proc_name, $blocking, $file, $lines_ref, $proc_info_ref);
 			$cmd_ref->{block} = scalar @blocks - 1;
 
 		} elsif ($argv[0] eq 'SP_while') {
-			die 'ERROR: Invalid option for SP_while!' if $command !~ /^\s*SP_while\s*(|!)\s*\((.*)\)\s*$/;
+			die "Invalid option for SP_while!" if $command !~ /^\s*SP_while\s*(|!)\s*\((.*)\)\s*$/;
 			$cmd_ref->{command} = 'SP_while';
 			$cmd_ref->{negative} = $1;
 			$cmd_ref->{bash} = $2;
 			
 			my $l = shift @{$lines_ref};
 			my $line = $l->{text};
-			die 'ERROR: Invalid format of SP_while!' if $line !~ /^\s*(\{|\{\{)\s*$/;
+			die "Invalid format of SP_while!" if $line !~ /^\s*(\{|\{\{)\s*$/;
 			my $blocking = $1;
 			push @blocks, parse_block($proc_name, $blocking, $file, $lines_ref, $proc_info_ref);
 			$cmd_ref->{block} = scalar @blocks - 1;
@@ -498,22 +517,22 @@ sub parse_cmd
 		} elsif ($argv[0] eq 'SP_run') {
 			$cmd_ref->{command} = shift @argv;
 			$cmd_ref->{proc_name} = shift @argv;
-			die "ERROR: Bad procedure name '$cmd_ref->{proc_name}' for SP_run in $l->{info}" if $cmd_ref->{proc_name} !~ /^\w+$/;
+			die "Bad procedure name '$cmd_ref->{proc_name}' for SP_run in $l->{info}" if $cmd_ref->{proc_name} !~ /^\w+$/;
 			$cmd_ref->{options} = {};
 			for my $opt (@argv) {
 				if ($opt eq '...') {
-					die "ERROR: Duplicated '...' for SP_run in $l->{info}" if exists $cmd_ref->{dots};
+					die "Duplicated '...' for SP_run in $l->{info}" if exists $cmd_ref->{dots};
 					$cmd_ref->{dots} = 1;
 					next;
 				}
-				die "ERROR: Invalid option '$opt' for SP_run in $l->{info}" if $opt !~ /^(\w+)=(.*)$/;
-				die "ERROR: Duplicate option '$opt' for SP_run in $l->{info}" if exists $cmd_ref->{options}{$1};
+				die "Invalid option '$opt' for SP_run in $l->{info}" if $opt !~ /^(\w+)=(.*)$/;
+				die "Duplicate option '$opt' for SP_run in $l->{info}" if exists $cmd_ref->{options}{$1};
 				$cmd_ref->{options}{$1} = $2;
 				my $name = $1;
-				die "ERROR: Invalid option '$name'! Option name starts with '_' is reserved!\n" if $name =~ /^_/;
+				die "Invalid option '$name'! Option name starts with '_' is reserved!" if $name =~ /^_/;
 			}
 		} else {
-			die "ERROR: Invalid primitive line '$argv[0]'!\n";
+			die "Invalid primitive line '$argv[0]'!";
 		}
 	}
 
@@ -536,18 +555,18 @@ sub parse_block
 
 	while (1) {
 		if (scalar @{$lines_ref} <= 0) {
-			die "ERROR: Invalid procedure declaration! Line '}' or '}}' expected!";
+			die "Invalid procedure declaration! Line '}' or '}}' expected!";
 		}
 		my $l = shift @{$lines_ref};
 		my $line = $l->{text};
 		if ($line =~ /^\s*(\}|\}\}|SP_parallel_end)\s*(|#.*)$/) {
 			if ($blocking eq '{') {
 				last if $1 eq '}';
-				die "ERROR: Unmatched curly bracket! Line '}' expected!";
+				die "Unmatched curly bracket! Line '}' expected!";
 			}
 			if ($blocking eq '{{') {
 				last if $1 eq '}}' or $1 eq 'SP_parallel_end';
-				die "ERROR: Unmatched curly bracket! Line '}}' expected!";
+				die "Unmatched curly bracket! Line '}}' expected!";
 			}
 		} elsif ($line =~ /^\s*(\{|\{\{|SP_parallel_begin)\s*(|#.*)$/) {
 			my $sub_blocking = $1;
@@ -566,7 +585,7 @@ sub parse_block
 		}
 
 		my ($bash, $comment) = split_bash_and_comment($line);
-		die "ERROR: Invalid format of command in $l->{info}.\n" if not defined $bash;
+		die "Invalid format of command in $l->{info}." if not defined $bash;
 		$line = $bash;
 
 		if ($last_line eq '') {
@@ -583,7 +602,7 @@ sub parse_block
 			$last_line = $line;
 		} elsif ($line =~ /^#/) {
 			if ($line =~ /^#\[/) {
-				die "ERROR: Invalid format of command attribute declaration in $l->{info}.\n"
+				die "Invalid format of command attribute declaration in $l->{info}."
 					if $line !~ /^#\[(command\s+|)([\w\.]+)="[^"]*"(\s+([\w\.]+)="[^"]*")*\]$/;
 
 				if ($1 =~ /^command\s+$/ and not $obsolete_warned) {
@@ -594,28 +613,28 @@ sub parse_block
 				while ($line =~ /([\w\.]+)="(.*?)"/g) {
 					if ($1 eq 'require') {
 						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
-							die "ERROR: Duplicated attribute for require file '$2'!";
+							die "Duplicated attribute for require file '$2'!";
 						}
 						$cmd_info{requires}{$2} = 1;
 					} elsif ($1 eq 'input') {
 						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
-							die "ERROR: Duplicated attribute for input file '$2'!";
+							die "Duplicated attribute for input file '$2'!";
 						}
 						$cmd_info{inputs}{$2} = 1;
 					} elsif ($1 eq 'output' or $1 eq 'output.temp' or $1 eq 'output.save') {
 						if (exists $cmd_info{requires}{$2} or exists $cmd_info{inputs}{$2} or exists $cmd_info{outputs}{$2}) {
-							die "ERROR: Duplicated attribute for output file '$2'!";
+							die "Duplicated attribute for output file '$2'!";
 						}
 						$cmd_info{outputs}{$2} = 1;
 						$cmd_info{saves}{$2} = 1 if $1 eq 'output.save';
 						$cmd_info{temps}{$2} = 1 if $1 eq 'output.temp';
 					} elsif ($1 eq 'name') {
 						if ($cmd_info{name} ne '') {
-							die "ERROR: Duplicated attribute for command name!";
+							die "Duplicated attribute for command name!";
 						}
 						$cmd_info{name} = $2;
 					} else {
-						die "ERROR: Unknown command attribute '$1' in $l->{info}.\n";
+						die "Unknown command attribute '$1' in $l->{info}.";
 					}
 				}
 			}
@@ -646,7 +665,7 @@ sub parse_block
 		}
 	}
 	if ($last_line) {
-		die 'ERROR: Invalid procedure declaration! Last command line not finished!';
+		die "Invalid procedure declaration! Last command line not finished!";
 	}
 
 	return { proc_name => $proc_name,
@@ -666,7 +685,7 @@ sub load_lines
 	if (not exists $loaded_ref->{$file}) {
 
 		open my $handle, '<', $file or die join("\n\t",
-			("ERROR: Can't open file '$file', which is included by:", @{$including_ref})) . "\nFailed";
+			("Can't open file '$file', which is included by:", @{$including_ref}));
 		$loaded_ref->{$file} = 1;
 
 		my $line_no = 0;
@@ -680,7 +699,7 @@ sub load_lines
 				$the_file = dirname($file) . '/' . $inc_file unless $the_file =~ /^\//;
 				$the_file = abs_path($the_file);
 				if (not defined $the_file or $the_file eq '') {
-					die join("\n\t", ("ERROR: Can not find file '$inc_file', which is included by:", "$file($line_no)", @{$including_ref})) . "\nFailed";
+					die join("\n\t", ("Can not find file '$inc_file', which is included by:", "$file($line_no)", @{$including_ref}));
 				}
 				push @lines, load_lines($the_file, $loaded_ref, [ "$file($line_no)", @{$including_ref} ]);
 			} else {
@@ -711,7 +730,7 @@ sub parse_proc
 		if ($l->{text} =~ /^\s*#/) {
 			if ($l->{text} =~ /^\s*#\[/) {
 				next if $l->{text} =~ /^#\[(seqpipe|version)/;
-				die "ERROR: Invalid format of procedure attribute declaration in $l->{info}.\n"
+				die "Invalid format of procedure attribute declaration in $l->{info}."
 					if $l->{text} !~ /^#\[(procedure\s+|)([\w\.]+)="[^"]*"(\s+([\w\.]+)="[^"]*")*\]$/;
 
 				if ($1 =~ /^procedure\s+$/ and not $obsolete_warned) {
@@ -725,27 +744,27 @@ sub parse_proc
 						$obsolete_warned = 1;
 					} elsif ($1 eq 'require') {
 						if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
-							die "ERROR: Duplicated attribute for require file '$2' in $l->{info}.\n";
+							die "Duplicated attribute for require file '$2' in $l->{info}.";
 						}
 						$requires{$2} = 1;
 					} elsif ($1 eq 'input') {
 						if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
-							die "ERROR: Duplicated attribute for input file '$2' in $l->{info}.\n";
+							die "Duplicated attribute for input file '$2' in $l->{info}.";
 						}
 						$inputs{$2} = 1;
 					} elsif ($1 eq 'output') {
 						if (exists $requires{$2} or exists $inputs{$2} or exists $outputs{$2}) {
-							die "ERROR: Duplicated attribute for output file '$2' in $l->{info}.\n";
+							die "Duplicated attribute for output file '$2' in $l->{info}.";
 						}
 						$outputs{$2} = 1;
 					} else {
-						die "ERROR: Unknown procedure attribute '$1' in $l->{info}.\n";
+						die "Unknown procedure attribute '$1' in $l->{info}.";
 					}
 					next;
 				}
 			}
 		} elsif ($l->{text} =~ /^\s*function\s+/) {
-			die 'ERROR: Invalid procedure declaration!' if $l->{text} !~ /^function\s+(\w+)\s*(\{|\{\{|)\s*$/;
+			die "Invalid procedure declaration!" if $l->{text} !~ /^function\s+(\w+)\s*(\{|\{\{|)\s*$/;
 			my $proc_name = $1;
 			my $blocking = $2;
 
@@ -761,7 +780,7 @@ sub parse_proc
 						$blocking = $1;
 						last;
 					}
-					die "ERROR: Invalid procedure declaration! Line '{' or '{{' expected in $l->{info}.\n";
+					die "Invalid procedure declaration! Line '{' or '{{' expected in $l->{info}.";
 				}
 			}
 			$met_proc = 1;
@@ -796,12 +815,12 @@ sub parse_proc
 
 			my $name = $1;
 			my ($value, $comment) = split_bash_and_comment($2);
-			die "ERROR: Bad declaration format of global variable '$name' in $l->{info}.\n" if not defined $value;
+			die "Bad declaration format of global variable '$name' in $l->{info}." if not defined $value;
 			$value =~ s/^\s+//g;  # Remove leading white-spaces.
 			$value =~ s/\s+$//g;  # Remove tailing white-spaces.
 			$value =~ s/^"(.*?)"$/$1/;  # Remove quot marks.
 			if (exists $global_vars{$file}{$name}) {
-				die "ERROR: Redeclaration of global variable '$name' in $l->{info}.\n";
+				die "Redeclaration of global variable '$name' in $l->{info}.";
 			}
 			$global_vars{$file}{$name} = $value;
 			check_vars_dep({}, {}, {}, $global_vars{$file});
@@ -848,14 +867,14 @@ sub load_modules
 				++$line_no;
 				chomp $line;
 				my ($bash, $comment) = split_bash_and_comment($line);
-				die "ERROR: Invalid declaration in $file.conf($line_no)" if not defined $bash;
+				die "Invalid declaration in $file.conf($line_no)" if not defined $bash;
 				$line = $bash;
 				if ($line =~ /^\s*(\w+)=(.*)$/) {
 					my $name = $1;
 					my ($value, $comment) = split_bash_and_comment($2);
 					$global_vars{$file}{$name} = $value;
 				} elsif ($line !~ /^\s*$/) {
-					die "ERROR: Invalid syntax in $file.conf($line_no). Only global variables are allowed to declared in $file.conf!";
+					die "Invalid syntax in $file.conf($line_no). Only global variables are allowed to declared in $file.conf!";
 				}
 			}
 			close $file_handle;
@@ -879,6 +898,7 @@ Usage:
 
 Options:
    -h / -H              Show help messages.
+   -v                   Show verbose messages.
    -l / -L [<pattern>]  List current available procedures.
    -m <file>            Load procedure module file, this option can be used many times.
    -D                   Disable to load default pipelines.
@@ -1071,7 +1091,7 @@ sub check_block
 					$proc_vars{$cmd_ref->{variable}} = $cmd_ref->{text};
 				}
 			} elsif ($cmd_ref->{command} eq 'SP_run') {
-				die "ERROR: Unknown procedure '$cmd_ref->{proc_name}' for SP_run in $cmd_ref->{line_info}.\n" if not exists $proc_list{$cmd_ref->{proc_name}};
+				die "Unknown procedure '$cmd_ref->{proc_name}' for SP_run in $cmd_ref->{line_info}." if not exists $proc_list{$cmd_ref->{proc_name}};
 
 				my @items = (values %{$cmd_ref->{options}}, keys %{$cmd_ref->{requires}}, keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}}, keys %{$cmd_ref->{saves}}, keys %{$cmd_ref->{temps}});
 				check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, @items);
@@ -1083,8 +1103,8 @@ sub check_block
 				my $info_ref = check_proc($proc_list{$cmd_ref->{proc_name}}, \%args, {}, $global_vars_ref);
 				if (%{$info_ref->{req_vars}}) {
 					if (not exists $cmd_ref->{dots}) {
-						die "ERROR: No enough variable(s) for SP_run '$cmd_ref->{proc_name}' in $cmd_ref->{line_info}:\n   "
-							. join(', ', sort keys %{$info_ref->{req_vars}}) . "\n";
+						die "No enough variable(s) for SP_run '$cmd_ref->{proc_name}' in $cmd_ref->{line_info}:\n   "
+							. join(', ', sort keys %{$info_ref->{req_vars}}) . "";
 					} else {
 						foreach my $name (keys %{$info_ref->{req_vars}}) {
 							if (exists $args_ref->{$name}) {
@@ -1966,66 +1986,67 @@ sub run_block
 ############################################################
 # Main program start from here.
 
+# Parse command line
 my $proc_name = '';
 my %args = ();
 
-if ($#ARGV < 0) {
-	$help_mode = 1;
-} else {
-	while (my $arg = shift @ARGV) {
-		if ($arg eq '-h') {
-			$help_mode = 1;
-		} elsif ($arg eq '-H') {
-			$help_mode = 2;
-		} elsif ($arg eq '-m') {
-			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
-			push(@files, abs_path shift @ARGV);
-		} elsif ($arg eq '-D') {
-			$auto_load = 0;
-		} elsif ($arg eq '-l') {
-			$list_mode = 1;
-		} elsif ($arg eq '-L') {
-			$list_mode = 2;
-		} elsif ($arg eq '-T') {
-			$test_mode = 1;
-		} elsif ($arg eq '-R') {
-			$show_mode = 1;
-		} elsif ($arg eq '-k') {
-			$keep_temps = 1;
-		} elsif ($arg eq '-t') {
-			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
-			$max_thread_number = shift @ARGV;
-			die "ERROR: Invalid max thread number: $max_thread_number!\n" if $max_thread_number <= 0;
-			if ($max_thread_number > 1 and not $can_use_threads) {
-				print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
-			}
-		} elsif ($arg eq '-e') {
-			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
-			my $cmd = shift @ARGV;
-			die "ERROR: Empty inline command is not allowed!\n" if $cmd =~ /^\s*$/;
-			die "ERROR: Multi-line inline command is not allowed!\n" if $cmd =~ /\n/;
-			push @exec_cmds, $cmd;
-		} elsif ($arg eq '-s') {
-			die "ERROR: Missing argument for '$arg' option!\n" if $#ARGV < 0;
-			$shell = shift @ARGV;
-			die "ERROR: Empty shell command is not allowed!\n" if $shell =~ /^\s*$/;
-			my $qsub_sync = APP_ROOT . '/qsub_sync';
-			$shell =~ s/^qsub(\s.*|)/$qsub_sync$1/;
+$help_mode = 1 if $#ARGV < 0;
+while (my $arg = shift @ARGV) {
+	if ($arg eq '-h') {
+		$help_mode = 1;
+	} elsif ($arg eq '-H') {
+		$help_mode = 2;
+	} elsif ($arg eq '-v') {
+		++$verbose;
+		set_die_verbose $verbose;
+	} elsif ($arg eq '-m') {
+		die "Missing argument for '$arg' option!" if $#ARGV < 0;
+		push @files, abs_path shift @ARGV;
+	} elsif ($arg eq '-D') {
+		$auto_load = 0;
+	} elsif ($arg eq '-l') {
+		$list_mode = 1;
+	} elsif ($arg eq '-L') {
+		$list_mode = 2;
+	} elsif ($arg eq '-T') {
+		$test_mode = 1;
+	} elsif ($arg eq '-R') {
+		$show_mode = 1;
+	} elsif ($arg eq '-k') {
+		$keep_temps = 1;
+	} elsif ($arg eq '-t') {
+		die "Missing argument for '$arg' option!" if $#ARGV < 0;
+		$max_thread_number = shift @ARGV;
+		die "Invalid max thread number: $max_thread_number!" if $max_thread_number <= 0;
+		if ($max_thread_number > 1 and not $can_use_threads) {
+			print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
+		}
+	} elsif ($arg eq '-e') {
+		die "Missing argument for '$arg' option!" if $#ARGV < 0;
+		my $cmd = shift @ARGV;
+		die "Empty inline command is not allowed!" if $cmd =~ /^\s*$/;
+		die "Multi-line inline command is not allowed!" if $cmd =~ /\n/;
+		push @exec_cmds, $cmd;
+	} elsif ($arg eq '-s') {
+		die "Missing argument for '$arg' option!" if $#ARGV < 0;
+		$shell = shift @ARGV;
+		die "Empty shell command is not allowed!" if $shell =~ /^\s*$/;
+		my $qsub_sync = APP_ROOT . '/qsub_sync';
+		$shell =~ s/^qsub(\s.*|)/$qsub_sync$1/;
+	} else {
+		die "Unknown option '$arg'!" if $arg =~ /^-/;
+		if ($arg =~ /^(\w+)=(.*)$/) {
+			die "duplicated option '$1'!" if exists $args{$1};
+			my $name = $1;
+			$args{$name} = $2;
+			die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
 		} else {
-			die "ERROR: Unknown option '$arg'!\n" if $arg =~ /^-/;
-			if ($arg =~ /^(\w+)=(.*)$/) {
-				die "ERROR: duplicated option '$1'!\n" if exists $args{$1};
-				my $name = $1;
-				$args{$name} = $2;
-				die "ERROR: Invalid option '$name'! Option name starts with '_' is reserved.\n" if $name =~ /^_/;
-			} else {
-				die "ERROR: Invalid format of option: $arg\n" if $proc_name or @exec_cmds;
-				$proc_name = $arg;
-			}
+			die "Invalid format of option: $arg" if $proc_name or @exec_cmds;
+			$proc_name = $arg;
 		}
 	}
 }
-die "ERROR: Can not use both '-e' and '<proc_name>'!\n" if $proc_name and @exec_cmds;
+die "Can not use both '-e' and '<proc_name>'!" if $proc_name and @exec_cmds;
 
 $list_mode = 2 if $list_mode and (scalar @files == 0);
 @files = (glob(APP_ROOT . '/*.pipe'), @files) if $auto_load;
@@ -2046,7 +2067,7 @@ if (@exec_cmds) {
 		exit 1;
 	}
 } elsif ($proc_name) {
-	die "ERROR: Unknown procedure '$proc_name'! Use '-l' to list available procedures.\n"
+	die "Unknown procedure '$proc_name'! Use '-l' to list available procedures."
 		unless exists $proc_list{$proc_name};
 	
 	show_proc $proc_name, \%args if $show_mode;
@@ -2067,15 +2088,15 @@ show_info $proc_name, $info_ref if $help_mode;
 
 if (not $test_mode) {
 	if (%{$info_ref->{req_vars}}) {
-		die 'ERROR: Variable(s) required for ' . ($proc_name ? "procedure '$proc_name'" : "inline command")
-			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "\n";
+		die "Variable(s) required for " . ($proc_name ? "procedure '$proc_name'" : "inline command")
+			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "";
 	}
-	die "ERROR: Can not run internal procedures '$proc_name' directly!\n" if $proc_name =~ /^_/;
+	die "Can not run internal procedures '$proc_name' directly!" if $proc_name =~ /^_/;
 
 	init_sig_int();
 
-	mkdir LOG_ROOT or die "ERROR: Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
-	mkdir LOG_DIR or die "ERROR: Can't create directory '" . LOG_DIR . "'!";
+	mkdir LOG_ROOT or die "Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
+	mkdir LOG_DIR or die "Can't create directory '" . LOG_DIR . "'!";
 
 	system "ln -s -f -n " . UNIQ_ID . " " . LOG_ROOT . "/last";
 
