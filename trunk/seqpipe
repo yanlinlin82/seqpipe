@@ -710,7 +710,7 @@ sub load_lines
 
 sub parse_proc
 {
-	my ($file, $lines_ref) = @_;
+	my ($file, $lines_ref, $args_ref, $type) = @_;
 	my %requires = ();
 	my %inputs = ();
 	my %outputs = ();
@@ -794,6 +794,7 @@ sub parse_proc
 				$proc_ref->{outputs}{$file} = 1;
 			}
 
+			$proc_ref->{type} = $type;
 			$proc_ref->{name} = $proc_name;
 			$proc_ref->{file} = $file;
 			$procs_ref->{$proc_name} = $proc_ref;
@@ -844,36 +845,53 @@ sub expand_file_list
 	return @res;
 }
 
-sub load_modules
+sub init_envs
 {
-	my ($files_ref, $args_ref) = @_;
+	my ($file) = @_;
+	if (not exists $global_vars_list_ref->{''}) {
+		$global_vars_list_ref->{''} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => APP_ROOT };
+	}
+	%{$global_vars_list_ref->{$file}} = %{$global_vars_list_ref->{''}};
+}
 
-	# Load procedure code of modules
-	foreach my $file (expand_file_list(@{$files_ref})) {
-		next if exists $global_vars_list_ref->{$file};
-		$global_vars_list_ref->{$file} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => APP_ROOT };
-		my @lines = load_lines($file, {}, []);
-		while (@lines) {
-			parse_proc($file, \@lines, $args_ref);
-		}
-		if (open my $file_handle, '<', "$file.conf") {
-			my $line_no = 0;
-			while (my $line = <$file_handle>) {
-				++$line_no;
-				chomp $line;
-				my ($bash, $comment) = split_bash_and_comment($line);
-				die "Invalid declaration in $file.conf($line_no)" if not defined $bash;
-				$line = $bash;
-				if ($line =~ /^\s*(\w+)=(.*)$/) {
-					my $name = $1;
-					my ($value, $comment) = split_bash_and_comment($2);
-					$global_vars_list_ref->{$file}{$name} = $value;
-				} elsif ($line !~ /^\s*$/) {
-					die "Invalid syntax in $file.conf($line_no). Only global variables are allowed to declared in $file.conf!";
+sub load_module
+{
+	my ($file, $args_ref, $type) = @_;
+	
+	if (exists $global_vars_list_ref->{$file}) {
+		foreach my $name (keys %{$procs_ref}) {
+			if ($procs_ref->{$name}{file} eq $file) {
+				if ($procs_ref->{$name}{type} < $type) {
+					$procs_ref->{$name}{type} = $type;
 				}
 			}
-			close $file_handle;
 		}
+		return;
+	}
+
+	printf "Load module: $file\n" if $verbose;
+	init_envs $file;
+	my @lines = load_lines($file, {}, []);
+	while (@lines) {
+		parse_proc($file, \@lines, $args_ref, $type);
+	}
+	if (open my $file_handle, '<', "$file.conf") {
+		my $line_no = 0;
+		while (my $line = <$file_handle>) {
+			++$line_no;
+			chomp $line;
+			my ($bash, $comment) = split_bash_and_comment($line);
+			die "Invalid declaration in $file.conf($line_no)" if not defined $bash;
+			$line = $bash;
+			if ($line =~ /^\s*(\w+)=(.*)$/) {
+				my $name = $1;
+				my ($value, $comment) = split_bash_and_comment($2);
+				$global_vars_list_ref->{$file}{$name} = $value;
+			} elsif ($line !~ /^\s*$/) {
+				die "Invalid syntax in $file.conf($line_no). Only global variables are allowed to declared in $file.conf!";
+			}
+		}
+		close $file_handle;
 	}
 }
 
@@ -1363,8 +1381,7 @@ sub list_proc
 	print ":\n";
 	foreach my $name (sort keys %{$procs_ref}) {
 		next if $name =~ /^_/;
-		my $path = APP_ROOT;
-		next if $list_mode == 1 and $procs_ref->{$name}{file} =~ /^$path/;
+		next if $list_mode == 1 and $procs_ref->{$name}{type} == 0;
 		print "   $name\n" if $name =~ /$proc_name/;
 	}
 	print "\n";
@@ -2058,8 +2075,10 @@ die "Can not use both '-e' and '<proc_name>'!" if $proc_name and @exec_cmds;
 
 # Load modules
 $list_mode = 2 if $list_mode and (scalar @files == 0);
-@files = (glob(APP_ROOT . '/*.pipe'), @files) if $auto_load;
-load_modules \@files, $args_ref;
+if ($auto_load) {
+	load_module $_, $args_ref, 0 foreach sort glob APP_ROOT . '/*.pipe';
+}
+load_module $_, $args_ref, 1 foreach sort expand_file_list @files;
 
 # List procedures
 if ($list_mode) {
