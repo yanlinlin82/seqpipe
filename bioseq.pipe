@@ -130,67 +130,67 @@ _PINDEL2VCF=${PINDEL_PATH}pindel2vcf
 
 function _bioseq_sysinfo
 {
-	if [ -x ${_FASTQC} ]; then \
+	if (which ${_FASTQC} >/dev/null 2>/dev/null); then \
 		echo -n "FastQC   : "; ${_FASTQC} --version | cut -d" " -f2; \
 	else \
 		echo -e 'FastQC   : <none>'; \
 	fi
 
-	if [ -x ${_FASTX_TRIMMER} ]; then \
+	if (which ${_FASTX_TRIMMER} >/dev/null 2>/dev/null); then \
 		echo -n 'FastX    : '; ${_FASTX_TRIMMER} -h | grep FASTX | sed 's/^.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*$/\1/g'; \
 	else \
 		echo -e 'FastX    : <none>'; \
 	fi
 
-	if [ -x ${_EMBOSS_VERSION} ]; then \
+	if (which ${_EMBOSS_VERSION} >/dev/null 2>/dev/null); then \
 		echo -n 'EMBOSS   : '; ${_EMBOSS_VERSION} 2>/dev/null; \
 	else \
 		echo -e 'EMBOSS   : <none>'; \
 	fi
 
-	if [ -x ${_BWA} ]; then \
+	if (which ${_BWA} >/dev/null 2>/dev/null); then \
 		echo -n 'bwa      : '; ${_BWA} 2>&1 | grep Version | cut -d' ' -f2; \
 	else \
 		echo -e 'bwa      : <none>'; \
 	fi
 
-	if [ -x ${_BOWTIE} ]; then \
+	if (which ${_BOWTIE} >/dev/null 2>/dev/null); then \
 		echo -n 'bowtie   : '; ${_BOWTIE} --version | sed -n '1p' | cut -d' ' -f3; \
 	else \
 		echo -e 'bowtie   : <none>'; \
 	fi
 
-	if [ -x ${_BOWTIE2} ]; then \
+	if (which ${_BOWTIE2} >/dev/null 2>/dev/null); then \
 		echo -n 'bowtie2  : '; ${_BOWTIE2} --version | sed -n '1p' | cut -d' ' -f3; \
 	else \
 		echo -e 'bowtie2  : <none>'; \
 	fi
 
-	if [ -x ${_SAMTOOLS} ]; then \
+	if (which ${_SAMTOOLS} >/dev/null 2>/dev/null); then \
 		echo -n 'samtools : '; ${_SAMTOOLS} 2>&1 | grep Version | cut -d' ' -f2-; \
 	else \
 		echo -e 'samtools : <none>'; \
 	fi
 
-	if [ -x ${_BCFTOOLS} ]; then \
+	if (which ${_BCFTOOLS} >/dev/null 2>/dev/null); then \
 		echo -n 'bcftools : '; ${_BCFTOOLS} 2>&1 | grep Version | cut -d' ' -f2-; \
 	else \
 		echo -e 'bcftools : <none>'; \
 	fi
 
-	if [ -e ${PICARD_ROOT}/ViewSam.jar ]; then \
+	if [ -s ${PICARD_ROOT}/ViewSam.jar ]; then \
 		echo -n 'picard   : '; java -jar ${PICARD_ROOT}/ViewSam.jar -h 2>&1 | grep Version | cut -d' ' -f2; \
 	else \
 		echo -e 'picard   : <none>'; \
 	fi
 
-	if [ -e ${GATK_ROOT}/GenomeAnalysisTK.jar ]; then \
+	if [ -s ${GATK_ROOT}/GenomeAnalysisTK.jar ]; then \
 		echo -n 'gatk     : '; java -jar ${GATK_ROOT}/GenomeAnalysisTK.jar --help | grep 'The Genome Analysis Toolkit' | cut -d',' -f1 | cut -d'v' -f2; \
 	else \
 		echo -e 'gatk     : <none>'; \
 	fi
 
-	if [ -x ${_PINDEL} ]; then \
+	if (which ${_PINDEL} >/dev/null 2>/dev/null); then \
 		echo -n 'pindel   : '; ${_PINDEL} | grep 'Pindel version' | sed -n '1p' | cut -d' ' -f3 | sed 's/,$//'; \
 	else \
 		echo -e 'pindel   : <none>'; \
@@ -201,30 +201,30 @@ function bioseq_syscheck
 {
 	which java
 
-	[ -x ${_FASTQC} ]
-	[ -x ${_FASTX_TRIMMER} ]
+	which ${_FASTQC}
+	which ${_FASTX_TRIMMER}
 
-	[ -x ${_BWA} ]
-	[ -x ${_BOWTIE} ]
-	[ -x ${_BOWTIE2} ]
+	which ${_BWA}
+	which ${_BOWTIE}
+	which ${_BOWTIE2}
 
-	[ -x ${_SAMTOOLS} ]
-	[ -x ${_BCFTOOLS} ]
+	which ${_SAMTOOLS}
+	which ${_BCFTOOLS}
 
-	[ -x ${_EMBOSS_VERSION} ]
-	[ -x ${_PINDEL} ]
+	which ${_EMBOSS_VERSION}
+	which ${_PINDEL}
 
-	[ -z "${REF}" ] || ls ${REF}
+	[ -z "${REF}" -o -s "${REF}" ]
 
-	ls ${PICARD_ROOT}/ViewSam.jar
-	ls ${GATK_ROOT}/GenomeAnalysisTK.jar
+	[ -s ${PICARD_ROOT}/ViewSam.jar ]
+	[ -s ${GATK_ROOT}/GenomeAnalysisTK.jar ]
 
-	ls ${GATK_VCF_DBSNP129}
-	ls ${GATK_VCF_DBSNP}
-	ls ${GATK_VCF_MILLS}
-	ls ${GATK_VCF_1KG}
-	ls ${GATK_VCF_HAPMAP}
-	ls ${GATK_VCF_OMNI}
+	[ -s ${GATK_VCF_DBSNP129} ]
+	[ -s ${GATK_VCF_DBSNP} ]
+	[ -s ${GATK_VCF_MILLS} ]
+	[ -s ${GATK_VCF_1KG} ]
+	[ -s ${GATK_VCF_HAPMAP} ]
+	[ -s ${GATK_VCF_OMNI} ]
 }
 
 ###########################################################################
