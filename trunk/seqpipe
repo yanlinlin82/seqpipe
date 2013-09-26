@@ -33,6 +33,10 @@ use constant LOG_DIR => LOG_ROOT . '/' . UNIQ_ID;
 use constant APP_ROOT => dirname abs_path $0;
 use constant DEF_PIPE => APP_ROOT . '/default.pipe';
 
+my $EMPTY_LINE      = '^\s*$';
+my $COMMENT_LINE    = '^\s*#';
+my $VAR_LINE        = '^\s*([\w\.]+)\s*=(.*)$';
+
 ############################################################
 # Command line parsing results.
 
@@ -274,6 +278,31 @@ sub has_dep
 
 ############################################################
 
+sub chk_vars_dep
+{
+	my ($args_ref, $proc_vars_ref, $gvars_ref) = @_;
+
+	my %deps = ();
+	foreach my $name (keys %{$args_ref}, keys %{$proc_vars_ref}, keys %{$gvars_ref}) {
+		my $value = '';
+		if (exists $args_ref->{$name}) {
+			$value = $args_ref->{$name};
+		} elsif (exists $proc_vars_ref->{$name}) {
+			$value = $proc_vars_ref->{$name};
+		} elsif (exists $gvars_ref->{$name}) {
+			$value = $gvars_ref->{$name};
+		}
+		
+		while ($value =~ /\${(\w+)}/g) {
+			my $dep = $1;
+			die "ERROR: Cyclic-dependency between variables '$name' and '$dep' detected!\n" if has_dep($dep, $name, \%deps);
+			add_dep($name, $dep, \%deps);
+		}
+	}
+}
+
+############################################################
+
 sub get_vars
 {
 	my ($args_ref, $proc_vars_ref, $global_vars_ref) = @_;
@@ -435,6 +464,35 @@ sub check_files_dep
 }
 
 ############################################################
+# Scripts loading
+
+sub file_pos
+{
+	my ($fp) = @_;
+	return "$fp->{file} line $fp->{line_no}";
+}
+
+sub read_one_line
+{
+	my ($fp) = @_;
+	$fp->{line} = readline($fp->{handle});
+	if (defined $fp->{line}) {
+		chomp $fp->{line};
+		++$fp->{line_no};
+		while ($fp->{line} =~ /\s\\\s*$/) {
+			my $line = readline($fp->{handle});
+			if (not defined $fp->{line}) {
+				undef $fp->{line};
+				last;
+			}
+			chomp $line;
+			++$fp->{line_no};
+			$fp->{line} =~ s/\\\s*$//g;
+			$fp->{line} .= "\n" . $line;
+		}
+	}
+	return defined $fp->{line};
+}
 
 sub parse_cmd
 {
@@ -864,6 +922,39 @@ sub update_proc_types
 	}
 }
 
+sub load_global_var
+{
+	my ($fp, $module, $allow_overwrite) = @_;
+	die "ERROR: Parse global variable definition failed at " . file_pos($fp) unless $fp->{line} =~ /$VAR_LINE/;
+	my $name = $1;
+	my ($value, $comment) = split_bash_and_comment($2);
+	die "ERROR: Bad declaration format of global variable '$name' at " . file_pos($fp) unless defined $value;
+	$value =~ s/^\s+//g;  # Remove leading white-spaces.
+	$value =~ s/\s+$//g;  # Remove tailing white-spaces.
+	$value =~ s/^"(.*?)"$/$1/;  # Remove quot marks.
+	die "ERROR: Redeclaration of global variable '$name' at " . file_pos($fp)
+		if not $allow_overwrite and exists $global_vars_list_ref->{$module}{$name};
+	$global_vars_list_ref->{$module}{$name} = $value;
+	chk_vars_dep({}, {}, {}, $global_vars_list_ref->{$module});
+}
+
+sub load_module_conf
+{
+	my ($conf_file, $module, $allow_overwrite) = @_;
+	print "Load config: $conf_file\n" if $verbose;
+	open my $handle, '<', $conf_file or die "ERROR: Can not open file '$conf_file'!";
+	my $fp = { handle => $handle, file => $conf_file, line_no => 0, line => '' };
+	while (read_one_line($fp)) {
+		if ($fp->{line} =~ /$VAR_LINE/s) {
+			load_global_var($fp, $module, $allow_overwrite);
+		} elsif ($fp->{line} !~ /$EMPTY_LINE/s and $fp->{line} !~ /$COMMENT_LINE/s) {
+			die "ERROR: Invalid syntax of configure file at " . file_pos($fp)
+				. "\n  Only global variable definition could be included in configure file!";
+		}
+	}
+	close $handle;
+}
+
 sub load_module
 {
 	my ($file, $type) = @_;
@@ -875,28 +966,18 @@ sub load_module
 
 	printf "Load module: $file\n" if $verbose;
 	init_envs $file;
+
+	open my $handle, '<', $file or die "ERROR: Can not open file '$file': $!";
+	my $fp = { handle => $handle, file => $file, line_no => 0, line => '' };
+#	parse_proc($file, $fp, $type);
 	my @lines = load_lines($file, {}, []);
 	while (@lines) {
 		parse_proc($file, \@lines, $type);
 	}
-	if (open my $file_handle, '<', "$file.conf") {
-		my $line_no = 0;
-		while (my $line = <$file_handle>) {
-			++$line_no;
-			chomp $line;
-			my ($bash, $comment) = split_bash_and_comment($line);
-			die "Invalid declaration in $file.conf($line_no)" if not defined $bash;
-			$line = $bash;
-			if ($line =~ /^\s*(\w+)=(.*)$/) {
-				my $name = $1;
-				my ($value, $comment) = split_bash_and_comment($2);
-				$global_vars_list_ref->{$file}{$name} = $value;
-			} elsif ($line !~ /^\s*$/) {
-				die "Invalid syntax in $file.conf($line_no). Only global variables are allowed to declared in $file.conf!";
-			}
-		}
-		close $file_handle;
-	}
+	close $fp->{handle};
+
+	# Load configure file to overwrite the default values of global variables
+	load_module_conf("$file.conf", $file, 1) if -e "$file.conf";
 }
 
 sub print_usage
@@ -2022,9 +2103,9 @@ my $args_order_ref = [];
 $help_mode = 1 if $#ARGV < 0;
 while (my $arg = shift @ARGV) {
 	if ($arg eq '-h') {
-		$help_mode = 1;
+		$help_mode = 1 if $help_mode < 1;
 	} elsif ($arg eq '-H') {
-		$help_mode = 2;
+		$help_mode = 2 if $help_mode < 2;
 	} elsif ($arg eq '-v') {
 		++$verbose;
 		set_die_verbose $verbose;
@@ -2034,9 +2115,9 @@ while (my $arg = shift @ARGV) {
 	} elsif ($arg eq '-D') {
 		$auto_load = 0;
 	} elsif ($arg eq '-l') {
-		$list_mode = 1;
+		$list_mode = 1 if $list_mode < 1;
 	} elsif ($arg eq '-L') {
-		$list_mode = 2;
+		$list_mode = 2 if $list_mode < 2;
 	} elsif ($arg eq '-T') {
 		$test_mode = 1;
 	} elsif ($arg eq '-R') {
