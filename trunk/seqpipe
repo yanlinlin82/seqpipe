@@ -144,10 +144,7 @@ sub log_printf
 
 sub init_sig_int
 {
-	$SIG{'INT'} = sub {
-		my $now = time_string time;
-		log_print "(0) Aborts at $now\n";
-	};
+	$SIG{'INT'} = sub { log_print "(0) Aborts at ", time_string(time), "\n"; };
 }
 
 ############################################################
@@ -156,8 +153,7 @@ sub init_sig_int
 sub get_new_run_id
 {
 	lock($run_counter);
-	$run_counter++;
-	return $run_counter;
+	return ++$run_counter;
 }
 
 ############################################################
@@ -735,7 +731,7 @@ sub load_lines
 
 sub parse_proc
 {
-	my ($file, $lines_ref, $args_ref, $type) = @_;
+	my ($file, $lines_ref, $type) = @_;
 	my %requires = ();
 	my %inputs = ();
 	my %outputs = ();
@@ -858,18 +854,22 @@ sub init_envs
 	%{$global_vars_list_ref->{$file}} = %{$global_vars_list_ref->{''}};
 }
 
+sub update_proc_types
+{
+	my ($file, $type) = @_;
+	foreach my $name (keys %{$procs_ref}) {
+		if ($procs_ref->{$name}{file} eq $file) {
+			$procs_ref->{$name}{type} = $type;
+		}
+	}
+}
+
 sub load_module
 {
-	my ($file, $args_ref, $type) = @_;
+	my ($file, $type) = @_;
 	
 	if (exists $global_vars_list_ref->{$file}) {
-		foreach my $name (keys %{$procs_ref}) {
-			if ($procs_ref->{$name}{file} eq $file) {
-				if ($procs_ref->{$name}{type} < $type) {
-					$procs_ref->{$name}{type} = $type;
-				}
-			}
-		}
+		update_proc_types $file, $type;
 		return;
 	}
 
@@ -877,7 +877,7 @@ sub load_module
 	init_envs $file;
 	my @lines = load_lines($file, {}, []);
 	while (@lines) {
-		parse_proc($file, \@lines, $args_ref, $type);
+		parse_proc($file, \@lines, $type);
 	}
 	if (open my $file_handle, '<', "$file.conf") {
 		my $line_no = 0;
@@ -1380,7 +1380,7 @@ sub show_info
 sub list_proc
 {
 	my ($proc_name) = @_;
-	print "\nCurrent available procedures";
+	print "\nCurrent available ", ($list_mode == 1 ? "user-defined " : "") , "procedures";
 	print " (search for '$proc_name')" if $proc_name;
 	print ":\n";
 	foreach my $name (sort keys %{$procs_ref}) {
@@ -1389,6 +1389,7 @@ sub list_proc
 		print "   $name\n" if $name =~ /$proc_name/;
 	}
 	print "\n";
+	print "Use '-L' to show all system-defined procedures\n\n" if $list_mode == 1 and $auto_load;
 }
 
 sub show_block
@@ -2080,9 +2081,9 @@ die "Can not use both '-e' and '<proc_name>'!" if $proc_name and @exec_cmds;
 # Load modules
 $list_mode = 2 if $list_mode and (scalar @files == 0);
 if ($auto_load) {
-	load_module $_, $args_ref, 0 foreach sort glob APP_ROOT . '/*.pipe';
+	load_module $_, 0 foreach sort glob APP_ROOT . '/*.pipe';
 }
-load_module $_, $args_ref, 1 foreach get_all_pipe @files;
+load_module $_, 1 foreach get_all_pipe @files;
 
 # List procedures
 if ($list_mode) {
