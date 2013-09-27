@@ -2169,7 +2169,16 @@ if (not $test_mode) {
 		die "Variable(s) required for " . ($proc_name ? "procedure '$proc_name'" : "inline command")
 			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "";
 	}
-	# TODO: check requires/inputs file before run the pipeline
+	if (exists $info_ref->{requires}) {
+		foreach my $file (sort keys %{$info_ref->{requires}}) {
+			die "ERROR: Require file '$file' does not exist!" unless -e $file;
+		}
+	}
+	if (exists $info_ref->{inputs}) {
+		foreach my $file (sort keys %{$info_ref->{inputs}}) {
+			die "ERROR: Input file '$file' does not exist!" unless -e $file;
+		}
+	}
 
 	init_sig_int();
 
