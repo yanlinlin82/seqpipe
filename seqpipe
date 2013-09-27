@@ -2055,62 +2055,62 @@ my $proc_name = '';
 my $args_ref = {};
 my $args_order_ref = [];
 
-$help_mode = 1 if $#ARGV < 0;
-while (my $arg = shift @ARGV) {
-	if ($arg eq '-h') {
-		$help_mode = 1 if $help_mode < 1;
-	} elsif ($arg eq '-H') {
-		$help_mode = 2 if $help_mode < 2;
-	} elsif ($arg eq '-v') {
-		++$verbose;
-		set_die_verbose $verbose;
+my $actions = {
+	'-h' => sub { $help_mode = 1 if $help_mode < 1; },
+	'-H' => sub { $help_mode = 2 if $help_mode < 2; },
+	'-l' => sub { $list_mode = 1 if $list_mode < 1; },
+	'-L' => sub { $list_mode = 2 if $list_mode < 2; },
+	'-D' => sub { $auto_load = 0; },
+	'-T' => sub { $test_mode = 1; },
+	'-R' => sub { $show_mode = 1; },
+	'-k' => sub { $keep_temps = 1; },
+	'-v' => sub {
+		set_die_verbose ++$verbose;
 		$| = 1;  # flush output immediately
-	} elsif ($arg eq '-m') {
-		die "Missing argument for '$arg' option!" if $#ARGV < 0;
+	},
+	'-m' => sub {
+		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
 		push @files, abs_path shift @ARGV;
-	} elsif ($arg eq '-D') {
-		$auto_load = 0;
-	} elsif ($arg eq '-l') {
-		$list_mode = 1 if $list_mode < 1;
-	} elsif ($arg eq '-L') {
-		$list_mode = 2 if $list_mode < 2;
-	} elsif ($arg eq '-T') {
-		$test_mode = 1;
-	} elsif ($arg eq '-R') {
-		$show_mode = 1;
-	} elsif ($arg eq '-k') {
-		$keep_temps = 1;
-	} elsif ($arg eq '-t') {
-		die "Missing argument for '$arg' option!" if $#ARGV < 0;
+	},
+	'-t' => sub {
+		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
 		$max_thread_number = shift @ARGV;
 		die "Invalid max thread number: $max_thread_number!" if $max_thread_number <= 0;
 		if ($max_thread_number > 1 and not $can_use_threads) {
 			print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
 		}
-	} elsif ($arg eq '-e') {
-		die "Missing argument for '$arg' option!" if $#ARGV < 0;
+	},
+	'-e' => sub {
+		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
 		my $cmd = shift @ARGV;
 		die "Empty inline command is not allowed!" if $cmd =~ /^\s*$/;
 		die "Multi-line inline command is not allowed!" if $cmd =~ /\n/;
 		push @exec_cmds, $cmd;
-	} elsif ($arg eq '-s') {
-		die "Missing argument for '$arg' option!" if $#ARGV < 0;
+	},
+	'-s' => sub {
+		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
 		$shell = shift @ARGV;
 		die "Empty shell command is not allowed!" if $shell =~ /^\s*$/;
 		my $qsub_sync = APP_ROOT . '/qsub_sync';
 		$shell =~ s/^qsub(\s.*|)/$qsub_sync$1/;
+	},
+	'_DEFAULT_' => sub { die "Unknown option '$_[0]'!"; }
+};
+
+$help_mode = 1 if $#ARGV < 0;
+while (my $arg = shift @ARGV) {
+	if ($arg =~ /^-/) {
+		my $action = $actions->{$arg} || $actions->{_DEFAULT_};
+		$action->($arg);
+	} elsif ($arg =~ /^(\w+)=(.*)$/) {
+		die "duplicated option '$1'!" if exists $args_ref->{$1};
+		my $name = $1;
+		$args_ref->{$name} = $2;
+		push @{$args_order_ref}, $name;
+		die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
 	} else {
-		die "Unknown option '$arg'!" if $arg =~ /^-/;
-		if ($arg =~ /^(\w+)=(.*)$/) {
-			die "duplicated option '$1'!" if exists $args_ref->{$1};
-			my $name = $1;
-			$args_ref->{$name} = $2;
-			push @{$args_order_ref}, $name;
-			die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
-		} else {
-			die "Invalid format of option: $arg" if $proc_name or @exec_cmds;
-			$proc_name = $arg;
-		}
+		die "Invalid format of option: $arg" if $proc_name or @exec_cmds;
+		$proc_name = $arg;
 	}
 }
 die "Can not use both '-e' and '<proc_name>'!" if $proc_name and @exec_cmds;
