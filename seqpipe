@@ -73,7 +73,6 @@ my $auto_load = 1;
 my @files = ();
 my @exec_cmds = ();
 
-my $obsolete_warned = 0;
 my $max_thread_number = 1;
 my $thread_number :shared = 0;
 
@@ -133,13 +132,38 @@ sub set_die_verbose
 		}
 	};
 	if ($_[0]) {
-		$stub =~ s/__REPLACE__/  Failed\$1/m;
+		$stub =~ s/__REPLACE__/   Failed\$1/m;
 	} else {
 		$stub =~ s/__REPLACE__//m;
 	}
 	$SIG{__DIE__} = eval $stub;
 }
-set_die_verbose 0;
+
+sub set_warn_verbose
+{
+	my $warned = {};  # show only one message for each warning type
+	my $stub = q{
+		sub {
+			my $msg = $_[0];
+			$msg =~ s/^(.*)( in .+\(\d+\).*)(\n.*|)( at .+ line \d+\.\n)$/$1$2$3\n__REPLACE__/m;
+			warn "WARNING: ", $msg unless exists $warned->{$1};
+			$warned->{$1} = 1;
+		}
+	};
+	if ($_[0]) {
+		$stub =~ s/__REPLACE__/   Failed\$4/m;
+	} else {
+		$stub =~ s/__REPLACE__//m;
+	}
+	$SIG{__WARN__} = eval $stub;
+}
+
+sub set_verbose
+{
+	set_die_verbose @_;
+	set_warn_verbose @_;
+}
+set_verbose 0;
 
 sub log_print
 {
@@ -541,10 +565,9 @@ sub read_nonblank_line
 sub parse_cmd_attr
 {
 	my ($fp, $cmd_ref) = @_;
-	if ($fp->{line} =~ /^command\s+$/ and not $obsolete_warned) {
-		print "WARNING: Obsolete format of command attribute in " . file_pos($fp) . "\n";
-		print "   NOTE: Please use '#[attr=\"...\"] instead of '#[command attr=\"...\" ...]'.";
-		$obsolete_warned = 1;
+	if ($fp->{line} =~ /^command\s+$/) {
+		warn "Obsolete format of command attribute in " . file_pos($fp) . "\n"
+			. "   NOTE: Please use '#[attr=\"...\"] instead of '#[command attr=\"...\" ...]'."
 	}
 	while ($fp->{line} =~ /([\w\.]+)="(.*?)"/g) {
 		my $name = $1;
@@ -757,10 +780,8 @@ sub load_block
 {
 	my ($proc_name, $fp, $bracket, $proc_info_ref) = @_;
 	if ($bracket eq 'SP_parallel_begin') {
-		print "WARNING: Obsolete 'SP_parallel_begin' or 'SP_parallel_end' in " . file_pos($fp) .
-			"\n  NOTE: Please use '{{' or '}}' instead." if not $obsolete_warned;
-		$obsolete_warned = 1;
-		# TODO: improve warnings, some need to be repeatly and some need not
+		warn "Obsolete 'SP_parallel_begin' or 'SP_parallel_end' in " . file_pos($fp) . "\n"
+			. "   NOTE: Please use '{{' or '}}' instead.";
 	}
 	my $block_ref = {
 		proc_name => $proc_name,
@@ -896,21 +917,18 @@ sub load_module
 	while (defined $fp->{line}) {
 		if ($fp->{line} =~ /$EMPTY_LINE/ or $fp->{line} =~ /$COMMENT_LINE/) {
 			if ($fp->{line} =~ /$ATTR_LINE/ and $fp->{line} !~ /$VERSION_LINE/) {
-				print "WARNING: Procedure attributes will be ignored in " . file_pos($fp) . "\n" if not $obsolete_warned;
-				$obsolete_warned = 1;
+				warn "Procedure attributes will be ignored in " . file_pos($fp);
 			}
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$INC_LINE/) {
 			if ($met_proc) {
-				print "WARNING: SP_include should be defined before procedures in " . file_pos($fp) . "\n" if not $obsolete_warned;
-				$obsolete_warned = 1;
+				warn "SP_include should be defined before procedures in " . file_pos($fp);
 			}
 			load_module_conf(dirname($file) . '/' . $2, $file, 0);
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$VAR_LINE/) {
 			if ($met_proc) {
-				print "WARNING: Global variables should be defined before procedures in " . file_pos($fp) . "\n" if not $obsolete_warned;
-				$obsolete_warned = 1;
+				warn "Global variables should be defined before procedures in " . file_pos($fp);
 			}
 			load_global_var($fp, $file, 0);
 			read_nonblank_line($fp);
@@ -918,8 +936,7 @@ sub load_module
 			$met_proc = 1;
 			load_proc($fp, $1, $2, $type);
 		} else {
-			print "WARNING: Ignore bash commands outside all functions in " . file_pos($fp) . "\n" if not $obsolete_warned;
-			$obsolete_warned = 1;
+			warn "Ignore bash commands outside all functions in " . file_pos($fp);
 			read_nonblank_line($fp);
 		}
 	}
@@ -2065,7 +2082,7 @@ my $actions = {
 	'-R' => sub { $show_mode = 1; },
 	'-k' => sub { $keep_temps = 1; },
 	'-v' => sub {
-		set_die_verbose ++$verbose;
+		set_verbose ++$verbose;
 		$| = 1;  # flush output immediately
 	},
 	'-m' => sub {
@@ -2077,7 +2094,7 @@ my $actions = {
 		$max_thread_number = shift @ARGV;
 		die "Invalid max thread number: $max_thread_number!" if $max_thread_number <= 0;
 		if ($max_thread_number > 1 and not $can_use_threads) {
-			print "WARNING: Parallel mode is disabled since your Perl does not support threads!\n";
+			warn "Parallel mode is disabled since your Perl does not support threads!";
 		}
 	},
 	'-e' => sub {
