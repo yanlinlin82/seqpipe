@@ -37,7 +37,7 @@ my $EMPTY_LINE      = '^\s*$';
 my $COMMENT_LINE    = '^\s*#';
 my $VERSION_LINE    = '^\s*#\[(seqpipe\s+|)version="[^"]*".*\]\s*$';
 my $ATTR_LINE       = '^\s*#\[(\w+\s+|)(\s*([\w\.]+)="[^"]*"(\s+([\w\.]+)="[^"]*")*|)\s*\]\s*$';
-my $FUNC_LINE       = '^\s*function\s+([\w\.]+)\s*({|{{|)\s*$';
+my $FUNC_LINE       = '^\s*(function\s+([\w\.]+)(\(\s*\)|)|([\w\.]+)\s*\(\s*\))\s*({|{{|)\s*$';
 my $VAR_LINE        = '^\s*([\w\.]+)\s*=(.*)$';
 my $BRACKET_LEFT    = '^\s*({|{{|SP_parallel_begin)\s*$';
 my $BRACKET_RIGHT   = '^\s*(}|}}|SP_parallel_end)\s*$';
@@ -842,8 +842,8 @@ sub load_proc
 	if ($bracket eq '') {
 		die "'{' or '{{' expected in " . file_pos($fp) unless read_nonblank_line($fp) and $fp->{line} =~ /$BRACKET_LEFT/;
 		$bracket = $1;
-		die "Invalid syntax for procedure in " . file_pos($fp) unless read_nonblank_line($fp);
 	}
+	die "Invalid syntax for procedure in " . file_pos($fp) unless read_nonblank_line($fp);
 
 	my $proc_ref = load_block($proc_name, $fp, $bracket);
 	$proc_ref->{name} = $proc_name;
@@ -933,7 +933,7 @@ sub load_module
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$FUNC_LINE/) {
 			$met_proc = 1;
-			load_proc($fp, $1, $2, $type);
+			load_proc($fp, $2 || $4, $5, $type);
 		} else {
 			warn "Ignore bash commands outside all functions in " . file_pos($fp);
 			read_nonblank_line($fp);
