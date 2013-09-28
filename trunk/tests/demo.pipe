@@ -248,3 +248,30 @@ function demo_file_deps_in_while_block
 		SP_set _X=$((${_X} + 1))
 	}
 }
+
+function demo_new_func_definition_1()
+{
+	echo foo
+}
+
+function demo_new_func_definition_2(  )
+{
+	echo foo
+}
+
+function demo_new_func_definition_3(  ) {
+	echo foo
+}
+
+demo_new_func_definition_4()
+{
+	echo foo
+}
+
+demo_new_func_definition_5() {
+	echo foo
+}
+
+demo_new_func_definition_6() {{
+	echo foo
+}}
