@@ -562,7 +562,7 @@ sub read_nonblank_line
 ############################################################
 # Scripts loading
 
-sub parse_cmd_attr
+sub load_cmd_attr
 {
 	my ($fp, $cmd_ref) = @_;
 	if ($fp->{line} =~ /^command\s+$/) {
@@ -738,7 +738,7 @@ sub load_cmd
 	my $cmd_ref = { file => $fp->{file}, line_no => $fp->{line_no}, name => '', command => '',
 		requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
 	while (defined $fp->{line} and $fp->{line} =~ /$ATTR_LINE/) {
-		parse_cmd_attr($fp, $cmd_ref);
+		load_cmd_attr($fp, $cmd_ref);
 		die "Invalid syntax for command in " . file_pos($fp) unless read_nonblank_line($fp);
 	}
 	if ($fp->{line} =~ /$BRACKET_LEFT/) {
@@ -946,6 +946,9 @@ sub load_module
 	load_module_conf("$file.conf", $file, 1) if -e "$file.conf";
 }
 
+############################################################
+# Usage
+
 sub print_usage
 {
 	print '
@@ -974,6 +977,76 @@ Options:
 
 ';
 }
+
+sub show_info
+{
+	my ($proc_name, $info_ref) = @_;
+	
+	print "\n";
+
+	if (%{$info_ref->{req_vars}} or ($help_mode == 2 and %{$info_ref->{opt_vars}})) {
+		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "inline command") . ":\n";
+
+		if (%{$info_ref->{req_vars}}) {
+			foreach my $name (sort keys %{$info_ref->{req_vars}}) {
+				printf "   %-30s  Required\n", $name;
+			}
+			print "\n";
+		}
+
+		if ($help_mode == 2 and %{$info_ref->{opt_vars}}) {
+			foreach my $name (sort keys %{$info_ref->{opt_vars}}) {
+				printf "   %-30s  Default: %s\n", $name, $info_ref->{opt_vars}{$name};
+			}
+			print "\n";
+		}
+	}
+
+	my @text_list = ( 'Require', 'Input', 'Output', 'Temporary' );
+	my @files_list = ( $info_ref->{requires}, $info_ref->{inputs}, $info_ref->{outputs}, $info_ref->{temps} );
+	if ($help_mode == 2) {
+		pop @text_list;
+		pop @files_list;
+	}
+	while (@text_list) {
+		my $msg = (shift @text_list) . " file(s):\n";
+		my $files_ref = shift @files_list;
+		if (%{$files_ref}) {
+			print $msg;
+			foreach my $file (sort keys %{$files_ref}) {
+				my $text = $files_ref->{$file};
+				if (length($file) > 30) {
+					printf "   %s\n   %-30s  Definition: %s\n", $file, '', $text;
+				} else {
+					printf "   %-30s  Definition: %s\n", $file, $text;
+				}
+			}
+			print "\n";
+		}
+	}
+
+	if ($help_mode < 2 and %{$info_ref->{opt_vars}}) {
+		print "NOTE: Use '-H' option to see all variables for procedure '$proc_name'.\n\n";
+	}
+	exit 1;
+}
+
+sub list_proc
+{
+	my ($proc_name) = @_;
+	print "\nCurrent available ", ($list_mode == 1 ? "user-defined " : "") , "procedures";
+	print " (search for '$proc_name')" if $proc_name;
+	print ":\n";
+	foreach my $name (sort keys %{$procs_ref}) {
+		next if $name =~ /^_/;
+		next if $list_mode == 1 and $procs_ref->{$name}{type} == 0;
+		print "   $name\n" if $name =~ /$proc_name/;
+	}
+	print "\n";
+	print "Use '-L' to show all system-defined procedures\n\n" if $list_mode == 1 and $auto_load;
+}
+
+############################################################
 
 sub merge_vars_info
 {
@@ -1127,6 +1200,9 @@ sub transform_info
 	transform_deps($info_ref->{requires_of}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 	transform_deps($info_ref->{inputs_of}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 }
+
+############################################################
+# Checking
 
 sub check_block
 {
@@ -1371,159 +1447,94 @@ sub check_proc
 	return $info_ref;
 }
 
-sub show_info
+############################################################
+# Show pipeline code
+
+sub show_primitive
 {
-	my ($proc_name, $info_ref) = @_;
-	
-	print "\n";
-
-	if (%{$info_ref->{req_vars}} or ($help_mode == 2 and %{$info_ref->{opt_vars}})) {
-		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "inline command") . ":\n";
-
-		if (%{$info_ref->{req_vars}}) {
-			foreach my $name (sort keys %{$info_ref->{req_vars}}) {
-				printf "   %-30s  Required\n", $name;
-			}
-			print "\n";
+	my ($cmd_ref, $indent, $args_ref) = @_;
+	if ($cmd_ref->{primitive} eq 'SP_set') {
+		if (not exists $args_ref->{$cmd_ref->{variable}}) {
+			print $indent, "$cmd_ref->{primitive} $cmd_ref->{variable}=$cmd_ref->{text}\n";
 		}
-
-		if ($help_mode == 2 and %{$info_ref->{opt_vars}}) {
-			foreach my $name (sort keys %{$info_ref->{opt_vars}}) {
-				printf "   %-30s  Default: %s\n", $name, $info_ref->{opt_vars}{$name};
+	} elsif ($cmd_ref->{primitive} eq 'SP_run') {
+		print $indent, "$cmd_ref->{primitive} $cmd_ref->{proc_name}";
+		print " $_->{name}=$_->{value}" foreach (@{$cmd_ref->{options}});
+		print " ..." if exists $cmd_ref->{dots};
+		print "\n";
+	} elsif ($cmd_ref->{primitive} eq 'SP_if') {
+		foreach my $cond_ref (@{$cmd_ref->{condition}}) {
+			if (exists $cond_ref->{shell}) {
+				print $indent, "$cond_ref->{primitive} $cond_ref->{negative}($cond_ref->{shell})\n";
+			} else {
+				print $indent, "$cond_ref->{primitive} $cond_ref->{text}\n";
 			}
-			print "\n";
+			show_block($cond_ref->{block}, $indent . "\t", $args_ref);
 		}
-	}
-
-	my @text_list = ( 'Require', 'Input', 'Output', 'Temporary' );
-	my @files_list = ( $info_ref->{requires}, $info_ref->{inputs}, $info_ref->{outputs}, $info_ref->{temps} );
-	if ($help_mode == 2) {
-		pop @text_list;
-		pop @files_list;
-	}
-	while (@text_list) {
-		my $msg = (shift @text_list) . " file(s):\n";
-		my $files_ref = shift @files_list;
-		if (%{$files_ref}) {
-			print $msg;
-			foreach my $file (sort keys %{$files_ref}) {
-				my $text = $files_ref->{$file};
-				if (length($file) > 30) {
-					printf "   %s\n   %-30s  Definition: %s\n", $file, '', $text;
-				} else {
-					printf "   %-30s  Definition: %s\n", $file, $text;
-				}
-			}
-			print "\n";
+		if (exists $cmd_ref->{else_block}) {
+			print $indent, "SP_else\n";
+			show_block($cmd_ref->{else_block}, $indent . "\t", $args_ref);
 		}
+	} elsif ($cmd_ref->{primitive} eq 'SP_for' or $cmd_ref->{primitive} eq 'SP_for_parallel') {
+		print $indent, "$cmd_ref->{primitive} $cmd_ref->{variable}=$cmd_ref->{text}\n";
+		show_block($cmd_ref->{block}, $indent . "\t", $args_ref);
+	} elsif ($cmd_ref->{primitive} eq 'SP_while') {
+		print $indent, "$cmd_ref->{primitive} $cmd_ref->{negative}($cmd_ref->{shell})\n";
+		show_block($cmd_ref->{block}, $indent . "\t", $args_ref);
 	}
-
-	if ($help_mode < 2 and %{$info_ref->{opt_vars}}) {
-		print "NOTE: Use '-H' option to see all variables for procedure '$proc_name'.\n\n";
-	}
-	exit 1;
 }
 
-sub list_proc
+sub show_cmd
 {
-	my ($proc_name) = @_;
-	print "\nCurrent available ", ($list_mode == 1 ? "user-defined " : "") , "procedures";
-	print " (search for '$proc_name')" if $proc_name;
-	print ":\n";
-	foreach my $name (sort keys %{$procs_ref}) {
-		next if $name =~ /^_/;
-		next if $list_mode == 1 and $procs_ref->{$name}{type} == 0;
-		print "   $name\n" if $name =~ /$proc_name/;
+	my ($cmd_ref, $indent, $args_ref) = @_;
+	if ($cmd_ref->{name} ne '') {
+		printf $indent, "#[name=\"$cmd_ref->{name}\"]\n";
 	}
-	print "\n";
-	print "Use '-L' to show all system-defined procedures\n\n" if $list_mode == 1 and $auto_load;
+	foreach my $file (keys %{$cmd_ref->{requires}}) {
+		print $indent, "#[require=\"$file\"]\n";
+	}
+	foreach my $file (keys %{$cmd_ref->{inputs}}) {
+		print $indent, "#[input=\"$file\"]\n";
+	}
+	foreach my $file (keys %{$cmd_ref->{outputs}}) {
+		print $indent, "#[output";
+		print '.temp' if exists $cmd_ref->{temps}{$file};
+		print '.save' if exists $cmd_ref->{saves}{$file};
+		print "=\"$file\"]\n";
+	}
+
+	if (exists $cmd_ref->{primitive}) {
+		show_primitive $cmd_ref, $indent, $args_ref;
+	} elsif (exists $cmd_ref->{block}) {
+		show_block($cmd_ref->{block}, $indent, $args_ref);
+	} else {
+		print $indent, "$_\n" foreach map { $_ =~ s/^\s*//; $_ } split("\n", $cmd_ref->{command});
+	}
 }
 
 sub show_block
 {
 	my ($block_ref, $indent, $args_ref) = @_;
-	my %procedure = %{$block_ref};
-
-	printf "$indent%s\n", ($procedure{parallel} ? '{{' : '{');
-
-	my $block_start = 1;
-	foreach my $cmd_ref (@{$procedure{commands}}) {
-
-		if (exists $cmd_ref->{block} or $cmd_ref->{name} ne '' or %{$cmd_ref->{requires}} or %{$cmd_ref->{inputs}} or %{$cmd_ref->{outputs}}) {
-			if (not $block_start and (not exists $cmd_ref->{primitive} or $cmd_ref->{primitive} ne 'SP_set')) {
-				print "\n";
-			}
-
-			if ($cmd_ref->{name} ne '') {
-				printf "$indent\t#[name=\"$cmd_ref->{name}\"]\n";
-			}
-			foreach my $file (keys %{$cmd_ref->{requires}}) {
-				print "$indent\t#[require=\"$file\"]\n";
-			}
-			foreach my $file (keys %{$cmd_ref->{inputs}}) {
-				print "$indent\t#[input=\"$file\"]\n";
-			}
-			foreach my $file (keys %{$cmd_ref->{outputs}}) {
-				print "$indent\t#[output";
-				print '.temp' if exists $cmd_ref->{temps}{$file};
-				print '.save' if exists $cmd_ref->{saves}{$file};
-				print "=\"$file\"]\n";
-			}
-		}
-
-		if (exists $cmd_ref->{primitive}) {
-			if ($cmd_ref->{primitive} eq 'SP_set') {
-				if (not exists $args_ref->{$cmd_ref->{variable}}) {
-					print "$indent\t$cmd_ref->{primitive} $cmd_ref->{variable}=$cmd_ref->{text}\n";
-				}
-			} elsif ($cmd_ref->{primitive} eq 'SP_run') {
-				print "$indent\t$cmd_ref->{primitive} $cmd_ref->{proc_name}";
-				print " $_->{name}=$_->{value}" foreach (@{$cmd_ref->{options}});
-				print " ..." if exists $cmd_ref->{dots};
-				print "\n";
-			} elsif ($cmd_ref->{primitive} eq 'SP_if') {
-				foreach my $cond_ref (@{$cmd_ref->{condition}}) {
-					if (exists $cond_ref->{shell}) {
-						print "$indent\t$cond_ref->{primitive} $cond_ref->{negative}($cond_ref->{shell})\n";
-					} else {
-						print "$indent\t$cond_ref->{primitive} $cond_ref->{text}\n";
-					}
-					show_block($cond_ref->{block}, $indent . "\t", $args_ref);
-				}
-				if (exists $cmd_ref->{else_block}) {
-					print "$indent\tSP_else\n";
-					show_block($cmd_ref->{else_block}, $indent . "\t", $args_ref);
-				}
-			} elsif ($cmd_ref->{primitive} eq 'SP_for' or $cmd_ref->{primitive} eq 'SP_for_parallel') {
-				print "$indent\t$cmd_ref->{primitive} $cmd_ref->{variable}=$cmd_ref->{text}\n";
-				show_block($cmd_ref->{block}, $indent . "\t", $args_ref);
-			} elsif ($cmd_ref->{primitive} eq 'SP_while') {
-				print "$indent\t$cmd_ref->{primitive} $cmd_ref->{negative}($cmd_ref->{shell})\n";
-				show_block($cmd_ref->{block}, $indent . "\t", $args_ref);
-			}
-		} elsif (exists $cmd_ref->{block}) {
-			show_block($cmd_ref->{block}, $indent . "\t", $args_ref);
-		} else {
-			print "$indent\t$_\n" foreach map { $_ =~ s/^\s*//; $_ } split("\n", $cmd_ref->{command});
-		}
-		$block_start = ($cmd_ref->{command} eq '{{');
+	print $indent, ($block_ref->{parallel} ? '{{' : '{'), "\n";
+	foreach my $cmd_ref (@{$block_ref->{commands}}) {
+		show_cmd $cmd_ref, $indent . "\t", $args_ref;
 	}
-
-	printf "$indent%s\n", ($procedure{parallel} ? '}}' : '}');
+	print $indent, ($block_ref->{parallel} ? '}}' : '}'), "\n";
 }
 
 sub show_proc
 {
 	my ($proc_name, $args_ref) = @_;
-
-	print "#[require=\"$_\"]\n" for (keys %{$procs_ref->{$proc_name}{requires}});
-	print "#[input=\"$_\"]\n" for (keys %{$procs_ref->{$proc_name}{inputs}});
-	print "#[output=\"$_\"]\n" for (keys %{$procs_ref->{$proc_name}{outputs}});
+	my $proc_ref = $procs_ref->{$proc_name};
+	print "#[require=\"$_\"]\n" for (keys %{$proc_ref->{requires}});
+	print "#[input=\"$_\"]\n" for (keys %{$proc_ref->{inputs}});
+	print "#[output=\"$_\"]\n" for (keys %{$proc_ref->{outputs}});
 	print "function $proc_name\n";
-
-	show_block $procs_ref->{$proc_name}, '', $args_ref;
-	exit 1;
+	show_block $proc_ref, '', $args_ref;
 }
+
+############################################################
+# Run pipeline
 
 sub check_files
 {
