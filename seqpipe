@@ -1452,74 +1452,84 @@ sub check_proc
 
 sub show_primitive
 {
-	my ($cmd_ref, $indent, $args_ref) = @_;
+	my ($cmd_ref, $args_ref) = @_;
+	my @lines;
 	if ($cmd_ref->{primitive} eq 'SP_set') {
 		if (not exists $args_ref->{$cmd_ref->{variable}}) {
-			print $indent, "$cmd_ref->{primitive} $cmd_ref->{variable}=$cmd_ref->{text}\n";
+			push @lines, "$cmd_ref->{primitive} $cmd_ref->{variable}=$cmd_ref->{text}";
 		}
 	} elsif ($cmd_ref->{primitive} eq 'SP_run') {
-		print $indent, "$cmd_ref->{primitive} $cmd_ref->{proc_name}";
-		print " $_->{name}=$_->{value}" foreach (@{$cmd_ref->{options}});
-		print " ..." if exists $cmd_ref->{dots};
-		print "\n";
+		my $cmd = "$cmd_ref->{primitive} $cmd_ref->{proc_name}";
+		$cmd .= " $_->{name}=$_->{value}" foreach @{$cmd_ref->{options}};
+		$cmd .= " ..." if exists $cmd_ref->{dots};
+		push @lines, $cmd;
 	} elsif ($cmd_ref->{primitive} eq 'SP_if') {
 		foreach my $cond_ref (@{$cmd_ref->{condition}}) {
 			if (exists $cond_ref->{shell}) {
-				print $indent, "$cond_ref->{primitive} $cond_ref->{negative}($cond_ref->{shell})\n";
+				push @lines, "$cond_ref->{primitive} $cond_ref->{negative}($cond_ref->{shell})";
 			} else {
-				print $indent, "$cond_ref->{primitive} $cond_ref->{text}\n";
+				push @lines, "$cond_ref->{primitive} $cond_ref->{text}";
 			}
-			show_block($cond_ref->{block}, $indent . "\t", $args_ref);
+			push @lines, show_block($cond_ref->{block}, $args_ref);
 		}
 		if (exists $cmd_ref->{else_block}) {
-			print $indent, "SP_else\n";
-			show_block($cmd_ref->{else_block}, $indent . "\t", $args_ref);
+			push @lines, "SP_else";
+			push @lines, show_block($cmd_ref->{else_block}, $args_ref);
 		}
 	} elsif ($cmd_ref->{primitive} eq 'SP_for' or $cmd_ref->{primitive} eq 'SP_for_parallel') {
-		print $indent, "$cmd_ref->{primitive} $cmd_ref->{variable}=$cmd_ref->{text}\n";
-		show_block($cmd_ref->{block}, $indent . "\t", $args_ref);
+		push @lines, "$cmd_ref->{primitive} $cmd_ref->{variable}=$cmd_ref->{text}";
+		push @lines, show_block($cmd_ref->{block}, $args_ref);
 	} elsif ($cmd_ref->{primitive} eq 'SP_while') {
-		print $indent, "$cmd_ref->{primitive} $cmd_ref->{negative}($cmd_ref->{shell})\n";
-		show_block($cmd_ref->{block}, $indent . "\t", $args_ref);
+		push @lines, "$cmd_ref->{primitive} $cmd_ref->{negative}($cmd_ref->{shell})";
+		push @lines, show_block($cmd_ref->{block}, $args_ref);
 	}
+	return @lines;
 }
 
 sub show_cmd
 {
-	my ($cmd_ref, $indent, $args_ref) = @_;
+	my ($cmd_ref, $args_ref) = @_;
+	my @lines;
 	if ($cmd_ref->{name} ne '') {
-		printf $indent, "#[name=\"$cmd_ref->{name}\"]\n";
+		push @lines, "#[name=\"$cmd_ref->{name}\"]";
 	}
 	foreach my $file (keys %{$cmd_ref->{requires}}) {
-		print $indent, "#[require=\"$file\"]\n";
+		push @lines, "#[require=\"$file\"]";
 	}
 	foreach my $file (keys %{$cmd_ref->{inputs}}) {
-		print $indent, "#[input=\"$file\"]\n";
+		push @lines, "#[input=\"$file\"]";
 	}
 	foreach my $file (keys %{$cmd_ref->{outputs}}) {
-		print $indent, "#[output";
-		print '.temp' if exists $cmd_ref->{temps}{$file};
-		print '.save' if exists $cmd_ref->{saves}{$file};
-		print "=\"$file\"]\n";
+		my $text = "#[output";
+		$text .= '.temp' if exists $cmd_ref->{temps}{$file};
+		$text .= '.save' if exists $cmd_ref->{saves}{$file};
+		$text .= "=\"$file\"]";
+		push @lines, $text;
 	}
-
 	if (exists $cmd_ref->{primitive}) {
-		show_primitive $cmd_ref, $indent, $args_ref;
+		push @lines, show_primitive $cmd_ref, $args_ref;
 	} elsif (exists $cmd_ref->{block}) {
-		show_block($cmd_ref->{block}, $indent, $args_ref);
+		push @lines, show_block($cmd_ref->{block}, $args_ref);
 	} else {
-		print $indent, "$_\n" foreach map { $_ =~ s/^\s*//; $_ } split("\n", $cmd_ref->{command});
+		my @cmd_lines = split("\n", $cmd_ref->{command});
+		my $first_line = shift @cmd_lines;
+		$first_line =~ s/^\s*//;
+		push @lines, $first_line;
+		push @lines, map { $_ =~ s/^\s*/\t/; $_ } @cmd_lines;
 	}
+	return @lines;
 }
 
 sub show_block
 {
-	my ($block_ref, $indent, $args_ref) = @_;
-	print $indent, ($block_ref->{parallel} ? '{{' : '{'), "\n";
+	my ($block_ref, $args_ref) = @_;
+	my @lines;
+	push @lines, ($block_ref->{parallel} ? '{{' : '{');
 	foreach my $cmd_ref (@{$block_ref->{commands}}) {
-		show_cmd $cmd_ref, $indent . "\t", $args_ref;
+		push @lines, map { $_ =~ s/^/\t/; $_ } show_cmd $cmd_ref, $args_ref;
 	}
-	print $indent, ($block_ref->{parallel} ? '}}' : '}'), "\n";
+	push @lines, ($block_ref->{parallel} ? '}}' : '}');
+	return @lines;
 }
 
 sub show_proc
@@ -1530,7 +1540,7 @@ sub show_proc
 	print "#[input=\"$_\"]\n" for (keys %{$proc_ref->{inputs}});
 	print "#[output=\"$_\"]\n" for (keys %{$proc_ref->{outputs}});
 	print "function $proc_name\n";
-	show_block $proc_ref, '', $args_ref;
+	print join("\n", show_block $proc_ref, $args_ref), "\n";
 }
 
 ############################################################
