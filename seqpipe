@@ -145,13 +145,13 @@ sub set_warn_verbose
 	my $stub = q{
 		sub {
 			my $msg = $_[0];
-			$msg =~ s/^(.*)( in .+\(\d+\).*)(\n.*|)( at .+ line \d+\.\n)$/$1$2$3\n__REPLACE__/m;
+			$msg =~ s/^(.*)( in .+\(\d+\).*|)(\n.*|)( at .+ line \d+\.\n)$/$1$2$3\n__REPLACE__/m;
 			warn "WARNING: ", $msg unless exists $warned->{$1};
 			$warned->{$1} = 1;
 		}
 	};
 	if ($_[0]) {
-		$stub =~ s/__REPLACE__/   Failed\$4/m;
+		$stub =~ s/__REPLACE__/   Occurred\$4/m;
 	} else {
 		$stub =~ s/__REPLACE__//m;
 	}
@@ -398,6 +398,7 @@ sub bash_line_decode
 }
 
 ############################################################
+# Variable dependency checking
 
 sub add_dep
 {
@@ -421,21 +422,19 @@ sub has_dep
 	return 0;
 }
 
-############################################################
-
-sub chk_vars_dep
+sub check_vars_dep
 {
-	my ($args_ref, $proc_vars_ref, $gvars_ref) = @_;
+	my ($args_ref, $proc_vars_ref, $global_vars_ref) = @_;
 
 	my %deps = ();
-	foreach my $name (keys %{$args_ref}, keys %{$proc_vars_ref}, keys %{$gvars_ref}) {
+	foreach my $name (keys %{$args_ref}, keys %{$proc_vars_ref}, keys %{$global_vars_ref}) {
 		my $value = '';
 		if (exists $args_ref->{$name}) {
 			$value = $args_ref->{$name};
 		} elsif (exists $proc_vars_ref->{$name}) {
 			$value = $proc_vars_ref->{$name};
-		} elsif (exists $gvars_ref->{$name}) {
-			$value = $gvars_ref->{$name};
+		} elsif (exists $global_vars_ref->{$name}) {
+			$value = $global_vars_ref->{$name};
 		}
 		
 		while ($value =~ /\${(\w+)}/g) {
@@ -446,7 +445,29 @@ sub chk_vars_dep
 	}
 }
 
+sub check_vars_info
+{
+	my ($opt_vars_ref, $req_vars_ref, $args_ref, $proc_vars_ref, $global_vars_ref, @texts) = @_;
+
+	while (@texts) {
+		my $text = shift @texts;
+		while ($text =~ /\${(\w+)}/g) {
+			next if exists $opt_vars_ref->{$1} or exists $req_vars_ref->{$1};
+			if (exists $args_ref->{$1}) {
+				push @texts, $opt_vars_ref->{$1} = $args_ref->{$1};
+			} elsif (exists $proc_vars_ref->{$1}) {
+				push @texts, $opt_vars_ref->{$1} = $proc_vars_ref->{$1};
+			} elsif (exists $global_vars_ref->{$1}) {
+				push @texts, $opt_vars_ref->{$1} = $global_vars_ref->{$1};
+			} else {
+				$req_vars_ref->{$1} = '';
+			}
+		}
+	}
+}
+
 ############################################################
+# Text evaluation
 
 sub get_vars
 {
@@ -508,27 +529,6 @@ sub sort_vars
 	return @vars;
 }
 
-sub check_vars_info
-{
-	my ($opt_vars_ref, $req_vars_ref, $args_ref, $proc_vars_ref, $global_vars_ref, @texts) = @_;
-
-	while (@texts) {
-		my $text = shift @texts;
-		while ($text =~ /\${(\w+)}/g) {
-			next if exists $opt_vars_ref->{$1} or exists $req_vars_ref->{$1};
-			if (exists $args_ref->{$1}) {
-				push @texts, $opt_vars_ref->{$1} = $args_ref->{$1};
-			} elsif (exists $proc_vars_ref->{$1}) {
-				push @texts, $opt_vars_ref->{$1} = $proc_vars_ref->{$1};
-			} elsif (exists $global_vars_ref->{$1}) {
-				push @texts, $opt_vars_ref->{$1} = $global_vars_ref->{$1};
-			} else {
-				$req_vars_ref->{$1} = '';
-			}
-		}
-	}
-}
-
 sub eval_text
 {
 	my ($text, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
@@ -543,7 +543,7 @@ sub eval_text
 
 	my %opt_vars = ();
 	my %req_vars = ();
-	check_vars_info(\%opt_vars, \%req_vars, $args_ref, $proc_vars_ref, $global_vars_ref, $text);
+	check_vars_info \%opt_vars, \%req_vars, $args_ref, $proc_vars_ref, $global_vars_ref, $text;
 
 	my %vars = ();
 	foreach my $name (keys %opt_vars) {
@@ -562,50 +562,6 @@ sub eval_text
 		}
 	}
 	return $text;
-}
-
-############################################################
-
-sub check_vars_dep
-{
-	my ($args_ref, $proc_vars_ref, $global_vars_ref) = @_;
-
-	my %deps = ();
-	foreach my $name (keys %{$args_ref}, keys %{$proc_vars_ref}, keys %{$global_vars_ref}) {
-		my $value = '';
-		if (exists $args_ref->{$name}) {
-			$value = $args_ref->{$name};
-		} elsif (exists $proc_vars_ref->{$name}) {
-			$value = $proc_vars_ref->{$name};
-		} elsif (exists $global_vars_ref->{$name}) {
-			$value = $global_vars_ref->{$name};
-		}
-		
-		while ($value =~ /\${(\w+)}/g) {
-			my $dep = $1;
-			die "Cyclic-dependency between variables '$name' and '$dep' detected!" if has_dep($dep, $name, \%deps);
-			add_dep($name, $dep, \%deps);
-		}
-	}
-}
-
-sub check_files_dep
-{
-	my ($requires_of_ref, $inputs_of_ref) = @_;
-
-	my %deps = ();
-	foreach my $file (keys %{$requires_of_ref}) {
-		foreach my $dep (keys %{$requires_of_ref->{$file}}) {
-			die "Cyclic-dependency between files '$file' and '$dep' detected!" if has_dep($dep, $file, \%deps);
-			add_dep($file, $dep, \%deps);
-		}
-	}
-	foreach my $file (keys %{$inputs_of_ref}) {
-		foreach my $dep (keys %{$inputs_of_ref->{$file}}) {
-			die "Cyclic-dependency between files '$file' and '$dep' detected!" if has_dep($dep, $file, \%deps);
-			add_dep($file, $dep, \%deps);
-		}
-	}
 }
 
 ############################################################
@@ -678,22 +634,14 @@ sub load_cmd_attr
 			$cmd_ref->{name} = $value;
 			die "Invalid name '$cmd_ref->{name}' in " . file_pos($fp) unless $cmd_ref->{name} =~ /[\w\.]+/;
 		} elsif ($name eq 'require') {
-			if (exists $cmd_ref->{requires}{$value} or exists $cmd_ref->{inputs}{$value} or exists $cmd_ref->{outputs}{$value}) {
-				die "Duplicated attribute for require file '$value' in " . file_pos($fp);
-			}
-			$cmd_ref->{requires}{$value} = 1;
+			die "Duplicated attribute value for require file '$value' in " . file_pos($fp) if exists $cmd_ref->{files}{$value};
+			$cmd_ref->{files}{$value} = $name;
 		} elsif ($name eq 'input') {
-			if (exists $cmd_ref->{requires}{$value} or exists $cmd_ref->{inputs}{$value} or exists $cmd_ref->{outputs}{$value}) {
-				die "Duplicated attribute for input file '$value' in " . file_pos($fp);
-			}
-			$cmd_ref->{inputs}{$value} = 1;
+			die "Duplicated attribute value for input file '$value' in " . file_pos($fp) if exists $cmd_ref->{files}{$value};
+			$cmd_ref->{files}{$value} = $name;
 		} elsif ($name eq 'output' or $name eq 'output.temp' or $name eq 'output.save' or $name eq 'output.final') {
-			if (exists $cmd_ref->{requires}{$value} or exists $cmd_ref->{inputs}{$value} or exists $cmd_ref->{outputs}{$value}) {
-				die "Duplicated attribute for output file '$value' in " . file_pos($fp);
-			}
-			$cmd_ref->{outputs}{$value} = 1;
-			$cmd_ref->{temps}{$value} = 1 if $name eq 'output.temp';
-			$cmd_ref->{finals}{$value} = 1 if $name eq 'output.save' or $name eq 'output.final';
+			die "Duplicated attribute value for output file '$value' in " . file_pos($fp) if exists $cmd_ref->{files}{$value};
+			$cmd_ref->{files}{$value} = $name;
 		} else {
 			die "Unknown command attribute '$1' in " . file_pos($fp) unless exists $FILES_ATTR{$name};
 			foreach (@FILES_ATTR) {
@@ -712,7 +660,6 @@ sub load_sp_set
 	die "Invalid syntax for $cmd_ref->{primitive} in " . file_pos($fp) unless $fp->{line} =~ /$SP_SET/s;
 	$cmd_ref->{variable} = $1;
 	($cmd_ref->{text}, $cmd_ref->{comment}) = split_bash_and_comment($2);
-	check_vars_dep({}, {$cmd_ref->{variable} => $cmd_ref->{text}}, {}, $global_vars_list_ref->{$fp->{file}});
 	read_nonblank_line($fp);
 }
 
@@ -852,25 +799,6 @@ sub load_cmd
 		my ($bash, $comment) = split_bash_and_comment($fp->{line});
 		die "Invalid format of command in " . file_pos($fp) if not defined $bash;
 		$cmd_ref->{command} = $fp->{line};
-#		if (keys %{$cmd_ref->{finals}}) {
-#			foreach my $file (keys %{$cmd_ref->{finals}}) {
-#				$proc_info_ref->{finals}{$file} = '';
-#			}
-#		}
-#		if (keys %{$cmd_ref->{temps}}) {
-#			foreach my $file (keys %{$cmd_ref->{temps}}) {
-#				$proc_info_ref->{temps}{$file} = '';
-#			}
-#		}
-#		if (keys %{$cmd_ref->{outputs}}) {
-#			foreach my $file (keys %{$cmd_ref->{outputs}}) {
-#				$proc_info_ref->{outputs}{$file} = '';
-#			}
-#		}
-#		foreach my $output (keys %{$cmd_ref->{outputs}}) {
-#			@{$proc_info_ref->{requires_of}{$output}} = keys %{$cmd_ref->{requires}};
-#			@{$proc_info_ref->{inputs_of  }{$output}} = keys %{$cmd_ref->{inputs  }};
-#		}
 		read_nonblank_line($fp);
 	}
 	return $cmd_ref;
@@ -955,7 +883,7 @@ sub load_global_var
 	die "Redeclaration of global variable '$name' in " . file_pos($fp)
 		if not $allow_overwrite and exists $global_vars_list_ref->{$module}{$name};
 	$global_vars_list_ref->{$module}{$name} = $value;
-	chk_vars_dep({}, {}, {}, $global_vars_list_ref->{$module});
+	check_vars_dep {}, {}, $global_vars_list_ref->{$module};
 }
 
 sub load_module_conf
@@ -1072,11 +1000,11 @@ sub show_info
 		}
 	}
 
-	my @text_list = ( 'Require', 'Input', 'Output', 'Temporary' );
-	my @files_list = ( $info_ref->{requires}, $info_ref->{inputs}, $info_ref->{outputs}, $info_ref->{temps} );
-	if ($help_mode == 2) {
-		pop @text_list;
-		pop @files_list;
+	my @text_list = ( 'Require', 'Input', 'Temporary', 'Output' );
+	my @files_list = ( $info_ref->{requires}, $info_ref->{inputs}, $info_ref->{temps}, $info_ref->{outputs} );
+	if ($help_mode == 1) {
+		splice @text_list, 2, 1;
+		splice @files_list, 2, 1;
 	}
 	while (@text_list) {
 		my $msg = (shift @text_list) . " file(s):\n";
@@ -1118,66 +1046,6 @@ sub list_proc
 
 ############################################################
 
-sub merge_vars_info
-{
-	my ($opt_vars_ref, $req_vars_ref, $sub_info_ref) = @_;
-
-	foreach my $name (keys %{$sub_info_ref->{opt_vars}}) {
-		next if exists $opt_vars_ref->{$name} or exists $req_vars_ref->{$name};
-		$opt_vars_ref->{$name} = $sub_info_ref->{opt_vars}{$name};
-	}
-	foreach my $name (keys %{$sub_info_ref->{req_vars}}) {
-		next if exists $opt_vars_ref->{$name} or exists $req_vars_ref->{$name};
-		$req_vars_ref->{$name} = $sub_info_ref->{req_vars}{$name};
-	}
-}
-
-sub add_dep_info
-{
-	my ($requires_of_ref, $inputs_of_ref, $outputs_ref, $finals_ref, $temps_ref,
-		$args_ref, $proc_vars_ref, $global_vars_ref,
-		$cmd_requires_ref, $cmd_inputs_ref, $cmd_outputs_ref, $cmd_finals_ref, $cmd_temps_ref) = @_;
-
-	foreach my $output (keys %{$cmd_outputs_ref}) {
-		my $output_result = eval_text($output, $args_ref, $proc_vars_ref, $global_vars_ref);
-		next if $output_result eq '';
-		next if exists $outputs_ref->{$output_result};
-		$outputs_ref->{$output_result} = $output;
-	}
-
-	foreach my $save (keys %{$cmd_finals_ref}) {
-		my $save_result = eval_text($save, $args_ref, $proc_vars_ref, $global_vars_ref);
-		next if $save_result eq '';
-		next if exists $finals_ref->{$save_result};
-		$finals_ref->{$save_result} = $save;
-	}
-
-	foreach my $temp (keys %{$cmd_temps_ref}) {
-		my $temp_result = eval_text($temp, $args_ref, $proc_vars_ref, $global_vars_ref);
-		next if $temp_result eq '';
-		next if exists $temps_ref->{$temp_result};
-		$temps_ref->{$temp_result} = $temp;
-	}
-
-	foreach my $output (keys %{$cmd_outputs_ref}) {
-		my $output_result = eval_text($output, $args_ref, $proc_vars_ref, $global_vars_ref);
-
-		foreach my $require (keys %{$cmd_requires_ref}) {
-			my $require_result = eval_text($require, $args_ref, $proc_vars_ref, $global_vars_ref);
-			next if $require_result eq '';
-			$requires_of_ref->{$output_result} = {} if not exists $requires_of_ref->{$output_result};
-			$requires_of_ref->{$output_result}{$require_result} = $require;
-		}
-
-		foreach my $input (keys %{$cmd_inputs_ref}) {
-			my $input_result = eval_text($input, $args_ref, $proc_vars_ref, $global_vars_ref);
-			next if $input_result eq '';
-			$inputs_of_ref->{$output_result} = {} if not exists $inputs_of_ref->{$output_result};
-			$inputs_of_ref->{$output_result}{$input_result} = $input;
-		}
-	}
-}
-
 sub trace_dep
 {
 	my ($output_ref, $info_ref, $is_require) = @_;
@@ -1217,304 +1085,236 @@ sub trace_dep
 	}
 }
 
-sub transform_vars
-{
-	my ($vars_ref, $options_ref) = @_;
-	foreach my $name (keys %{$vars_ref}) {
-		$vars_ref->{$name} = eval_text($vars_ref->{$name}, $options_ref, {}, {});
-	}
-}
-
-sub transform_files
-{
-	my ($files_ref, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
-	my %results = ();
-	foreach my $file (keys %{$files_ref}) {
-		my $expand_one_level = eval_text($file, $options_ref, {}, {});
-		my $expand_all_level = eval_text($expand_one_level, $args_ref, $proc_vars_ref, $global_vars_ref);
-		$results{$expand_all_level} = $expand_one_level;
-	}
-	%{$files_ref} = %results;
-}
-
-sub transform_deps
-{
-	my ($deps_ref, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
-	my %results = ();
-	foreach my $file (keys %{$deps_ref}) {
-		my $file_expand_one_level = eval_text($file, $options_ref, {}, {});
-		my $file_expand_all_level = eval_text($file_expand_one_level, $args_ref, $proc_vars_ref, $global_vars_ref);
-		foreach my $dep (keys %{$deps_ref->{$file}}) {
-			my $dep_expand_one_level = eval_text($dep, $options_ref, {}, {});
-			my $dep_expand_all_level = eval_text($dep_expand_one_level, $args_ref, $proc_vars_ref, $global_vars_ref);
-			$results{$file_expand_all_level} = {} if not exists $results{$file_expand_all_level};
-			$results{$file_expand_all_level}{$dep_expand_all_level} = $dep_expand_one_level;
-		}
-	}
-	%{$deps_ref} = %results;
-}
-
-sub transform_info
-{
-	my ($info_ref, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
-
-	transform_vars($info_ref->{opt_vars}, $options_ref);
-	transform_vars($info_ref->{req_vars}, $options_ref);
-
-	transform_files($info_ref->{requires}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
-	transform_files($info_ref->{inputs}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
-	transform_files($info_ref->{outputs}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
-	transform_files($info_ref->{finals}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
-	transform_files($info_ref->{temps}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
-
-	transform_deps($info_ref->{requires_of}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
-	transform_deps($info_ref->{inputs_of}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
-}
-
 ############################################################
 # Checking
 
-sub check_block
+sub merge_info
 {
-	my ($block_ref, $args_ref, $proc_vars_ref) = @_;
-
-	my %opt_vars = ();
-	my %req_vars = ();
-	my %requires_of = ();
-	my %inputs_of = ();
-	my %requires = ();
-	my %inputs = ();
-	my %outputs = ();
-	my %finals = ();
-	my %temps = ();
-
-	my %proc_vars = %{$proc_vars_ref};
-	my $global_vars_ref = $global_vars_list_ref->{$block_ref->{file}};
-
-	foreach my $cmd_ref (@{$block_ref->{commands}}) {
-
-		%proc_vars = %{$proc_vars_ref} if $block_ref->{parallel};
-
-		if (exists $cmd_ref->{primitive}) {
-			if ($cmd_ref->{primitive} eq 'SP_set') {
-				if (not exists $args_ref->{$cmd_ref->{variable}}) {
-					$proc_vars{$cmd_ref->{variable}} = $cmd_ref->{text};
-				}
-			} elsif ($cmd_ref->{primitive} eq 'SP_run') {
-				die "Unknown procedure '$cmd_ref->{proc_name}' for SP_run at $cmd_ref->{line_info}." if not exists $procs_ref->{$cmd_ref->{proc_name}};
-
-				my @keys = ();
-				my @values = ();
-				my %options = ();
-				foreach my $item_ref (@{$cmd_ref->{options}}) {
-					push @keys, $item_ref->{name};
-					push @values, $item_ref->{value};
-					$options{$item_ref->{name}} = $item_ref->{value};
-				}
-
-				my @items = (@values, keys %{$cmd_ref->{requires}}, keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}}, keys %{$cmd_ref->{finals}}, keys %{$cmd_ref->{temps}});
-				check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, @items);
-				
-				my %args = ();
-				foreach my $name (@keys) {
-					$args{$name} = '${' . $name . '}';
-				}
-				my $info_ref = check_proc($procs_ref->{$cmd_ref->{proc_name}}, \%args, {}, $global_vars_ref);
-				if (%{$info_ref->{req_vars}}) {
-					if (not exists $cmd_ref->{dots}) {
-						die "No enough variable(s) for SP_run '$cmd_ref->{proc_name}' at $cmd_ref->{line_info}:\n   "
-							. join(', ', sort keys %{$info_ref->{req_vars}}) . "";
-					} else {
-						foreach my $name (keys %{$info_ref->{req_vars}}) {
-							if (exists $args_ref->{$name}) {
-								$opt_vars{$name} = $args_ref->{$name};
-							} else {
-								$req_vars{$name} = "";
-							}
-						}
-					}
-				}
-				transform_info $info_ref, \%options, $args_ref, \%proc_vars, $global_vars_ref;
-				
-				foreach my $file (keys %{$cmd_ref->{requires}}) {
-					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
-					if (not exists $info_ref->{requires}{$file_result}) {
-						$info_ref->{requires}{$file_result} = $file;
-					}
-				}
-				foreach my $file (keys %{$cmd_ref->{inputs}}) {
-					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
-					if (not exists $info_ref->{inputs}{$file_result}) {
-						$info_ref->{inputs}{$file_result} = $file;
-					}
-				}
-				foreach my $file (keys %{$cmd_ref->{outputs}}) {
-					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
-					if (not exists $info_ref->{outputs}{$file_result}) {
-						$info_ref->{outputs}{$file_result} = $file;
-					}
-				}
-				foreach my $file (keys %{$cmd_ref->{finals}}) {
-					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
-					if (not exists $info_ref->{finals}{$file_result}) {
-						$info_ref->{finals}{$file_result} = $file;
-					}
-				}
-				foreach my $file (keys %{$cmd_ref->{temps}}) {
-					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
-					if (not exists $info_ref->{temps}{$file_result}) {
-						$info_ref->{temps}{$file_result} = $file;
-					}
-				}
-
-				foreach my $output (keys %{$info_ref->{outputs}}) {
-					$outputs{$output} = $info_ref->{outputs}{$output};
-
-					foreach my $require (keys %{$info_ref->{requires}}) {
-						$requires_of{$output} = {} if not exists $requires_of{$output};
-						$requires_of{$output}{$require} = $info_ref->{requires}{$require};
-					}
-					foreach my $input (keys %{$info_ref->{inputs}}) {
-						$inputs_of{$output} = {} if not exists $inputs_of{$output};
-						$inputs_of{$output}{$input} = $info_ref->{inputs}{$input};
-					}
-				}
-
-				foreach my $save (keys %{$info_ref->{finals}}) {
-					$finals{$save} = $info_ref->{finals}{$save};
-				}
-				foreach my $temp (keys %{$info_ref->{temps}}) {
-					$temps{$temp} = $info_ref->{temps}{$temp};
-				}
-
-			} elsif ($cmd_ref->{primitive} eq 'SP_if') {
-				foreach my $cond_ref (@{$cmd_ref->{condition}}) {
-					my @items = ();
-					push @items, $cond_ref->{shell} if exists $cond_ref->{shell};
-					push @items, $cond_ref->{text} if exists $cond_ref->{text};
-					check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, @items);
-
-					my $info_ref = check_block($cond_ref->{block}, $args_ref, \%proc_vars);
-					merge_vars_info \%opt_vars, \%req_vars, $info_ref;
-				}
-				if (exists $cmd_ref->{else_block}) {
-					my $info_ref = check_block($cmd_ref->{else_block}, $args_ref, \%proc_vars);
-					merge_vars_info \%opt_vars, \%req_vars, $info_ref;
-				}
-			} elsif ($cmd_ref->{primitive} eq 'SP_for' or $cmd_ref->{primitive} eq 'SP_for_parallel') {
-				$proc_vars{$cmd_ref->{variable}} = '';
-				check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, $cmd_ref->{text});
-
-				my $info_ref = check_block($cmd_ref->{block}, $args_ref, \%proc_vars);
-				merge_vars_info \%opt_vars, \%req_vars, $info_ref;
-			} elsif ($cmd_ref->{primitive} eq 'SP_while') {
-				check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, $cmd_ref->{shell});
-
-				my $info_ref = check_block($cmd_ref->{block}, $args_ref, \%proc_vars);
-				merge_vars_info \%opt_vars, \%req_vars, $info_ref;
-			}
-
-		} elsif (exists $cmd_ref->{block}) {
-			my $info_ref = check_block($cmd_ref->{block}, $args_ref, \%proc_vars);
-			merge_vars_info \%opt_vars, \%req_vars, $info_ref;
-
-			foreach my $file (keys %{$info_ref->{requires_of}}) {
-				foreach my $dep (keys %{$info_ref->{requires_of}{$file}}) {
-					$requires_of{$file}{$dep} = $info_ref->{requires_of}{$file}{$dep};
-				}
-			}
-			foreach my $file (keys %{$info_ref->{inputs_of}}) {
-				foreach my $dep (keys %{$info_ref->{inputs_of}{$file}}) {
-					$inputs_of{$file}{$dep} = $info_ref->{inputs_of}{$file}{$dep};
-				}
-			}
-			foreach my $file (keys %{$info_ref->{requires}}) {
-				$requires{$file} = $info_ref->{requires}{$file};
-			}
-			foreach my $file (keys %{$info_ref->{inputs}}) {
-				$inputs{$file} = $info_ref->{inputs}{$file};
-			}
-			foreach my $file (keys %{$info_ref->{outputs}}) {
-				$outputs{$file} = $info_ref->{outputs}{$file};
-			}
-			foreach my $file (keys %{$info_ref->{finals}}) {
-				$finals{$file} = $info_ref->{finals}{$file};
-			}
-			foreach my $file (keys %{$info_ref->{temps}}) {
-				$temps{$file} = $info_ref->{temps}{$file};
-			}
-		} else {
-			check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref,
-				$cmd_ref->{command}, keys %{$cmd_ref->{requires}},
-				keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}},
-				keys %{$cmd_ref->{finals}}, keys %{$cmd_ref->{temps}});
-			add_dep_info \%requires_of, \%inputs_of, \%outputs, \%finals, \%temps,
-				$args_ref, \%proc_vars, $global_vars_ref,
-				$cmd_ref->{requires}, $cmd_ref->{inputs}, $cmd_ref->{outputs}, $cmd_ref->{finals}, $cmd_ref->{temps};
+	my ($info_ref, $new_info_ref) = @_;
+	while (my ($name, $value) = each(%{$new_info_ref->{opt_vars}})) {
+		unless (exists $info_ref->{opt_vars}->{$name} or exists $info_ref->{req_vars}->{$name}) {
+			$info_ref->{opt_vars}->{$name} = $value;
 		}
 	}
-
-	return { opt_vars => \%opt_vars, req_vars => \%req_vars, requires_of => \%requires_of, inputs_of => \%inputs_of,
-		requires => \%requires, inputs => \%inputs, outputs => \%outputs, finals => \%finals, temps => \%temps };
+	while (my ($name, $value) = each(%{$new_info_ref->{req_vars}})) {
+		unless (exists $info_ref->{req_vars}->{$name}) {
+			$info_ref->{req_vars}->{$name} = $value;
+		}
+		if (exists $info_ref->{opt_vars}->{$name}) {
+			delete $info_ref->{opt_vars}->{$name};
+		}
+	}
+	foreach my $key ("requires", "inputs", "outputs", "temps", "finals") {
+		while (my ($file, $text) = each(%{$new_info_ref->{$key}})) {
+			my $add = 1;
+			if ($key eq "requires" or $key eq "inputs") {
+				if (exists $info_ref->{outputs}{$file}) {
+					$info_ref->{temps}{$file} = $info_ref->{outputs}{$file};
+					delete $info_ref->{outputs}{$file};
+					$add = 0;
+				} elsif (exists $info_ref->{temps}{$file}) {
+					$add = 0;
+				} elsif (exists $info_ref->{finals}{$file}) {
+					$add = 0;
+				}
+			}
+			if ($add and not exists $info_ref->{$key}{$file}) {
+				$info_ref->{$key}{$file} = $text;
+			}
+		}
+	}
 }
 
-sub remove_intermediate_outputs
+sub transform_file  # This function only applys the option transform on a file name
 {
-	my ($info_ref) = @_;
+	my ($file, $options_ref) = @_;
+	my @parts = split /\${(\w+)}/, $file;
+	my $result = shift @parts;
+	while (@parts) {
+		my $name = shift @parts;
+		my $text = shift @parts;
+		$result .= $options_ref->{$name} . $text;
+	}
+	return $result;
+}
 
-	my %items = ();
-	foreach my $output (keys %{$info_ref->{outputs}}) {
-		if (exists $info_ref->{requires_of}{$output}) {
-			@items{keys %{$info_ref->{requires_of}{$output}}} = '';
-		}
-		if (exists $info_ref->{inputs_of}{$output}) {
-			@items{keys %{$info_ref->{inputs_of}{$output}}} = '';
+sub check_sp_set
+{
+	my ($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
+	my $info_ref = { opt_vars => {}, req_vars => {}, requires => {}, inputs => {}, outputs => {}, temps => {}, finals => {} };
+	unless (exists $args_ref->{$cmd_ref->{variable}}) {
+		$proc_vars_ref->{$cmd_ref->{variable}} = $cmd_ref->{text};
+		check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars}, $args_ref, $proc_vars_ref, $global_vars_ref, $cmd_ref->{text};
+	}
+	return $info_ref;
+}
+
+sub check_sp_run
+{
+	my ($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
+	my $info_ref = { opt_vars => {}, req_vars => {}, requires => {}, inputs => {}, outputs => {}, temps => {}, finals => {} };
+	my $proc_ref = $procs_ref->{$cmd_ref->{proc_name}}
+		or die "Unknown procedure '$cmd_ref->{proc_name}' for $cmd_ref->{primitive} at " . file_pos($cmd_ref);
+	check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars}, $args_ref, $proc_vars_ref, $global_vars_ref,
+		map { $_->{value} } @{$cmd_ref->{options}};
+	my $sub_args_ref = {};
+	foreach my $item_ref (@{$cmd_ref->{options}}) {
+		$sub_args_ref->{$item_ref->{name}} = '${' . $item_ref->{name} . '}';
+	}
+	my $sub_info_ref = check_proc($proc_ref, $sub_args_ref);
+	if (%{$sub_info_ref->{req_vars}}) {
+		if (exists $cmd_ref->{dots}) {
+			foreach my $name (keys %{$sub_info_ref->{req_vars}}) {
+				if (exists $args_ref->{$name}) {
+					$info_ref->{opt_vars}{$name} = $args_ref->{$name};
+				} elsif (exists $proc_vars_ref->{$name}) {
+					$info_ref->{opt_vars}{$name} = $args_ref->{$name};
+				} elsif (exists $global_vars_ref->{$name}) {
+					$info_ref->{opt_vars}{$name} = $global_vars_ref->{$name};
+				} else {
+					$info_ref->{req_vars}{$name} = '';
+				}
+			}
+		} else {
+			die "No enough variable(s) for $cmd_ref->{primitive} at " . file_pos($cmd_ref) . ":\n   "
+				. join(", ", sort keys %{$sub_info_ref->{req_vars}});
 		}
 	}
-
-	my $output_ref = $info_ref->{outputs};
-	foreach my $file (keys %items) {
-		if (exists $output_ref->{$file}) {
-			delete $output_ref->{$file};
+	my %options = map { $_->{name} => $_->{value} } @{$cmd_ref->{options}};
+	my %options_eval = map { $_->{name} => eval_text($_->{value}, $args_ref, $proc_vars_ref, $global_vars_ref) } @{$cmd_ref->{options}};
+	foreach my $key ("requires", "inputs", "outputs", "temps", "finals") {
+		foreach my $sub_file (keys %{$sub_info_ref->{$key}}) {
+			my $text = transform_file($sub_file, \%options);
+			my $file = eval_text($text, $args_ref, $proc_vars_ref, $global_vars_ref);
+			$info_ref->{$key}{$file} = $text;
 		}
 	}
+	return $info_ref;
+}
+
+sub check_sp_if
+{
+	my ($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
+	my $info_ref = { opt_vars => {}, req_vars => {}, requires => {}, inputs => {}, outputs => {}, temps => {}, finals => {} };
+	foreach my $cond_ref (@{$cmd_ref->{condition}}) {
+		my @items = ();
+		push @items, $cond_ref->{shell} if exists $cond_ref->{shell};
+		push @items, $cond_ref->{text} if exists $cond_ref->{text};
+		check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars}, $args_ref, $proc_vars_ref, $global_vars_ref,
+			(exists $cond_ref->{shell} ? $cond_ref->{shell} : ()),
+			(exists $cond_ref->{text} ? $cond_ref->{text} : ());
+		my $block_info_ref = check_block($cond_ref->{block}, $args_ref, $proc_vars_ref, $global_vars_ref);
+		if (%{$block_info_ref->{requires}} or %{$block_info_ref->{inputs}} or %{$block_info_ref->{outputs}}
+				or %{$block_info_ref->{temps}} or %{$block_info_ref->{finals}}) {
+			warn "File dependency defined in $cmd_ref->{primitive} block, which may become different in run-time!";
+			# TODO: check if all blocks provide the same file dependency
+		}
+		merge_info $info_ref, $block_info_ref;
+	}
+	if (exists $cmd_ref->{else_block}) {
+		my $block_info_ref = check_block($cmd_ref->{else_block}, $args_ref, $proc_vars_ref, $global_vars_ref);
+		merge_info $info_ref, $block_info_ref;
+	}
+	return $info_ref;
+}
+
+sub check_sp_while
+{
+	my ($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
+	my $info_ref = { opt_vars => {}, req_vars => {}, requires => {}, inputs => {}, outputs => {}, temps => {}, finals => {} };
+	check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars}, $args_ref, $proc_vars_ref, $global_vars_ref, $cmd_ref->{shell};
+	my $block_info_ref = check_block($cmd_ref->{block}, $args_ref, $proc_vars_ref, $global_vars_ref);
+	if (%{$block_info_ref->{requires}} or %{$block_info_ref->{inputs}} or %{$block_info_ref->{outputs}}
+			or %{$block_info_ref->{temps}} or %{$block_info_ref->{finals}}) {
+		warn "File dependency defined in $cmd_ref->{primitive} block, which may become different in run-time!";
+	}
+	merge_info $info_ref, $block_info_ref;
+	return $info_ref;
+}
+
+sub check_sp_for
+{
+	my ($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
+	my $info_ref = { opt_vars => {}, req_vars => {}, requires => {}, inputs => {}, outputs => {}, temps => {}, finals => {} };
+	check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars}, $args_ref, $proc_vars_ref, $global_vars_ref, $cmd_ref->{text};
+	my $block_info_ref = check_block($cmd_ref->{block}, $args_ref, $proc_vars_ref, $global_vars_ref);
+	if (%{$block_info_ref->{requires}} or %{$block_info_ref->{inputs}} or %{$block_info_ref->{outputs}}
+			or %{$block_info_ref->{temps}} or %{$block_info_ref->{finals}}) {
+		warn "File dependency defined in $cmd_ref->{primitive} block, which may become different in run-time!";
+	}
+	merge_info $info_ref, $block_info_ref;
+	return $info_ref;
+}
+
+sub check_primitive
+{
+	my ($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
+	my $actions = {
+		'SP_set'   => \&check_sp_set,
+		'SP_run'   => \&check_sp_run,
+		'SP_if'    => \&check_sp_if,
+		'SP_while' => \&check_sp_while,
+		'SP_for'   => \&check_sp_for,
+		'SP_for_parallel' => \&check_sp_for,
+		'_DEFAULT_' => sub {
+			my $cmd_ref = shift @_;
+			die "Unexpected primitive '$cmd_ref->{primitive}' in " . file_pos($cmd_ref);
+		},
+	};
+	my $action = $actions->{$cmd_ref->{primitive}} || $actions->{_DEFAULT_};
+	return $action->($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
+}
+
+sub check_cmd
+{
+	my ($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
+	if (exists $cmd_ref->{primitive}) {
+		return check_primitive($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
+	}
+	if (exists $cmd_ref->{block}) {
+		return check_block($cmd_ref->{block}, $args_ref, $proc_vars_ref, $global_vars_ref);
+	}
+	# TODO: warn if requires/inputs/outputs do not appear in command
+	my $info_ref = { opt_vars => {}, req_vars => {}, requires => {}, inputs => {}, outputs => {}, temps => {}, finals => {} };
+	check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars}, $args_ref, $proc_vars_ref, $global_vars_ref, keys %{$cmd_ref->{files}}, $cmd_ref->{command};
+	while (my ($text, $type) = each(%{$cmd_ref->{files}})) {
+		my $file = eval_text($text, $args_ref, $proc_vars_ref, $global_vars_ref);
+		if ($type eq 'require') {
+			$info_ref->{requires}{$file} = $text;
+		} elsif ($type eq 'input') {
+			$info_ref->{inputs}{$file} = $text;
+		} elsif ($type eq 'output') {
+			$info_ref->{outputs}{$file} = $text;
+		} elsif ($type eq 'output.temp') {
+			$info_ref->{temps}{$file} = $text;
+		} elsif ($type eq 'output.final' or $type eq 'output.save') {
+			$info_ref->{finals}{$file} = $text;
+		}
+	}
+	return $info_ref;
+}
+
+sub check_block
+{
+	my ($block_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
+	my $info_ref = { opt_vars => {}, req_vars => {}, requires => {}, inputs => {}, outputs => {}, temps => {}, finals => {} };
+	if ($block_ref->{parallel}) {
+		my %proc_vars = %{$proc_vars_ref};  # Copy all proc variables to avoid changing in parallel block
+		foreach my $cmd_ref (@{$block_ref->{commands}}) {
+			merge_info $info_ref, check_cmd $cmd_ref, $args_ref, \%proc_vars, $global_vars_ref;
+	}
+	} else {
+		foreach my $cmd_ref (@{$block_ref->{commands}}) {
+			merge_info $info_ref, check_cmd $cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref;
+		}
+	}
+	return $info_ref;
 }
 
 sub check_proc
 {
-	my ($proc_ref, $args_ref, $proc_vars_ref) = @_;
-
-	my $global_vars_ref = $global_vars_list_ref->{$proc_ref->{file}};
-
-	my $info_ref = check_block($proc_ref, $args_ref, $proc_vars_ref);
-	check_files_dep($info_ref->{requires_of}, $info_ref->{inputs_of});
-
-	remove_intermediate_outputs $info_ref;
-	trace_dep($info_ref->{outputs}, $info_ref);
-	
-	foreach my $file (keys %{$info_ref->{inputs}}) {
-		if (exists $info_ref->{requires}{$file}) {
-			delete $info_ref->{requires}{$file};
-		}
-	}
-	foreach my $file (keys %{$info_ref->{requires}}) {
-		if (exists $info_ref->{requires_of}{$file} or exists $info_ref->{inputs_of}{$file}) {
-			delete $info_ref->{requires}{$file};
-		}
-	}
-	foreach my $file (keys %{$info_ref->{inputs}}) {
-		if (exists $info_ref->{requires_of}{$file} or exists $info_ref->{inputs_of}{$file}) {
-			delete $info_ref->{inputs}{$file};
-		}
-	}
-	foreach my $file (keys %{$info_ref->{finals}}) {
-		$info_ref->{outputs}{$file} = $info_ref->{finals}{$file} if not exists $info_ref->{outputs}{$file};
-		delete $info_ref->{temps}{$file} if exists $info_ref->{temps}{$file};
-	}
-	foreach my $file (keys %{$info_ref->{temps}}) {
-		delete $info_ref->{outputs}{$file} if exists $info_ref->{outputs}{$file};
-	}
-	return $info_ref;
+	my ($proc_ref, $args_ref) = @_;
+	return check_block $proc_ref, $args_ref, {}, $global_vars_list_ref->{$proc_ref->{file}};
 }
 
 ############################################################
@@ -1563,18 +1363,11 @@ sub show_cmd
 	if ($cmd_ref->{name} ne '') {
 		push @lines, "#[name=\"$cmd_ref->{name}\"]";
 	}
-	foreach my $file (keys %{$cmd_ref->{requires}}) {
-		push @lines, "#[require=\"$file\"]";
-	}
-	foreach my $file (keys %{$cmd_ref->{inputs}}) {
-		push @lines, "#[input=\"$file\"]";
-	}
-	foreach my $file (keys %{$cmd_ref->{outputs}}) {
-		my $text = "#[output";
-		$text .= '.temp' if exists $cmd_ref->{temps}{$file};
-		$text .= '.final' if exists $cmd_ref->{finals}{$file};
-		$text .= "=\"$file\"]";
-		push @lines, $text;
+	foreach my $key ("require", "input", "output.temp", "output", "output.save", "output.final") {
+		foreach my $file (keys %{$cmd_ref->{files}}) {
+			push @lines, "#[$key=\"$file\"]"
+				if $cmd_ref->{files}->{$file} eq $key;
+		}
 	}
 	if (exists $cmd_ref->{primitive}) {
 		push @lines, show_primitive $cmd_ref, $args_ref;
@@ -1595,8 +1388,12 @@ sub show_block
 	my ($block_ref, $args_ref) = @_;
 	my @lines;
 	push @lines, ($block_ref->{parallel} ? '{{' : '{');
+	my $first = 1;
 	foreach my $cmd_ref (@{$block_ref->{commands}}) {
-		push @lines, map { $_ =~ s/^/\t/; $_ } show_cmd $cmd_ref, $args_ref;
+		my @sub = map { $_ =~ s/^/\t/; $_ } show_cmd $cmd_ref, $args_ref;
+		push @lines, "" if not $first and scalar @sub > 1;
+		push @lines, @sub;
+		$first = 0;
 	}
 	push @lines, ($block_ref->{parallel} ? '}}' : '}');
 	return @lines;
@@ -1604,12 +1401,11 @@ sub show_block
 
 sub show_proc
 {
-	my ($proc_name, $args_ref) = @_;
-	my $proc_ref = $procs_ref->{$proc_name};
+	my ($proc_ref, $args_ref) = @_;
 	print "#[require=\"$_\"]\n" for (keys %{$proc_ref->{requires}});
 	print "#[input=\"$_\"]\n" for (keys %{$proc_ref->{inputs}});
 	print "#[output=\"$_\"]\n" for (keys %{$proc_ref->{outputs}});
-	print "function $proc_name\n";
+	print "function $proc_ref->{name}\n";
 	print join("\n", show_block $proc_ref, $args_ref), "\n";
 }
 
@@ -1935,7 +1731,7 @@ sub run_cmd
 				$cmd_text =~ s/\s*\\\s*\n\s*/ /mg;
 				log_print "$indent($run_id) [shell] $cmd_text\n";
 
-				my $info_ref = { requires => {}, inputs => {}, outputs => {}, finals => {}, temps => {} };
+				my $info_ref = { opt_vars => {}, req_vars => {}, requires => {}, inputs => {}, outputs => {}, temps => {}, finals => {} };
 				foreach my $require (keys %{$cmd_ref->{requires}}) {
 					my $file = eval_text($require, $args_ref, \%proc_vars, $global_vars_ref);
 					$info_ref->{requires}{$file} = '';
@@ -2118,7 +1914,7 @@ sub run_proc
 		log_print "$indent($run_id) [pipeline] $cmd\n";
 	}
 	
-	my $info_ref = check_proc($proc_ref, $args_ref, \%proc_vars, $args_ref);
+	my $info_ref = check_proc($proc_ref, $args_ref);
 
 	if (not $test_mode) {
 		$ret = check_files($info_ref, $indent, $run_id);
@@ -2255,15 +2051,17 @@ if (@exec_cmds) {
 	print_usage;
 	exit 1;
 }
+my $proc_ref = $procs_ref->{$proc_name};
 
 # Show pipeline scripts
 if ($show_mode) {
-	show_proc $proc_name, $args_ref;
+	show_proc $proc_ref, $args_ref;
 	exit 1;
 }
 
 # Check variables and dependencies
-my $info_ref = check_proc($procs_ref->{$proc_name}, $args_ref, {}, $args_ref);
+# TODO: check if all arg values are solved.
+my $info_ref = check_proc($proc_ref, $args_ref);
 if ($help_mode) {
 	show_info($proc_name, $info_ref);
 	exit 1;
