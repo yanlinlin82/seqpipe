@@ -230,6 +230,107 @@ sub get_all_pipe
 }
 
 ############################################################
+# Text processing
+
+sub expand_text
+{
+	my @res = ();
+	foreach my $text (@_) {
+		if ($text =~ /{([0-9]+)..([0-9]+)}/) {
+			my $start = $1;
+			my $end = $2;
+			if ($start <= $end) {
+				for (my $i = $start; $i <= $end; ++$i) {
+					push @res, $i;
+				}
+			} else {
+				for (my $i = $start; $i >= $end; --$i) {
+					push @res, $i;
+				}
+			}
+		} elsif ($text =~ /{([A-Z])..([A-Z])}/) {
+			my $start = $1;
+			my $end = $2;
+			if ($start <= $end) {
+				for (my $i = $start; $i <= $end; ++$i) {
+					push @res, $i;
+				}
+			} else {
+				for (my $i = $start; $i >= $end; --$i) {
+					push @res, $i;
+				}
+			}
+		} elsif ($text =~ /{([a-z])..([a-z])}/) {
+			my $start = $1;
+			my $end = $2;
+			if ($start <= $end) {
+				for (my $i = $start; $i <= $end; ++$i) {
+					push @res, $i;
+				}
+			} else {
+				for (my $i = $start; $i >= $end; --$i) {
+					push @res, $i;
+				}
+			}
+		} elsif ($text =~ /{([^{},]+)((,[^{},])+)}/) {
+			my $text_1 = $1;
+			my $text_2 = $2;
+		}
+	}
+	return @res;
+}
+
+sub is_unresolved
+{
+	my ($text) = @_;
+	# TODO: ignore those in string (between quote marks).
+	return 1 if $text =~ /{[0-9]\.\.[0-9]}/;
+	return 1 if $text =~ /{[A-Z]\.\.[A-Z]}/;
+	return 1 if $text =~ /{[a-z]\.\.[a-z]}/;
+	return 1 if $text =~ /\$\(\(.+\)\)/;
+	return 1 if $text =~ /\$\(.*\)/;
+	return 1 if $text =~ /\*/;
+	return 1 if $text =~ /\?/;
+	return 0;
+}
+
+sub check_text
+{
+	my ($text, $args_ref, $vars_ref, $gvars_ref, $info_ref, $skip_ref) = @_;
+	my $value = '';
+	# TODO: keep those ${XXX} in single quote marks not replaced.
+	while ($text =~ /^(.*?)\${(\w+)}(.*)$/s) {
+		my $name = $2;
+		$text = $3;
+		$value .= $1;
+		if (defined $skip_ref and exists $skip_ref->{$name}) {
+			$value .= '${' . $name . '}';
+		} elsif (exists $info_ref->{dyn_vars}{$name}) {
+			$value .= '${' . $name . '}';
+		} elsif (exists $args_ref->{$name}) {
+			my $sub_skip_ref;
+			%{$sub_skip_ref} = %{$skip_ref} if defined $skip_ref;
+			$sub_skip_ref->{$name} = 1;
+			$value .= check_text($args_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref, $sub_skip_ref);
+		} elsif (exists $vars_ref->{$name}) {
+			my $sub_skip_ref;
+			%{$sub_skip_ref} = %{$skip_ref} if defined $skip_ref;
+			$sub_skip_ref->{$name} = 1;
+			$value .= check_text($vars_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref, $sub_skip_ref);
+		} elsif (exists $gvars_ref->{$name}) {
+			my $sub_skip_ref;
+			%{$sub_skip_ref} = %{$skip_ref} if defined $skip_ref;
+			$sub_skip_ref->{$name} = 1;
+			$value .= check_text($gvars_ref->{$name}, $args_ref, $vars_ref, $gvars_ref, $info_ref, $sub_skip_ref);
+		} else {
+			$info_ref->{req_vars}{$name} = '' unless exists $info_ref->{req_vars}{$name} or $info_ref->{dyn_vars}{$name};
+			$value .= '${' . $name . '}';
+		}
+	}
+	return $value . $text;
+}
+
+############################################################
 # Bash line parsing
 
 sub bash_line_encode
@@ -607,16 +708,17 @@ sub load_cmd_attr
 
 sub load_sp_set
 {
-	my ($proc_name, $fp, $cmd_ref, $proc_info_ref) = @_;
+	my ($proc_name, $fp, $cmd_ref) = @_;
 	die "Invalid syntax for $cmd_ref->{primitive} in " . file_pos($fp) unless $fp->{line} =~ /$SP_SET/s;
 	$cmd_ref->{variable} = $1;
 	($cmd_ref->{text}, $cmd_ref->{comment}) = split_bash_and_comment($2);
 	check_vars_dep({}, {$cmd_ref->{variable} => $cmd_ref->{text}}, {}, $global_vars_list_ref->{$fp->{file}});
+	read_nonblank_line($fp);
 }
 
 sub load_sp_run
 {
-	my ($proc_name, $fp, $cmd_ref, $proc_info_ref) = @_;
+	my ($proc_name, $fp, $cmd_ref) = @_;
 	die "Invalid syntax for $cmd_ref->{primitive} in " . file_pos($fp) unless $fp->{line} =~ /$SP_RUN/s;
 	$cmd_ref->{proc_name} = $1;
 	$cmd_ref->{options} = [];
@@ -637,11 +739,12 @@ sub load_sp_run
 			die "Invalid option '$arg' for SP_run in " . file_pos($fp);
 		}
 	}
+	read_nonblank_line($fp);
 }
 
 sub load_sp_if
 {
-	my ($proc_name, $fp, $cmd_ref, $proc_info_ref) = @_;
+	my ($proc_name, $fp, $cmd_ref) = @_;
 	$cmd_ref->{condition} = [];
 	my $cond_ref = { primitive => 'SP_if' };
 	if ($fp->{line} =~ /$SP_IF_COND/s) {
@@ -655,7 +758,7 @@ sub load_sp_if
 	die "Invalid syntax for $cond_ref->{primitive} in " . file_pos($fp) unless read_nonblank_line($fp) and $fp->{line} =~ /$BRACKET_LEFT/s;
 	my $bracket = $1;
 	die "Invalid syntax for $cond_ref->{primitive} in " . file_pos($fp) unless read_nonblank_line($fp);
-	$cond_ref->{block} = load_block($proc_name, $fp, $bracket, $proc_info_ref);
+	$cond_ref->{block} = load_block($proc_name, $fp, $bracket);
 	push @{$cmd_ref->{condition}}, $cond_ref;
 
 	while (defined $fp->{line}) {
@@ -673,20 +776,20 @@ sub load_sp_if
 		die "Invalid syntax for $cond_ref->{primitive} in " . file_pos($fp) unless read_nonblank_line($fp) and $fp->{line} =~ /$BRACKET_LEFT/s;
 		my $bracket = $1;
 		die "Invalid syntax for $cond_ref->{primitive} in " . file_pos($fp) unless read_nonblank_line($fp);
-		$cond_ref->{block} = load_block($proc_name, $fp, $bracket, $proc_info_ref);
+		$cond_ref->{block} = load_block($proc_name, $fp, $bracket);
 		push @{$cmd_ref->{condition}}, $cond_ref;
 	}
 	if ($fp->{line} =~ /$SP_ELSE/s) {
 		die "Invalid syntax for SP_else in " . file_pos($fp) unless read_nonblank_line($fp) and $fp->{line} =~ /$BRACKET_LEFT/s;
 		my $bracket = $1;
 		die "Invalid syntax for SP_else in " . file_pos($fp) unless read_nonblank_line($fp);
-		$cmd_ref->{else_block} = load_block($proc_name, $fp, $bracket, $proc_info_ref);
+		$cmd_ref->{else_block} = load_block($proc_name, $fp, $bracket);
 	}
 }
 
 sub load_sp_for
 {
-	my ($proc_name, $fp, $cmd_ref, $proc_info_ref) = @_;
+	my ($proc_name, $fp, $cmd_ref) = @_;
 	die "Invalid syntax for $cmd_ref->{primitive} in " . file_pos($fp) unless $fp->{line} =~ /$SP_FOR/s;
 	$cmd_ref->{variable} = $3;
 	$cmd_ref->{text} = $4;
@@ -694,47 +797,44 @@ sub load_sp_for
 	die "Invalid syntax for $cmd_ref->{primitive} in " . file_pos($fp) unless read_nonblank_line($fp) and $fp->{line} =~ /$BRACKET_LEFT/s;
 	my $bracket = $1;
 	die "Invalid syntax for $cmd_ref->{primitive} in " . file_pos($fp) unless read_nonblank_line($fp);
-	$cmd_ref->{block} = load_block($proc_name, $fp, $bracket, $proc_info_ref);
+	$cmd_ref->{block} = load_block($proc_name, $fp, $bracket);
 }
 
 sub load_sp_while
 {
-	my ($proc_name, $fp, $cmd_ref, $proc_info_ref) = @_;
+	my ($proc_name, $fp, $cmd_ref) = @_;
 	die "Invalid syntax for $cmd_ref->{primitive} in " . file_pos($fp) unless $fp->{line} =~ /$SP_WHILE/s;
 	$cmd_ref->{negative} = $1;
 	$cmd_ref->{shell} = $2;
 	die "Invalid syntax for $cmd_ref->{primitive} in " . file_pos($fp) unless read_nonblank_line($fp) and $fp->{line} =~ /$BRACKET_LEFT/;
 	my $bracket = $1;
 	die "Invalid syntax for $cmd_ref->{primitive} in " . file_pos($fp) unless read_nonblank_line($fp);
-	$cmd_ref->{block} = load_block($proc_name, $fp, $bracket, $proc_info_ref);
+	$cmd_ref->{block} = load_block($proc_name, $fp, $bracket);
 }
 
 sub load_primitive
 {
-	my ($proc_name, $fp, $cmd_ref, $proc_info_ref) = @_;
-	$fp->{line} =~ s/\\\s*\n//mg;
-	if ($cmd_ref->{primitive} eq 'SP_set') {
-		load_sp_set($proc_name, $fp, $cmd_ref, $proc_info_ref);
-		read_nonblank_line($fp);
-	} elsif ($cmd_ref->{primitive} eq 'SP_run') {
-		load_sp_run($proc_name, $fp, $cmd_ref, $proc_info_ref);
-		read_nonblank_line($fp);
-	} elsif ($cmd_ref->{primitive} eq 'SP_if') {
-		load_sp_if($proc_name, $fp, $cmd_ref, $proc_info_ref);
-	} elsif ($cmd_ref->{primitive} eq 'SP_for') {
-		load_sp_for($proc_name, $fp, $cmd_ref, $proc_info_ref);
-	} elsif ($cmd_ref->{primitive} eq 'SP_for_parallel') {
-		load_sp_for($proc_name, $fp, $cmd_ref, $proc_info_ref);
-	} elsif ($cmd_ref->{primitive} eq 'SP_while') {
-		load_sp_while($proc_name, $fp, $cmd_ref, $proc_info_ref);
-	} else {
-		die "Unknown primitive '$cmd_ref->{primitive}' in " . file_pos($fp);
-	}
+	my ($proc_name, $fp, $cmd_ref) = @_;
+	$fp->{line} =~ s/\\\s*\n//mg;  # TODO: try not change the text in $fp
+	my $actions = {
+		'SP_set'   => \&load_sp_set,
+		'SP_run'   => \&load_sp_run,
+		'SP_if'    => \&load_sp_if,
+		'SP_while' => \&load_sp_while,
+		'SP_for'   => \&load_sp_for,
+		'SP_for_parallel' => \&load_sp_for,
+		'_DEFAULT_' => sub {
+			my ($proc_name, $fp, $cmd_ref) = @_;
+			die "Unknown primitive '$cmd_ref->{primitive}' in " . file_pos($fp);
+		},
+	};
+	my $action = $actions->{$cmd_ref->{primitive}} || $actions->{_DEFAULT_};
+	$action->($proc_name, $fp, $cmd_ref);
 }
 
 sub load_cmd
 {
-	my ($proc_name, $fp, $proc_info_ref) = @_;
+	my ($proc_name, $fp) = @_;
 	my $cmd_ref = { file => $fp->{file}, line_no => $fp->{line_no}, name => '', command => '',
 		requires => {}, inputs => {}, outputs => {}, finals => {}, temps => {} };
 	while (defined $fp->{line} and $fp->{line} =~ /$ATTR_LINE/) {
@@ -744,33 +844,33 @@ sub load_cmd
 	if ($fp->{line} =~ /$BRACKET_LEFT/) {
 		my $sub_bracket = $1;
 		die "Invalid syntax for block in " . file_pos($fp) unless read_nonblank_line($fp);
-		$cmd_ref->{block} = load_block($proc_name, $fp, $sub_bracket, $proc_info_ref);
+		$cmd_ref->{block} = load_block($proc_name, $fp, $sub_bracket);
 	} elsif ($fp->{line} =~ /$PRIMITIVE/) {
 		$cmd_ref->{primitive} = $1;
-		load_primitive($proc_name, $fp, $cmd_ref, $proc_info_ref);
+		load_primitive($proc_name, $fp, $cmd_ref);
 	} else {
 		my ($bash, $comment) = split_bash_and_comment($fp->{line});
 		die "Invalid format of command in " . file_pos($fp) if not defined $bash;
 		$cmd_ref->{command} = $fp->{line};
-		if (keys %{$cmd_ref->{finals}}) {
-			foreach my $file (keys %{$cmd_ref->{finals}}) {
-				$proc_info_ref->{finals}{$file} = '';
-			}
-		}
-		if (keys %{$cmd_ref->{temps}}) {
-			foreach my $file (keys %{$cmd_ref->{temps}}) {
-				$proc_info_ref->{temps}{$file} = '';
-			}
-		}
-		if (keys %{$cmd_ref->{outputs}}) {
-			foreach my $file (keys %{$cmd_ref->{outputs}}) {
-				$proc_info_ref->{outputs}{$file} = '';
-			}
-		}
-		foreach my $output (keys %{$cmd_ref->{outputs}}) {
-			@{$proc_info_ref->{requires_of}{$output}} = keys %{$cmd_ref->{requires}};
-			@{$proc_info_ref->{inputs_of  }{$output}} = keys %{$cmd_ref->{inputs  }};
-		}
+#		if (keys %{$cmd_ref->{finals}}) {
+#			foreach my $file (keys %{$cmd_ref->{finals}}) {
+#				$proc_info_ref->{finals}{$file} = '';
+#			}
+#		}
+#		if (keys %{$cmd_ref->{temps}}) {
+#			foreach my $file (keys %{$cmd_ref->{temps}}) {
+#				$proc_info_ref->{temps}{$file} = '';
+#			}
+#		}
+#		if (keys %{$cmd_ref->{outputs}}) {
+#			foreach my $file (keys %{$cmd_ref->{outputs}}) {
+#				$proc_info_ref->{outputs}{$file} = '';
+#			}
+#		}
+#		foreach my $output (keys %{$cmd_ref->{outputs}}) {
+#			@{$proc_info_ref->{requires_of}{$output}} = keys %{$cmd_ref->{requires}};
+#			@{$proc_info_ref->{inputs_of  }{$output}} = keys %{$cmd_ref->{inputs  }};
+#		}
 		read_nonblank_line($fp);
 	}
 	return $cmd_ref;
@@ -778,23 +878,20 @@ sub load_cmd
 
 sub load_block
 {
-	my ($proc_name, $fp, $bracket, $proc_info_ref) = @_;
+	my ($proc_name, $fp, $bracket) = @_;
 	if ($bracket eq 'SP_parallel_begin') {
 		warn "Obsolete 'SP_parallel_begin' or 'SP_parallel_end' in " . file_pos($fp) . "\n"
 			. "   NOTE: Please use '{{' or '}}' instead.";
 	}
 	my $block_ref = {
 		proc_name => $proc_name,
-		requires => $proc_info_ref->{requires},
-		inputs => $proc_info_ref->{inputs},
-		outputs => $proc_info_ref->{outputs},
-		commands => [],
 		parallel => ($bracket eq '{' ? 0 : 1),
 		file => $fp->{file},
-		line_no => $fp->{line_no}
+		line_no => $fp->{line_no},
+		commands => [],
 	};
 	while (defined $fp->{line} and $fp->{line} !~ /$BRACKET_RIGHT/) {
-		push @{$block_ref->{commands}}, load_cmd($proc_name, $fp, $proc_info_ref);
+		push @{$block_ref->{commands}}, load_cmd($proc_name, $fp);
 	}
 	if ($bracket eq '{') {
 		die "'}' expected for block in " . file_pos($fp) unless $fp->{line} =~ /^\s*}\s*$/;
@@ -819,32 +916,10 @@ sub load_proc
 		die "Invalid syntax for procedure in " . file_pos($fp) unless read_nonblank_line($fp);
 	}
 
-	my %requires = ();
-	my %inputs = ();
-	my %outputs = ();
-	my $met_proc = 0;
-
-	my %proc_info = ( "requires_of" => {}, "inputs_of" => {}, "requires" => {}, "inputs" => {}, "outputs" => {}, "finals" => {}, "temps" => {} );
-	my $proc_ref = load_block($proc_name, $fp, $bracket, \%proc_info);
-	$proc_ref->{requires_of} = $proc_info{requires_of};
-	$proc_ref->{inputs_of} = $proc_info{inputs_of};
-	$proc_ref->{finals} = $proc_info{finals};
-	$proc_ref->{temps} = $proc_info{temps};
-
-	foreach my $file (keys %requires) {
-		$proc_ref->{requires}{$file} = 1;
-	}
-	foreach my $file (keys %inputs) {
-		$proc_ref->{inputs}{$file} = 1;
-	}
-	foreach my $file (keys %outputs) {
-		$proc_ref->{outputs}{$file} = 1;
-	}
-
-	$proc_ref->{type} = $type;
+	my $proc_ref = load_block($proc_name, $fp, $bracket);
 	$proc_ref->{name} = $proc_name;
-	$proc_ref->{file} = $fp->{file};
-	$proc_ref->{line_no} = $line_no;
+	$proc_ref->{type} = $type;
+	$proc_ref->{line_no} = $line_no;  # Update 'line_no' to the line of 'function xxx' rather than its block.
 	$procs_ref->{$proc_name} = $proc_ref;
 }
 
@@ -916,20 +991,15 @@ sub load_module
 	read_nonblank_line($fp);
 	while (defined $fp->{line}) {
 		if ($fp->{line} =~ /$EMPTY_LINE/ or $fp->{line} =~ /$COMMENT_LINE/) {
-			if ($fp->{line} =~ /$ATTR_LINE/ and $fp->{line} !~ /$VERSION_LINE/) {
-				warn "Procedure attributes will be ignored in " . file_pos($fp);
-			}
+			warn "Procedure attributes will be ignored in " . file_pos($fp)
+				if $fp->{line} =~ /$ATTR_LINE/ and $fp->{line} !~ /$VERSION_LINE/;
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$INC_LINE/) {
-			if ($met_proc) {
-				warn "SP_include should be defined before procedures in " . file_pos($fp);
-			}
+			warn "SP_include should be defined before procedures in " . file_pos($fp) if $met_proc;
 			load_module_conf(dirname($file) . '/' . $2, $file, 0);
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$VAR_LINE/) {
-			if ($met_proc) {
-				warn "Global variables should be defined before procedures in " . file_pos($fp);
-			}
+			warn "Global variables should be defined before procedures in " . file_pos($fp) if $met_proc;
 			load_global_var($fp, $file, 0);
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$FUNC_LINE/) {
@@ -947,7 +1017,7 @@ sub load_module
 }
 
 ############################################################
-# Usage
+# Help messages
 
 sub print_usage
 {
@@ -1656,8 +1726,14 @@ sub run_checker
 
 sub run_sysinfo
 {
+	my ($proc_name) = @_;
+	my @cmds = ();
+	foreach my $cmd_ref (@{$procs_ref->{$proc_name}->{commands}}) {
+		push @cmds, check_text($cmd_ref->{command}, (), (),
+			$global_vars_list_ref->{$cmd_ref->{file}}, {});
+	}
 	if (open SHELL, '|-', $shell) {
-		print SHELL join("\n", "(", @_, ") 2>&1 >>$LOG_DIR/sysinfo");
+		print SHELL join("\n", "(", @cmds, ") 2>&1 >>$LOG_DIR/sysinfo");
 		close SHELL;
 	}
 }
@@ -1850,10 +1926,6 @@ sub run_cmd
 				lock(%shell_env_vars);
 				$shell_env_vars{$name} = $value;
 			}
-
-		} elsif ($proc_name =~ /_sysinfo$/) {
-			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
-			run_sysinfo($cmd_result);
 		} else {
 			my $run_id = get_new_run_id;
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
@@ -2235,7 +2307,7 @@ if (not $test_mode) {
 	foreach my $name (keys %{$procs_ref}) {
 		if ($name =~ /_sysinfo$/) {
 			if ($name eq '_sysinfo' or ($proc_name and $procs_ref->{$name}{file} eq $procs_ref->{$proc_name}{file})) {
-				run_proc $name, {}, {}, '';
+				run_sysinfo $name;
 			}
 		}
 	}
