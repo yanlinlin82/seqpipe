@@ -580,6 +580,7 @@ sub close_file
 
 sub file_pos
 {
+	# This function could be used on other structure with 'file' and 'line_no' fields, such as loaded command.
 	return "$_[0]->{file}($_[0]->{line_no})";
 }
 
@@ -942,147 +943,6 @@ sub load_module
 
 	# Load configure file to overwrite the default values of global variables
 	load_module_conf("$file.conf", $file, 1) if -e "$file.conf";
-}
-
-############################################################
-# Help messages
-
-sub print_usage
-{
-	print '
-SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.4.11 ($Rev$)
-Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
-Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
-Websites: http://seqpipe.googlecode.com
-          http://www.cbi.pku.edu.cn
-
-Usage:
-   seqpipe [options] <procedure> [NAME=VALUE ...]
-   seqpipe [options] -e <cmd> [-e <cmd> ...] [NAME=VALUE ...]
-
-Options:
-   -h / -H              Show help messages.
-   -v                   Show verbose messages.
-   -l / -L [<pattern>]  List current available procedures.
-   -m <file>            Load procedure module file, this option can be used many times.
-   -D                   Disable to load default pipelines.
-   -t <int>             Max thread number in parallel. default: ' . $max_thread_number . '
-   -s <shell>           Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
-   -k                   Keep intermediate files.
-   -R                   Show the raw procedure declaration.
-   -T                   Test mode, show commands rather than execute them.
-
-';
-}
-
-sub show_info
-{
-	my ($proc_name, $info_ref) = @_;
-	
-	print "\n";
-
-	if (%{$info_ref->{req_vars}} or ($help_mode == 2 and %{$info_ref->{opt_vars}})) {
-		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "inline command") . ":\n";
-
-		if (%{$info_ref->{req_vars}}) {
-			foreach my $name (sort keys %{$info_ref->{req_vars}}) {
-				printf "   %-30s  Required\n", $name;
-			}
-			print "\n";
-		}
-
-		if ($help_mode == 2 and %{$info_ref->{opt_vars}}) {
-			foreach my $name (sort keys %{$info_ref->{opt_vars}}) {
-				printf "   %-30s  Default: %s\n", $name, $info_ref->{opt_vars}{$name};
-			}
-			print "\n";
-		}
-	}
-
-	my @text_list = ( 'Require', 'Input', 'Temporary', 'Output' );
-	my @files_list = ( $info_ref->{requires}, $info_ref->{inputs}, $info_ref->{temps}, $info_ref->{outputs} );
-	if ($help_mode == 1) {
-		splice @text_list, 2, 1;
-		splice @files_list, 2, 1;
-	}
-	while (@text_list) {
-		my $msg = (shift @text_list) . " file(s):\n";
-		my $files_ref = shift @files_list;
-		if (%{$files_ref}) {
-			print $msg;
-			foreach my $file (sort keys %{$files_ref}) {
-				my $text = $files_ref->{$file};
-				if (length($file) > 30) {
-					printf "   %s\n   %-30s  Definition: %s\n", $file, '', $text;
-				} else {
-					printf "   %-30s  Definition: %s\n", $file, $text;
-				}
-			}
-			print "\n";
-		}
-	}
-
-	if ($help_mode < 2 and %{$info_ref->{opt_vars}}) {
-		print "NOTE: Use '-H' option to see all variables for procedure '$proc_name'.\n\n";
-	}
-	exit 1;
-}
-
-sub list_proc
-{
-	my ($proc_name) = @_;
-	print "\nCurrent available ", ($list_mode == 1 ? "user-defined " : "") , "procedures";
-	print " (search for '$proc_name')" if $proc_name;
-	print ":\n";
-	foreach my $name (sort keys %{$procs_ref}) {
-		next if $name =~ /^_/;
-		next if $list_mode == 1 and $procs_ref->{$name}{type} == 0;
-		print "   $name\n" if $name =~ /$proc_name/;
-	}
-	print "\n";
-	print "Use '-L' to show all system-defined procedures\n\n" if $list_mode == 1 and $auto_load;
-}
-
-############################################################
-
-sub trace_dep
-{
-	my ($output_ref, $info_ref, $is_require) = @_;
-
-	foreach my $output (keys %{$output_ref}) {
-		if (exists $info_ref->{requires_of}{$output}) {
-			my %items = ();
-			foreach my $file (keys %{$info_ref->{requires_of}{$output}}) {
-				if (not exists $info_ref->{requires}{$file}) {
-					$info_ref->{requires}{$file} = $info_ref->{requires_of}{$output}{$file};
-					$items{$file} = '';
-				}
-			}
-			if (%items) {
-				trace_dep(\%items, $info_ref, 1);
-			}
-		}
-		if (exists $info_ref->{inputs_of}{$output}) {
-			my %items = ();
-			foreach my $file (keys %{$info_ref->{inputs_of}{$output}}) {
-				if (defined $is_require and $is_require) {
-					if (not exists $info_ref->{requires}{$file}) {
-						$info_ref->{requires}{$file} = $info_ref->{inputs_of}{$output}{$file};
-						$items{$file} = '';
-					}
-				} else {
-					if (not exists $info_ref->{inputs}{$file}) {
-						$info_ref->{inputs}{$file} = $info_ref->{inputs_of}{$output}{$file};
-						$items{$file} = '';
-					}
-				}
-			}
-			if (%items) {
-				trace_dep(\%items, $info_ref, $is_require);
-			}
-		}
-	}
 }
 
 ############################################################
@@ -1596,6 +1456,8 @@ sub eval_text_in_shell
 		if (not $test_mode) {
 			my $run_id = get_new_run_id;
 			log_print "$indent($run_id) [eval] $text\n";
+			append_file "$LOG_DIR/$run_id.eval.cmd", $text, "\n";
+			append_file "$LOG_DIR/$run_id.eval.value", $result, "\n";
 		}
 	}
 	return $result;
@@ -1951,6 +1813,106 @@ sub run_proc
 		
 		return $ret;
 	}
+}
+
+############################################################
+# Help messages
+
+sub show_info
+{
+	my ($proc_name, $info_ref) = @_;
+	
+	print "\n";
+
+	if (%{$info_ref->{req_vars}} or ($help_mode == 2 and %{$info_ref->{opt_vars}})) {
+		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "inline command") . ":\n";
+
+		if (%{$info_ref->{req_vars}}) {
+			foreach my $name (sort keys %{$info_ref->{req_vars}}) {
+				printf "   %-30s  Required\n", $name;
+			}
+			print "\n";
+		}
+
+		if ($help_mode == 2 and %{$info_ref->{opt_vars}}) {
+			foreach my $name (sort keys %{$info_ref->{opt_vars}}) {
+				printf "   %-30s  Default: %s\n", $name, $info_ref->{opt_vars}{$name};
+			}
+			print "\n";
+		}
+	}
+
+	my @text_list = ( 'Require', 'Input', 'Temporary', 'Output' );
+	my @files_list = ( $info_ref->{requires}, $info_ref->{inputs}, $info_ref->{temps}, $info_ref->{outputs} );
+	if ($help_mode == 1) {
+		splice @text_list, 2, 1;
+		splice @files_list, 2, 1;
+	}
+	while (@text_list) {
+		my $msg = (shift @text_list) . " file(s):\n";
+		my $files_ref = shift @files_list;
+		if (%{$files_ref}) {
+			print $msg;
+			foreach my $file (sort keys %{$files_ref}) {
+				my $text = $files_ref->{$file};
+				if (length($file) > 30) {
+					printf "   %s\n   %-30s  Definition: %s\n", $file, '', $text;
+				} else {
+					printf "   %-30s  Definition: %s\n", $file, $text;
+				}
+			}
+			print "\n";
+		}
+	}
+
+	if ($help_mode < 2 and %{$info_ref->{opt_vars}}) {
+		print "NOTE: Use '-H' option to see all variables for procedure '$proc_name'.\n\n";
+	}
+	exit 1;
+}
+
+sub list_proc
+{
+	my ($proc_name) = @_;
+	print "\nCurrent available ", ($list_mode == 1 ? "user-defined " : "") , "procedures";
+	print " (search for '$proc_name')" if $proc_name;
+	print ":\n";
+	foreach my $name (sort keys %{$procs_ref}) {
+		next if $name =~ /^_/;
+		next if $list_mode == 1 and $procs_ref->{$name}{type} == 0;
+		print "   $name\n" if $name =~ /$proc_name/;
+	}
+	print "\n";
+	print "Use '-L' to show all system-defined procedures\n\n" if $list_mode == 1 and $auto_load;
+}
+
+sub print_usage
+{
+	print '
+SeqPipe: a SEQuencing data analsysis PIPEline framework
+Version: 0.4.11 ($Rev$)
+Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
+Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
+Websites: http://seqpipe.googlecode.com
+          http://www.cbi.pku.edu.cn
+
+Usage:
+   seqpipe [options] <procedure> [NAME=VALUE ...]
+   seqpipe [options] -e <cmd> [-e <cmd> ...] [NAME=VALUE ...]
+
+Options:
+   -h / -H              Show help messages.
+   -v                   Show verbose messages.
+   -l / -L [<pattern>]  List current available procedures.
+   -m <file>            Load procedure module file, this option can be used many times.
+   -D                   Disable to load default pipelines.
+   -t <int>             Max thread number in parallel. default: ' . $max_thread_number . '
+   -s <shell>           Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
+   -k                   Keep intermediate files.
+   -R                   Show the raw procedure declaration.
+   -T                   Test mode, show commands rather than execute them.
+
+';
 }
 
 ############################################################
