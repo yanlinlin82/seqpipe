@@ -155,16 +155,30 @@ function demo_file_deps
 	cat ${G} > ${H}
 }
 
+function demo_file_deps_2
+{
+	#[input="${A}" output="${B}"]
+	cat ${A} > ${B}
+
+	#[output="${C}"]
+	date > ${C}   # this command has no any require/input file
+
+	#[input="${B}" input="${C}" output="${D}"]
+	cat ${B} ${C} > ${D}
+}
+
 function demo_file_deps_child
 {
-	#[require="${A}" input="${B}" output.temp="${C}" output="${D}"]
-	cat ${A} ${B} | tee ${C} > ${D}
+	SP_set E=.xyz
+	#[require="${A}" input="${B}" output.temp="${C}" output="${D}${E}.txt"]
+	cat ${A} ${B} | tee ${C} > ${D}${E}.txt
 }
 
 function demo_file_deps_parent
 {
+	# Try: seqpipe -m demo.pipe demo_file_deps_parent W=w X=x Y=y E=.123 -H
 	SP_set E=.txt
-	SP_run demo_file_deps_child A=${X}${E} B=${Y}${E} C=${W}${E} D=${Z}${E}
+	SP_run demo_file_deps_child A=${X}${E} B=${Y}${E} C=${W}${E} D=${Z}${E} E=.abc  # NOTICE: This is a different 'E' variable
 }
 
 function demo_failed_in_parallel_1
@@ -196,5 +210,41 @@ function demo_dots
 {
 	# SP_run demo_dots_sub A=${A} B=${B} C=${C}
 	#   can be called as:
+	# Try: seqpipe -m demo.pipe demo_dots -h
 	SP_run demo_dots_sub ...
+}
+
+function demo_no_dots
+{
+	# This should be failed, Try: seqpipe -m demo.pipe demo_no_dots -h
+	SP_run demo_dots_sub
+}
+
+function demo_file_deps_in_if_block
+{
+	SP_if (test)
+	{
+		#[input="A" output="C"]
+		echo something
+	}
+	SP_else
+	{
+		#[input="B" output="C"]
+		echo something
+	}
+
+	#[input="C" output="D"]
+	echo something
+}
+
+function demo_file_deps_in_while_block
+{
+	SP_set _X=1
+	SP_while (test ${_X} -lt 3)
+	{
+		#[input="${_X}.in" output="${_X}.out"]
+		cat ${_X}.in > ${_X}.out
+
+		SP_set _X=$((${_X} + 1))
+	}
 }
