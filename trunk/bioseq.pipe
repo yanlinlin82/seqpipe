@@ -1153,8 +1153,8 @@ function DNAseq_analysis
 
 	SP_run sort_bam INPUT_DIR=${OUTPUT_DIR} NAME=${NAME}
 
-	#[output.save="${INPUT_DIR}/${NAME}.sorted.mkdup.bam"]
 	#[output.temp="${INPUT_DIR}/${NAME}.sorted.mkdup.metrics"]
+	#[output.final="${INPUT_DIR}/${NAME}.sorted.mkdup.bam"]
 	SP_run mkdup_bam INPUT_DIR=${OUTPUT_DIR} NAME=${NAME} EXT_PREFIX=.sorted
 
 	{{

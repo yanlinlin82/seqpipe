@@ -26,12 +26,12 @@ if (not has_module('threads.pm') and not has_module('forks.pm')) {
 ############################################################
 # Constants
 
-use constant UNIQ_ID => sprintf('%02d%02d%02d.%02d%02d.%d',
-	(localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], (localtime)[2], (localtime)[1], $$);
-use constant LOG_ROOT => './.seqpipe';  # All log files are saved in this directory.
-use constant LOG_DIR => LOG_ROOT . '/' . UNIQ_ID;
-use constant APP_ROOT => dirname abs_path $0;
-use constant DEF_PIPE => APP_ROOT . '/default.pipe';
+# Unique ID consists of date, time and pid
+my $UNIQ_ID = sprintf '%02d%02d%02d.%02d%02d.%d',
+	(localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], (localtime)[2], (localtime)[1], $$;
+my $LOG_ROOT = "./.seqpipe";  # All log files are saved in this directory.
+my $LOG_DIR = "$LOG_ROOT/$UNIQ_ID";
+my $APP_ROOT = dirname abs_path $0;
 
 my $EMPTY_LINE      = '^\s*$';
 my $COMMENT_LINE    = '^\s*#';
@@ -586,13 +586,13 @@ sub load_cmd_attr
 				die "Duplicated attribute for input file '$value' in " . file_pos($fp);
 			}
 			$cmd_ref->{inputs}{$value} = 1;
-		} elsif ($name eq 'output' or $name eq 'output.temp' or $name eq 'output.save') {
+		} elsif ($name eq 'output' or $name eq 'output.temp' or $name eq 'output.save' or $name eq 'output.final') {
 			if (exists $cmd_ref->{requires}{$value} or exists $cmd_ref->{inputs}{$value} or exists $cmd_ref->{outputs}{$value}) {
 				die "Duplicated attribute for output file '$value' in " . file_pos($fp);
 			}
 			$cmd_ref->{outputs}{$value} = 1;
-			$cmd_ref->{saves}{$value} = 1 if $name eq 'output.save';
 			$cmd_ref->{temps}{$value} = 1 if $name eq 'output.temp';
+			$cmd_ref->{finals}{$value} = 1 if $name eq 'output.save' or $name eq 'output.final';
 		} else {
 			die "Unknown command attribute '$1' in " . file_pos($fp) unless exists $FILES_ATTR{$name};
 			foreach (@FILES_ATTR) {
@@ -736,7 +736,7 @@ sub load_cmd
 {
 	my ($proc_name, $fp, $proc_info_ref) = @_;
 	my $cmd_ref = { file => $fp->{file}, line_no => $fp->{line_no}, name => '', command => '',
-		requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
+		requires => {}, inputs => {}, outputs => {}, finals => {}, temps => {} };
 	while (defined $fp->{line} and $fp->{line} =~ /$ATTR_LINE/) {
 		load_cmd_attr($fp, $cmd_ref);
 		die "Invalid syntax for command in " . file_pos($fp) unless read_nonblank_line($fp);
@@ -752,9 +752,9 @@ sub load_cmd
 		my ($bash, $comment) = split_bash_and_comment($fp->{line});
 		die "Invalid format of command in " . file_pos($fp) if not defined $bash;
 		$cmd_ref->{command} = $fp->{line};
-		if (keys %{$cmd_ref->{saves}}) {
-			foreach my $file (keys %{$cmd_ref->{saves}}) {
-				$proc_info_ref->{saves}{$file} = '';
+		if (keys %{$cmd_ref->{finals}}) {
+			foreach my $file (keys %{$cmd_ref->{finals}}) {
+				$proc_info_ref->{finals}{$file} = '';
 			}
 		}
 		if (keys %{$cmd_ref->{temps}}) {
@@ -824,11 +824,11 @@ sub load_proc
 	my %outputs = ();
 	my $met_proc = 0;
 
-	my %proc_info = ( "requires_of" => {}, "inputs_of" => {}, "requires" => {}, "inputs" => {}, "outputs" => {}, "saves" => {}, "temps" => {} );
+	my %proc_info = ( "requires_of" => {}, "inputs_of" => {}, "requires" => {}, "inputs" => {}, "outputs" => {}, "finals" => {}, "temps" => {} );
 	my $proc_ref = load_block($proc_name, $fp, $bracket, \%proc_info);
 	$proc_ref->{requires_of} = $proc_info{requires_of};
 	$proc_ref->{inputs_of} = $proc_info{inputs_of};
-	$proc_ref->{saves} = $proc_info{saves};
+	$proc_ref->{finals} = $proc_info{finals};
 	$proc_ref->{temps} = $proc_info{temps};
 
 	foreach my $file (keys %requires) {
@@ -852,7 +852,7 @@ sub init_envs
 {
 	my ($file) = @_;
 	if (not exists $global_vars_list_ref->{''}) {
-		$global_vars_list_ref->{''} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => APP_ROOT };
+		$global_vars_list_ref->{''} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => $APP_ROOT };
 	}
 	%{$global_vars_list_ref->{$file}} = %{$global_vars_list_ref->{''}};
 }
@@ -1064,9 +1064,9 @@ sub merge_vars_info
 
 sub add_dep_info
 {
-	my ($requires_of_ref, $inputs_of_ref, $outputs_ref, $saves_ref, $temps_ref,
+	my ($requires_of_ref, $inputs_of_ref, $outputs_ref, $finals_ref, $temps_ref,
 		$args_ref, $proc_vars_ref, $global_vars_ref,
-		$cmd_requires_ref, $cmd_inputs_ref, $cmd_outputs_ref, $cmd_saves_ref, $cmd_temps_ref) = @_;
+		$cmd_requires_ref, $cmd_inputs_ref, $cmd_outputs_ref, $cmd_finals_ref, $cmd_temps_ref) = @_;
 
 	foreach my $output (keys %{$cmd_outputs_ref}) {
 		my $output_result = eval_text($output, $args_ref, $proc_vars_ref, $global_vars_ref);
@@ -1075,11 +1075,11 @@ sub add_dep_info
 		$outputs_ref->{$output_result} = $output;
 	}
 
-	foreach my $save (keys %{$cmd_saves_ref}) {
+	foreach my $save (keys %{$cmd_finals_ref}) {
 		my $save_result = eval_text($save, $args_ref, $proc_vars_ref, $global_vars_ref);
 		next if $save_result eq '';
-		next if exists $saves_ref->{$save_result};
-		$saves_ref->{$save_result} = $save;
+		next if exists $finals_ref->{$save_result};
+		$finals_ref->{$save_result} = $save;
 	}
 
 	foreach my $temp (keys %{$cmd_temps_ref}) {
@@ -1194,7 +1194,7 @@ sub transform_info
 	transform_files($info_ref->{requires}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 	transform_files($info_ref->{inputs}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 	transform_files($info_ref->{outputs}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
-	transform_files($info_ref->{saves}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
+	transform_files($info_ref->{finals}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 	transform_files($info_ref->{temps}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
 
 	transform_deps($info_ref->{requires_of}, $options_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
@@ -1215,7 +1215,7 @@ sub check_block
 	my %requires = ();
 	my %inputs = ();
 	my %outputs = ();
-	my %saves = ();
+	my %finals = ();
 	my %temps = ();
 
 	my %proc_vars = %{$proc_vars_ref};
@@ -1242,7 +1242,7 @@ sub check_block
 					$options{$item_ref->{name}} = $item_ref->{value};
 				}
 
-				my @items = (@values, keys %{$cmd_ref->{requires}}, keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}}, keys %{$cmd_ref->{saves}}, keys %{$cmd_ref->{temps}});
+				my @items = (@values, keys %{$cmd_ref->{requires}}, keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}}, keys %{$cmd_ref->{finals}}, keys %{$cmd_ref->{temps}});
 				check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref, @items);
 				
 				my %args = ();
@@ -1284,10 +1284,10 @@ sub check_block
 						$info_ref->{outputs}{$file_result} = $file;
 					}
 				}
-				foreach my $file (keys %{$cmd_ref->{saves}}) {
+				foreach my $file (keys %{$cmd_ref->{finals}}) {
 					my $file_result = eval_text($file, $args_ref, \%proc_vars, $global_vars_ref);
-					if (not exists $info_ref->{saves}{$file_result}) {
-						$info_ref->{saves}{$file_result} = $file;
+					if (not exists $info_ref->{finals}{$file_result}) {
+						$info_ref->{finals}{$file_result} = $file;
 					}
 				}
 				foreach my $file (keys %{$cmd_ref->{temps}}) {
@@ -1310,8 +1310,8 @@ sub check_block
 					}
 				}
 
-				foreach my $save (keys %{$info_ref->{saves}}) {
-					$saves{$save} = $info_ref->{saves}{$save};
+				foreach my $save (keys %{$info_ref->{finals}}) {
+					$finals{$save} = $info_ref->{finals}{$save};
 				}
 				foreach my $temp (keys %{$info_ref->{temps}}) {
 					$temps{$temp} = $info_ref->{temps}{$temp};
@@ -1367,8 +1367,8 @@ sub check_block
 			foreach my $file (keys %{$info_ref->{outputs}}) {
 				$outputs{$file} = $info_ref->{outputs}{$file};
 			}
-			foreach my $file (keys %{$info_ref->{saves}}) {
-				$saves{$file} = $info_ref->{saves}{$file};
+			foreach my $file (keys %{$info_ref->{finals}}) {
+				$finals{$file} = $info_ref->{finals}{$file};
 			}
 			foreach my $file (keys %{$info_ref->{temps}}) {
 				$temps{$file} = $info_ref->{temps}{$file};
@@ -1377,15 +1377,15 @@ sub check_block
 			check_vars_info(\%opt_vars, \%req_vars, $args_ref, \%proc_vars, $global_vars_ref,
 				$cmd_ref->{command}, keys %{$cmd_ref->{requires}},
 				keys %{$cmd_ref->{inputs}}, keys %{$cmd_ref->{outputs}},
-				keys %{$cmd_ref->{saves}}, keys %{$cmd_ref->{temps}});
-			add_dep_info \%requires_of, \%inputs_of, \%outputs, \%saves, \%temps,
+				keys %{$cmd_ref->{finals}}, keys %{$cmd_ref->{temps}});
+			add_dep_info \%requires_of, \%inputs_of, \%outputs, \%finals, \%temps,
 				$args_ref, \%proc_vars, $global_vars_ref,
-				$cmd_ref->{requires}, $cmd_ref->{inputs}, $cmd_ref->{outputs}, $cmd_ref->{saves}, $cmd_ref->{temps};
+				$cmd_ref->{requires}, $cmd_ref->{inputs}, $cmd_ref->{outputs}, $cmd_ref->{finals}, $cmd_ref->{temps};
 		}
 	}
 
 	return { opt_vars => \%opt_vars, req_vars => \%req_vars, requires_of => \%requires_of, inputs_of => \%inputs_of,
-		requires => \%requires, inputs => \%inputs, outputs => \%outputs, saves => \%saves, temps => \%temps };
+		requires => \%requires, inputs => \%inputs, outputs => \%outputs, finals => \%finals, temps => \%temps };
 }
 
 sub remove_intermediate_outputs
@@ -1437,8 +1437,8 @@ sub check_proc
 			delete $info_ref->{inputs}{$file};
 		}
 	}
-	foreach my $file (keys %{$info_ref->{saves}}) {
-		$info_ref->{outputs}{$file} = $info_ref->{saves}{$file} if not exists $info_ref->{outputs}{$file};
+	foreach my $file (keys %{$info_ref->{finals}}) {
+		$info_ref->{outputs}{$file} = $info_ref->{finals}{$file} if not exists $info_ref->{outputs}{$file};
 		delete $info_ref->{temps}{$file} if exists $info_ref->{temps}{$file};
 	}
 	foreach my $file (keys %{$info_ref->{temps}}) {
@@ -1502,7 +1502,7 @@ sub show_cmd
 	foreach my $file (keys %{$cmd_ref->{outputs}}) {
 		my $text = "#[output";
 		$text .= '.temp' if exists $cmd_ref->{temps}{$file};
-		$text .= '.save' if exists $cmd_ref->{saves}{$file};
+		$text .= '.final' if exists $cmd_ref->{finals}{$file};
 		$text .= "=\"$file\"]";
 		push @lines, $text;
 	}
@@ -1636,7 +1636,7 @@ sub run_checker
 {
 	my ($cmd, $cmd_result, $run_id, $negative, $indent) = @_;
 	
-	append_file LOG_DIR . "/$run_id.check.cmd", $cmd_result, "\n";
+	append_file "$LOG_DIR/$run_id.check.cmd", $cmd_result, "\n";
 
 	if (not open SHELL, '|-', $shell) {
 		return undef;
@@ -1657,7 +1657,7 @@ sub run_checker
 sub run_sysinfo
 {
 	if (open SHELL, '|-', $shell) {
-		print SHELL join("\n", '(', @_, ') 2>&1 >>' . LOG_DIR . '/sysinfo');
+		print SHELL join("\n", "(", @_, ") 2>&1 >>$LOG_DIR/sysinfo");
 		close SHELL;
 	}
 }
@@ -1673,9 +1673,9 @@ sub run_shell
 
 	my $name = $cmd_name;
 	$name = try_guess_name($command) if $name eq '';
-	my $err = '2>>' . LOG_DIR . "/$run_id.$name.err";
-	my $out = '>>' . LOG_DIR . "/$run_id.$name.log";
-	append_file LOG_DIR . "/$run_id.$name.cmd", $command, "\n";
+	my $err = "2>>$LOG_DIR/$run_id.$name.err";
+	my $out = ">>$LOG_DIR/$run_id.$name.log";
+	append_file "$LOG_DIR/$run_id.$name.cmd", $command, "\n";
 
 	my $start_time = time;
 	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
@@ -1863,7 +1863,7 @@ sub run_cmd
 				$cmd_text =~ s/\s*\\\s*\n\s*/ /mg;
 				log_print "$indent($run_id) [shell] $cmd_text\n";
 
-				my $info_ref = { requires => {}, inputs => {}, outputs => {}, saves => {}, temps => {} };
+				my $info_ref = { requires => {}, inputs => {}, outputs => {}, finals => {}, temps => {} };
 				foreach my $require (keys %{$cmd_ref->{requires}}) {
 					my $file = eval_text($require, $args_ref, \%proc_vars, $global_vars_ref);
 					$info_ref->{requires}{$file} = '';
@@ -1876,9 +1876,9 @@ sub run_cmd
 					my $file = eval_text($output, $args_ref, \%proc_vars, $global_vars_ref);
 					$info_ref->{outputs}{$file} = '';
 				}
-				foreach my $save (keys %{$cmd_ref->{saves}}) {
+				foreach my $save (keys %{$cmd_ref->{finals}}) {
 					my $file = eval_text($save, $args_ref, \%proc_vars, $global_vars_ref);
-					$info_ref->{saves}{$file} = '';
+					$info_ref->{finals}{$file} = '';
 				}
 				foreach my $temp (keys %{$cmd_ref->{temps}}) {
 					my $file = eval_text($temp, $args_ref, \%proc_vars, $global_vars_ref);
@@ -2129,7 +2129,7 @@ my $actions = {
 		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
 		$shell = shift @ARGV;
 		die "Empty shell command is not allowed!" if $shell =~ /^\s*$/;
-		my $qsub_sync = APP_ROOT . '/qsub_sync';
+		my $qsub_sync = "$APP_ROOT/qsub_sync";
 		$shell =~ s/^qsub(\s.*|)/$qsub_sync$1/;
 	},
 	'_DEFAULT_' => sub { die "Unknown option '$_[0]'!"; }
@@ -2156,7 +2156,7 @@ die "Can not use both '-e' and '<proc_name>'!" if $proc_name and @exec_cmds;
 # Load modules
 $list_mode = 2 if $list_mode and (scalar @files == 0);
 if ($auto_load) {
-	load_module $_, 0 foreach sort glob APP_ROOT . '/*.pipe';
+	load_module $_, 0 foreach sort glob "$APP_ROOT/*.pipe";
 }
 load_module $_, 1 foreach get_all_pipe @files;
 
@@ -2168,7 +2168,7 @@ if ($list_mode) {
 
 # Prepare for inline mode
 if (@exec_cmds) {
-	$global_vars_list_ref->{''} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => APP_ROOT };
+	$global_vars_list_ref->{''} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => $APP_ROOT };
 	$procs_ref->{''} = { proc_name => '', file => '' };
 	my $line_no = 0;
 	foreach my $cmd (@exec_cmds) {
@@ -2218,18 +2218,18 @@ if (not $test_mode) {
 	init_sig_int();
 
 	# Prepare log directory
-	mkdir LOG_ROOT or die "Can't create directory '" . LOG_ROOT . "'!" unless -d LOG_ROOT;
-	mkdir LOG_DIR or die "Can't create directory '" . LOG_DIR . "'!";
-	system "ln -s -f -n " . UNIQ_ID . " " . LOG_ROOT . "/last";
+	mkdir $LOG_ROOT or die "Can't create directory '$LOG_ROOT'!" unless -d $LOG_ROOT;
+	mkdir $LOG_DIR or die "Can't create directory '$LOG_DIR'!";
+	system "ln -s -f -n $UNIQ_ID $LOG_ROOT/last";
 
 	# Write whole command line to log
-	open LOG_FILE, '>>', LOG_ROOT . '/history.log';
-	log_print UNIQ_ID . "\t$command_line\n";
+	open LOG_FILE, ">>$LOG_ROOT/history.log";
+	log_print "$UNIQ_ID\t$command_line\n";
 	close LOG_FILE;
 
 	# Prepare log file
-	open LOG_FILE, '|-', 'tee -ai ' . LOG_DIR . '/log';
-	log_print '[' . UNIQ_ID . "] $command_line\n";
+	open LOG_FILE, '|-', "tee -ai $LOG_DIR/log";
+	log_print "[$UNIQ_ID] $command_line\n";
 
 	# Write sysinfo log
 	foreach my $name (keys %{$procs_ref}) {
@@ -2245,11 +2245,11 @@ if (not $test_mode) {
 my $ret = run_proc($proc_name, $args_ref, $args_order_ref, '');
 if (not $test_mode) {
 	if (not defined $ret) {
-		log_print "Pipeline aborted!\n";
+		log_print "[$UNIQ_ID] Pipeline aborted!\n";
 	} elsif ($ret != 0) {
-		log_print "Pipeline finished abnormally with exit value: $ret!\n";
+		log_print "[$UNIQ_ID] Pipeline finished abnormally with exit value: $ret!\n";
 	} else {
-		log_print "Pipeline finished successfully!\n";
+		log_print "[$UNIQ_ID] Pipeline finished successfully!\n";
 	}
 	close LOG_FILE;
 	# TODO: compress log files by default
