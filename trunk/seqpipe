@@ -1216,6 +1216,14 @@ sub show_primitive
 	return @lines;
 }
 
+sub reformat_cmd
+{
+	my $text = shift @_;
+	$text =~ s/^\s*//m;  # Remove leading whitespaces
+	$text =~ s/\s*$//m;  # Remove tailing whitespaces
+	return join "\n\t", split /\s*\n\s*/, $text;
+}
+
 sub show_cmd
 {
 	my ($cmd_ref, $args_ref) = @_;
@@ -1234,11 +1242,7 @@ sub show_cmd
 	} elsif (exists $cmd_ref->{block}) {
 		push @lines, show_block($cmd_ref->{block}, $args_ref);
 	} else {
-		my @cmd_lines = split("\n", $cmd_ref->{command});
-		my $first_line = shift @cmd_lines;
-		$first_line =~ s/^\s*//;
-		push @lines, $first_line;
-		push @lines, map { $_ =~ s/^\s*/\t/; $_ } @cmd_lines;
+		push @lines, split "\n", reformat_cmd $cmd_ref->{command};
 	}
 	return @lines;
 }
@@ -1250,7 +1254,7 @@ sub show_block
 	push @lines, ($block_ref->{parallel} ? '{{' : '{');
 	my $first = 1;
 	foreach my $cmd_ref (@{$block_ref->{commands}}) {
-		my @sub = map { $_ =~ s/^/\t/; $_ } show_cmd $cmd_ref, $args_ref;
+		my @sub = map "\t$_", show_cmd $cmd_ref, $args_ref;
 		push @lines, "" if not $first and scalar @sub > 1;
 		push @lines, @sub;
 		$first = 0;
