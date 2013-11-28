@@ -1569,7 +1569,7 @@ sub run_cmd
 	my $ret = 0;
 
 	if (exists $cmd_ref->{primitive}) {
-		$ret = run_primitive $cmd_ref, $args_ref, \%proc_vars, $global_vars_ref;
+		$ret = run_primitive $cmd_ref, $args_ref, \%proc_vars, $global_vars_ref, $indent;
 		return undef if not defined $ret;
 	} elsif (exists $cmd_ref->{block}) {
 		# code block
