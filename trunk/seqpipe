@@ -1072,12 +1072,14 @@ sub check_sp_for
 {
 	my ($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
 	my $info_ref = { opt_vars => {}, req_vars => {}, require => {}, input => {}, output => {}, temp => {}, final => {} };
+	$proc_vars_ref->{$cmd_ref->{variable}} = $cmd_ref->{text};
 	check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars}, $args_ref, $proc_vars_ref, $global_vars_ref, $cmd_ref->{text};
 	my $block_info_ref = check_block($cmd_ref->{block}, $args_ref, $proc_vars_ref, $global_vars_ref);
 	if (%{$block_info_ref->{require}} or %{$block_info_ref->{input}} or %{$block_info_ref->{output}}
 			or %{$block_info_ref->{temp}} or %{$block_info_ref->{final}}) {
 		warn "File dependency defined in $cmd_ref->{primitive} block, which may become different in run-time!";
 	}
+	delete $proc_vars_ref->{$cmd_ref->{variable}};
 	merge_info $info_ref, $block_info_ref;
 	return $info_ref;
 }
