@@ -103,7 +103,7 @@ function do_remove_log
 		exit 1
 	fi
 	if [ -z "${FORCE}" ]; then
-		if [ -z "$(do_show_log ${ID} | tail -n1 | grep -E '^Pipeline (finished|aborted)')" ]; then
+		if [ -z "$(do_show_log ${ID} | tail -n1 | grep -E 'Pipeline (finished|aborted)')" ]; then
 			echo "WARNING: SeqPipe run '${ID}' may not finish or abnormally terminated!" >/dev/stderr
 			echo "  You may add option '-f' to force to remove the record." >/dev/stderr
 			exit 1
@@ -171,7 +171,7 @@ function do_compress_log
 	fi
 	if [ -d ${SEQPIPE_DIR}/${ID}/ ]; then
 		if [ -z "${FORCE}" ]; then
-			if [ -z "$(tail -n1 ${SEQPIPE_DIR}/${ID}/log | grep -E '^Pipeline (finished|aborted)')" ]; then
+			if [ -z "$(tail -n1 ${SEQPIPE_DIR}/${ID}/log | grep -E 'Pipeline (finished|aborted)')" ]; then
 				echo "WARNING: SeqPipe run '${ID}' may not finish or abnormally terminated!" >/dev/stderr
 				echo "  You may add option '-f' to force ${CMD} the record." >/dev/stderr
 				exit 1
