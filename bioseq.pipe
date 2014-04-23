@@ -413,8 +413,6 @@ function bwa_map_pe
 		SP_set _BWA_ALN_QUAL_OPT=-I
 	}
 
-	SP_run bwa_build_fasta_index INPUT=${REF}
-
 	{{
 		#[require="${REF}" require="${REF}.bwt" input="${INPUT_1}" output.temp="${SAI_1}"]
 		${_BWA} aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
@@ -492,8 +490,6 @@ function bwa_map_se
 		SP_set _BWA_ALN_QUAL_OPT=-I
 	}
 
-	SP_run bwa_build_fasta_index INPUT=${REF}
-
 	#[require="${REF}" require="${REF}.bwt" input="${INPUT}" output.temp="${SAI}"]
 	${_BWA} aln -t ${THREAD_NUM} -i ${BWA_END_IND} -e ${BWA_GAP_EXT} \
 		${_BWA_ALN_QUAL_OPT} ${BWA_ALN_OPTS} \
@@ -519,8 +515,6 @@ function bowtie_map_pe
 		SP_set _BOWTIE_ALN_QUAL_OPT=--phred64-quals
 	}
 
-	SP_run bowtie_build_fasta_index INPUT=${REF}
-
 	#[require="${REF}" require="${REF}.1.ebwt" input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
 	${_BOWTIE} ${REF} --best --strata -m 1 ${_BOWTIE_ALN_QUAL_OPT} --sam ${BOWTIE_OPTS} \
 		-1 <(${_SEQPIPE_ROOT}/uxcat ${INPUT_1}) \
@@ -542,8 +536,6 @@ function bowtie_map_se
 		SP_set _BOWTIE_ALN_QUAL_OPT=--phred64-quals
 	}
 
-	SP_run bowtie_build_fasta_index INPUT=${REF}
-
 	#[require="${REF}" require="${REF}.1.ebwt" input="${INPUT}" output="${OUTPUT}"]
 	${_BOWTIE} ${REF} --best --strata -m 1 ${_BOWTIE_ALN_QUAL_OPT} --sam ${BOWTIE_OPTS} \
 		<(${_SEQPIPE_ROOT}/uxcat ${INPUT}) \
@@ -563,8 +555,6 @@ function bowtie2_map_pe
 	{
 		SP_set _BOWTIE2_ALN_QUAL_OPT=--phred64
 	}
-
-	SP_run bowtie2_build_fasta_index INPUT=${REF}
 
 	#[require="${REF}" require="${REF}.1.bt2" input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}"]
 	${_BOWTIE2} ${REF} ${_BOWTIE2_ALN_QUAL_OPT} ${BOWTIE2_OPTS} \
@@ -586,8 +576,6 @@ function bowtie2_map_se
 	{
 		SP_set _BOWTIE2_ALN_QUAL_OPT=--phred64
 	}
-
-	SP_run bowtie2_build_fasta_index INPUT=${REF}
 
 	#[require="${REF}" require="${REF}.1.bt2" input="${INPUT}" output="${OUTPUT}"]
 	${_BOWTIE2} ${REF} ${_BOWTIE2_ALN_QUAL_OPT} ${BOWTIE2_OPTS} \
@@ -1117,8 +1105,6 @@ function DNAseq_quick_check_variants_in_region
 	SP_set INPUT_EXT_NAME=.fq.gz
 	SP_set _RG=${CHROM}_${BEGIN}_${END}
 	SP_set _RG_REF=${OUTPUT_DIR}/${_RG}.fa
-
-	SP_run samtools_build_fasta_index INPUT=${REF}
 
 	#[input="${REF}" input="${REF}.fai" output="${_RG_REF}"]
 	fastaFromBed -fi ${REF} -bed <(echo -e "${CHROM}\t${BEGIN}\t${END}") -fo ${_RG_REF}
