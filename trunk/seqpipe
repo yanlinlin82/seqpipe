@@ -966,8 +966,12 @@ sub transform_file  # This function only applys the option transform on a file n
 	my $result = shift @parts;
 	while (@parts) {
 		my $name = shift @parts;
-		my $text = shift @parts;
-		$result .= $options_ref->{$name} . $text;
+		if (exists $options_ref->{$name}) {
+			$result .= $options_ref->{$name};
+		} else {
+			$result .= '${' . $name . '}';
+		}
+		$result .= shift @parts if @parts;
 	}
 	return $result;
 }
