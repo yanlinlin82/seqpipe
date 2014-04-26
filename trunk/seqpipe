@@ -1609,18 +1609,14 @@ sub run_cmd
 			my $run_id = get_new_run_id;
 			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
 
+			my $info_ref;
 			if (not $test_mode) {
 				my $cmd_text = $cmd_result;
 				$cmd_text =~ s/\s*\\\s*\n\s*/ /mg;
 				log_print "$indent($run_id) [shell] $cmd_text\n";
 
-				my $info_ref = { opt_vars => {}, req_vars => {}, require => {}, input => {}, output => {}, temp => {}, final => {} };
-				foreach my $key (@DEP_NAMES) {
-					foreach my $text (keys %{$cmd_ref->{$key}}) {
-						my $file = eval_text($text, $args_ref, \%proc_vars, $global_vars_ref);
-						$info_ref->{$key}{$file} = $text;
-					}
-				}
+				$info_ref = check_cmd($cmd_ref, $args_ref, \%proc_vars, $global_vars_ref);
+
 				my $check_ret = check_files($info_ref, $indent, $run_id);
 				if ($check_ret < 0) {
 					return { ret => $check_ret, vars => \%proc_vars };
@@ -1648,9 +1644,8 @@ sub run_cmd
 				lock($thread_number);
 				$thread_number--;
 			}
-			return undef if not defined $ret;
-			if (not $test_mode and $ret != 0) {
-				foreach my $output (keys %{$cmd_ref->{output}}) {
+			if (not $test_mode and (not defined $ret or $ret != 0)) {
+				foreach my $output (keys %{$info_ref->{output}}, keys %{$info_ref->{temp}}, keys %{$info_ref->{final}}) {
 					my $file = eval_text($output, $args_ref, \%proc_vars, $global_vars_ref);
 					if (-e $file) {
 						log_print "$indent($run_id) removes bad output file '$file'!\n";
@@ -1658,6 +1653,7 @@ sub run_cmd
 					}
 				}
 			}
+			return undef if not defined $ret;
 		}
 	}
 	return { ret => $ret, vars => \%proc_vars };
