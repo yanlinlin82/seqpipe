@@ -127,7 +127,7 @@ function do_remove_log
 	N=$(grep -n "${ID}" ${SEQPIPE_LOG} | cut -d: -f1)
 	if [ -n "${N}" ]; then
 		if [ "$(uname -s)" == "Darwin" ]; then
-			sed -i "" "${N}d" ${SEQPIPE_LOG}
+			sed -i"" "${N}d" ${SEQPIPE_LOG}
 		else
 			sed -i "${N}d" ${SEQPIPE_LOG}
 		fi
