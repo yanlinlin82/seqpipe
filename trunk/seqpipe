@@ -1411,7 +1411,6 @@ sub eval_text_in_shell
 	my $result = eval_text($text, $args_ref, $proc_vars_ref, $global_vars_ref);
 	while (1) {
 		# Following patterns require shell to eval
-		last if $result =~ /\${\w+}/;
 		last if $result =~ /\$\(\(.*\)\)/;
 		last if $result =~ /{[0-9]+\.\.[0-9]+}/;
 		last if $result =~ /{\S\.\.\S}/;
@@ -1421,6 +1420,7 @@ sub eval_text_in_shell
 		last if $result =~ /\?/;
 		return $result;
 	}
+	$result =~ s/\${(\w+)}/'\${$1}'/g;
 	my $cmd = "echo $result";
 	if (open SHELL, '-|', "echo $cmd|$shell") {
 		$result = join('', <SHELL>);
