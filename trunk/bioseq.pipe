@@ -612,10 +612,10 @@ function sort_bam
 	
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[input="${INPUT}" output="${OUTPUT}" output="${OUTPUT}.bai"]
+	#[input="${INPUT}" output="${OUTPUT}" output="${OUTPUT}.bai" output="${OUTPUT}.md5"]
 	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/SortSam.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false SORT_ORDER=coordinate \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=true SORT_ORDER=coordinate \
 		INPUT=${INPUT} OUTPUT=${OUTPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
@@ -660,10 +660,10 @@ function merge_bam
 
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}" output="${OUTPUT}.bai"]
+	#[input="${INPUT_1}" input="${INPUT_2}" output="${OUTPUT}" output="${OUTPUT}.bai" output="${OUTPUT}.md5"]
 	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=true \
 		INPUT=${INPUT_1} INPUT=${INPUT_2} OUTPUT=${OUTPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
@@ -679,10 +679,10 @@ function merge_bam_3
 
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[input="${INPUT_1}" input="${INPUT_2}" input="${INPUT_3}" output="${OUTPUT}" output="${OUTPUT}.bai"]
+	#[input="${INPUT_1}" input="${INPUT_2}" input="${INPUT_3}" output="${OUTPUT}" output="${OUTPUT}.bai" output="${OUTPUT}.md5"]
 	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=true \
 		INPUT=${INPUT_1} INPUT=${INPUT_2} INPUT=${INPUT_3} OUTPUT=${OUTPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
@@ -698,10 +698,10 @@ function merge_bam_4
 
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[input="${INPUT_1}" input="${INPUT_2}" input="${INPUT_3}" input="${INPUT_4}" output="${OUTPUT}" output="${OUTPUT}.bai"]
+	#[input="${INPUT_1}" input="${INPUT_2}" input="${INPUT_3}" input="${INPUT_4}" output="${OUTPUT}" output="${OUTPUT}.bai" output="${OUTPUT}.md5"]
 	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MergeSamFiles.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=true \
 		INPUT=${INPUT_1} INPUT=${INPUT_2} INPUT=${INPUT_3} INPUT=${INPUT_4} OUTPUT=${OUTPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
@@ -721,10 +721,10 @@ function reorder_bam
 
 	# This procedure requires input bam is sorted, although PICARD ReorderSam dosn't.
 	#[require="${REF}" require="${REF}.dict"]
-	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai"]
+	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai" output="${OUTPUT}.md5"]
 	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/ReorderSam.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=true \
 		REFERENCE=${REF} INPUT=${INPUT} OUTPUT=${OUTPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
@@ -747,10 +747,10 @@ function mkdup_bam
 
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai" output="${METRICS}"]
+	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai" output="${METRICS}" output="${OUTPUT}.md5"]
 	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=true \
 		INPUT=${INPUT} OUTPUT=${OUTPUT} METRICS_FILE=${METRICS} \
 		REMOVE_DUPLICATES=false \
 	&& \
@@ -774,10 +774,10 @@ function rmdup_bam
 
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai" output="${METRICS}"]
+	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai" output="${METRICS}" output="${OUTPUT}.md5"]
 	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/MarkDuplicates.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=true \
 		INPUT=${INPUT} OUTPUT=${OUTPUT} METRICS_FILE=${METRICS} \
 		REMOVE_DUPLICATES=true \
 	&& \
@@ -821,10 +821,10 @@ function set_bam_rg
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
 	# Here we requires the input bam is sorted, although PICARD AddOrReplaceReadGroups dosn't.
-	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai"]
+	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai" output="${OUTPUT}.md5"]
 	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/AddOrReplaceReadGroups.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=true \
 		INPUT=${INPUT} OUTPUT=${OUTPUT} ${_RG} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
@@ -838,10 +838,10 @@ function fixmate_bam
 
 	SP_set _TEMP_FILE=$(echo ${OUTPUT} | sed 's/\(\.bam\|\)$/.bai/')
 
-	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai"]
+	#[input="${INPUT}" input="${INPUT}.bai" output="${OUTPUT}" output="${OUTPUT}.bai" output="${OUTPUT}.md5"]
 	java ${_JAVA_OPTS} -jar ${PICARD_ROOT}/FixMateInformation.jar ${_PICARD_OPTS} \
 		VALIDATION_STRINGENCY=${VALIDATION_STRINGENCY} \
-		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=false \
+		COMPRESSION_LEVEL=9 CREATE_INDEX=true CREATE_MD5_FILE=true \
 		INPUT=${INPUT} OUTPUT=${OUTPUT} \
 	&& \
 	if [ ! ${_TEMP_FILE} -ef ${OUTPUT}.bai ]; then mv -vf ${_TEMP_FILE} ${OUTPUT}.bai; fi
