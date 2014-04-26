@@ -1,3 +1,9 @@
+2014-04-26  v0.4.12 (r357)
+* Fix bug of potential blocking in running shells in multi-threads.
+* Support multiple inline commands (use '-e' more than once).
+* Support new function definition format (with 'function' keyword).
+* Improve pipeline script checking.
+
 2013-09-04  v0.4.11 (r305)
 * Enable '-D' to disable loading default pipelines.
 * Enable '-L' to list all procedures, accordingly, '-l' will only list non-default ones.
