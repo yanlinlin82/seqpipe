@@ -626,7 +626,9 @@ sub load_cmd_attr
 		my $name = $1;
 		my $value = $2;
 		if ($name eq 'name') {
-			die "Duplicated attribute for command name in " . file_pos($fp) if defined $cmd_ref->{name};
+			die "Command name should not be empty in " . file_pos($fp) if $value eq '';
+			die "Duplicated attribute for command name in " . file_pos($fp)
+					if defined $cmd_ref->{name} and $cmd_ref->{name} ne '';
 			$cmd_ref->{name} = $value;
 			die "Invalid name '$cmd_ref->{name}' in " . file_pos($fp) unless $cmd_ref->{name} =~ /[\w\.]+/;
 		} else {
