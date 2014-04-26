@@ -1777,6 +1777,9 @@ sub run_proc
 		$run_id = get_new_run_id;
 		$start_time = time;
 		log_print "$indent($run_id) [pipeline] $cmd\n";
+
+		my $file = "$LOG_DIR/$run_id." . ($proc_name ne "" ? $proc_name : "_inline_") . ".pipeline";
+		append_file $file, ($proc_name ne "" ? "" : "(inline)"), $cmd, "\n";
 	}
 	
 	my $info_ref = check_proc($proc_ref, $args_ref);
