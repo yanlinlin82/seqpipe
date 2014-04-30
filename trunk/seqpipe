@@ -1872,7 +1872,8 @@ sub show_info
 	}
 
 	if ($help_mode < 2 and %{$info_ref->{opt_vars}}) {
-		print "NOTE: Use '-H' option to see all variables for procedure '$proc_name'.\n\n";
+		print "NOTE: Use '-H' option to see all variables for "
+				. ($proc_name ? "procedure '$proc_name'" : "inline command") . ".\n\n";
 	}
 	exit 1;
 }
@@ -1985,6 +1986,11 @@ while (my $arg = shift @ARGV) {
 		$args_ref->{$name} = $2;
 		push @{$args_order_ref}, $name;
 		die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
+
+		if ($2 =~ /\${(\w+)}/) {
+			warn "Unrecommended usage of shell environment '\${$1}' in value of '$name'!\n"
+				. "   NOTE: Please use '\$$1' instead\n"
+		}
 	} else {
 		die "Invalid format of option: $arg" if $proc_name or @exec_cmds;
 		$proc_name = $arg;
@@ -2031,8 +2037,11 @@ if ($show_mode) {
 }
 
 # Check variables and dependencies
-# TODO: check if all arg values are solved.
-my $info_ref = check_proc($proc_ref, $args_ref);
+my $sub_args_ref = {};
+foreach my $name (keys %{$args_ref}) {
+	$sub_args_ref->{$name} = '${' . $name . '}';
+}
+my $info_ref = check_proc($proc_ref, $sub_args_ref);
 if ($help_mode) {
 	show_info($proc_name, $info_ref);
 	exit 1;
@@ -2083,7 +2092,13 @@ if (not $test_mode) {
 }
 
 # Run the pipeline
-my $ret = run_proc($proc_name, $args_ref, $args_order_ref, '');
+$sub_args_ref = {};
+foreach my $name (@{$args_order_ref}) {
+	my $text = $args_ref->{$name};
+	$text =~ s/\${(\w+)}/\$$1/g;
+	$sub_args_ref->{$name} = eval_text_in_shell($text, {}, {}, {}, "");
+}
+my $ret = run_proc($proc_name, $sub_args_ref, $args_order_ref, '');
 if (not $test_mode) {
 	if (not defined $ret) {
 		log_print "[$UNIQ_ID] Pipeline aborted!\n";
