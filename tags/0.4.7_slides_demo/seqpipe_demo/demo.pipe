@@ -1,0 +1,215 @@
+#!/bin/bash
+
+function demo_001
+{
+	echo "Hello, world!"
+}
+
+function demo_002
+{
+	echo "Write to stderr" >/dev/stderr
+	pwd; sleep 3; ls
+	cat demo.pipe | grep function \
+		| wc -l
+}
+
+function demo_003
+{
+	wc demo.pipe; false
+	echo "This command will never be run!"
+}
+
+function demo_004
+{
+	true && echo "This will be executed!"
+	true || echo "This will not be executed!"
+	false || echo "This works fine!"
+}
+
+function demo_005
+{
+	for c in {1..22} X Y M; do \
+		if [ "$c" == "X" -o $c == "M" ]; then \
+			echo $c; \
+		fi; \
+	done
+}
+
+function demo_006
+{
+	bwa index MT.fa
+	bwa aln MT.fa 1.fq.gz > 1.fq.gz.sai
+	bwa aln MT.fa 2.fq.gz > 2.fq.gz.sai
+	bwa sampe MT.fa 1.fq.gz.sai 2.fq.gz.sai 1.fq.gz 2.fq.gz \
+		| samtools view -Sb - > out.bam
+}
+
+function demo_007
+{
+	bwa index MT.fa
+
+	{{
+		bwa aln MT.fa 1.fq.gz > 1.fq.gz.sai
+		bwa aln MT.fa 2.fq.gz > 2.fq.gz.sai
+	}}
+
+	bwa sampe MT.fa 1.fq.gz.sai 2.fq.gz.sai 1.fq.gz 2.fq.gz \
+		| samtools view -Sb - > out.bam
+}
+
+function demo_008
+{{
+	echo a; sleep 3; echo b
+	echo c; sleep 2; echo d
+	{
+		echo e
+		sleep 1
+		{{
+			echo f; sleep 4; echo g
+			echo h; sleep 3; echo i
+		}}
+	}
+}}
+
+#[require="MT.fa"]
+#[input="1.fq.gz" input="2.fq.gz"]
+#[output="out.bam"]
+function demo_009
+{
+	#[input="MT.fa" output="MT.fa.bwt"]
+	bwa index MT.fa
+
+	{{
+		#[require="MT.fa" require="MT.fa.bwt" input="1.fq.gz" output="1.fq.gz.sai"]
+		bwa aln MT.fa 1.fq.gz > 1.fq.gz.sai
+		#[require="MT.fa" require="MT.fa.bwt" input="2.fq.gz" output="2.fq.gz.sai"]
+		bwa aln MT.fa 2.fq.gz > 2.fq.gz.sai
+	}}
+
+	#[require="MT.fa" require="MT.fa.bwt"]
+	#[input="1.fq.gz" input="1.fq.gz.sai"]
+	#[input="2.fq.gz" input="2.fq.gz.sai"]
+	#[output="out.bam"]
+	bwa sampe MT.fa 1.fq.gz.sai 2.fq.gz.sai 1.fq.gz 2.fq.gz \
+		| samtools view -Sb - > out.bam
+}
+
+function demo_010
+{
+	#[input="MT.fa" output="MT.fa.bwt"]
+	bwa index MT.fa
+
+	{{
+		#[require="MT.fa" require="MT.fa.bwt" input="1.fq.gz" output.temp="1.fq.gz.sai"]
+		bwa aln MT.fa 1.fq.gz > 1.fq.gz.sai
+		#[require="MT.fa" require="MT.fa.bwt" input="2.fq.gz" output.temp="2.fq.gz.sai"]
+		bwa aln MT.fa 2.fq.gz > 2.fq.gz.sai
+	}}
+
+	#[require="MT.fa" require="MT.fa.bwt"]
+	#[input="1.fq.gz" input="1.fq.gz.sai"]
+	#[input="2.fq.gz" input="2.fq.gz.sai"]
+	#[output="out.bam"]
+	bwa sampe MT.fa 1.fq.gz.sai 2.fq.gz.sai 1.fq.gz 2.fq.gz \
+		| samtools view -Sb - > out.bam
+}
+
+function demo_011
+{
+	#[input="${REF}" output="${REF}.bwt"]
+	bwa index ${REF}
+
+	{{
+		#[require="${REF}" require="${REF}.bwt" input="${FQ_1}" output.temp="${FQ_1}.sai"]
+		bwa aln ${REF} ${FQ_1} > ${FQ_1}.sai
+		#[require="${REF}" require="${REF}.bwt" input="${FQ_2}" output.temp="${FQ_2}.sai"]
+		bwa aln ${REF} ${FQ_2} > ${FQ_2}.sai
+	}}
+
+	#[require="${REF}" require="${REF}.bwt"]
+	#[input="${FQ_1}" input="${FQ_1}.sai"]
+	#[input="${FQ_2}" input="${FQ_2}.sai"]
+	#[output="${OUTPUT}.bam"]
+	bwa sampe ${REF} ${FQ_1}.sai ${FQ_2}.sai ${FQ_1} ${FQ_2} \
+		| samtools view -Sb - > ${OUTPUT}.bam
+}
+
+function bwa_index
+{
+	#[input="${REF}" output="${REF}.bwt"]
+	bwa index -a ${REF}
+}
+
+function demo_012
+{
+	SP_run bwa_index REF=${REF}
+
+	{{
+		#[require="${REF}" require="${REF}.bwt" input="${FQ_1}" output.temp="${FQ_1}.sai"]
+		bwa aln ${REF} ${FQ_1} > ${FQ_1}.sai
+		#[require="${REF}" require="${REF}.bwt" input="${FQ_2}" output.temp="${FQ_2}.sai"]
+		bwa aln ${REF} ${FQ_2} > ${FQ_2}.sai
+	}}
+
+	#[require="${REF}" require="${REF}.bwt"]
+	#[input="${FQ_1}" input="${FQ_1}.sai"]
+	#[input="${FQ_2}" input="${FQ_2}.sai"]
+	#[output="${OUTPUT}.bam"]
+	bwa sampe ${REF} ${FQ_1}.sai ${FQ_2}.sai ${FQ_1} ${FQ_2} \
+		| samtools view -Sb - > ${OUTPUT}.bam
+}
+
+function demo_013
+{
+	SP_set REF=MT.fa
+	SP_set OUTPUT=out
+
+	SP_run bwa_index REF=${REF}
+
+	{{
+		#[require="${REF}" require="${REF}.bwt" input="${FQ_1}" output.temp="${FQ_1}.sai"]
+		bwa aln ${REF} ${FQ_1} > ${FQ_1}.sai
+		#[require="${REF}" require="${REF}.bwt" input="${FQ_2}" output.temp="${FQ_2}.sai"]
+		bwa aln ${REF} ${FQ_2} > ${FQ_2}.sai
+	}}
+
+	#[require="${REF}" require="${REF}.bwt"]
+	#[input="${FQ_1}" input="${FQ_1}.sai"]
+	#[input="${FQ_2}" input="${FQ_2}.sai"]
+	#[output="${OUTPUT}.bam"]
+	bwa sampe ${REF} ${FQ_1}.sai ${FQ_2}.sai ${FQ_1} ${FQ_2} \
+		| samtools view -Sb - > ${OUTPUT}.bam
+}
+
+function bwa_index_ex
+{
+	SP_set _ALGORITHM="is"
+
+	# Here we assume a genome is long if its file is bigger than 2Gb
+	SP_if (test -n "$(ls -l ${REF} | awk '$5>=2e9')")
+	{
+		SP_set _ALGORITHM="bwtsw"
+	}
+
+	#[input="${REF}" output="${REF}.bwt"]
+	bwa index -a ${_ALGORITHM} ${REF}
+}
+
+function demo_014
+{
+	SP_run bwa_index_ex REF=${REF}
+
+	{{
+		#[require="${REF}" require="${REF}.bwt" input="${FQ_1}" output.temp="${FQ_1}.sai"]
+		bwa aln ${REF} ${FQ_1} > ${FQ_1}.sai
+		#[require="${REF}" require="${REF}.bwt" input="${FQ_2}" output.temp="${FQ_2}.sai"]
+		bwa aln ${REF} ${FQ_2} > ${FQ_2}.sai
+	}}
+
+	#[require="${REF}" require="${REF}.bwt"]
+	#[input="${FQ_1}" input="${FQ_1}.sai"]
+	#[input="${FQ_2}" input="${FQ_2}.sai"]
+	#[output="${OUTPUT}.bam"]
+	bwa sampe ${REF} ${FQ_1}.sai ${FQ_2}.sai ${FQ_1} ${FQ_2} \
+		| samtools view -Sb - > ${OUTPUT}.bam
+}
