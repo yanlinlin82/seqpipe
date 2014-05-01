@@ -1595,7 +1595,7 @@ sub run_cmd
 		return undef if not defined $ret;
 	} else {
 		# For single bash command
-		if ($cmd_ref->{command} =~ /^export (\w+)=(.*)$/) {
+		if ($cmd_ref->{command} =~ /^\s*export (\w+)=(.*)$/) {
 			my $run_id = get_new_run_id;
 			my $name = $1;
 			my $value = eval_text_in_shell($2, $args_ref, \%proc_vars, $global_vars_ref, $indent);
