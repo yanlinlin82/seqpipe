@@ -21,8 +21,10 @@ function _sysinfo
 	echo -e '\nMemory:' && \
 	if [ "$(uname -s)" == "Darwin" ]; then \
 		top -l 1 | awk '/PhysMem/'; \
-	else \
+	elif [ -n "$(free --help | grep -- ' -h')" ]; then \
 		free -h; \
+	else \
+		free -g; \
 	fi
 
 	echo
