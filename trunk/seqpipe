@@ -2037,11 +2037,7 @@ if ($show_mode) {
 }
 
 # Check variables and dependencies
-my $sub_args_ref = {};
-foreach my $name (keys %{$args_ref}) {
-	$sub_args_ref->{$name} = '${' . $name . '}';
-}
-my $info_ref = check_proc($proc_ref, $sub_args_ref);
+my $info_ref = check_proc($proc_ref, $args_ref);
 if ($help_mode) {
 	show_info($proc_name, $info_ref);
 	exit 1;
@@ -2092,13 +2088,7 @@ if (not $test_mode) {
 }
 
 # Run the pipeline
-$sub_args_ref = {};
-foreach my $name (@{$args_order_ref}) {
-	my $text = $args_ref->{$name};
-	$text =~ s/\${(\w+)}/\$$1/g;
-	$sub_args_ref->{$name} = eval_text_in_shell($text, {}, {}, {}, "");
-}
-my $ret = run_proc($proc_name, $sub_args_ref, $args_order_ref, '');
+my $ret = run_proc($proc_name, $args_ref, $args_order_ref, '');
 if (not $test_mode) {
 	if (not defined $ret) {
 		log_print "[$UNIQ_ID] Pipeline aborted!\n";
