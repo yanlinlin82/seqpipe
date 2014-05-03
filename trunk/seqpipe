@@ -1025,11 +1025,15 @@ sub check_sp_run
 	}
 	my %options = map { $_->{name} => $_->{value} } @{$cmd_ref->{options}};
 	my %options_eval = map { $_->{name} => eval_text($_->{value}, $args_ref, $proc_vars_ref, $global_vars_ref) } @{$cmd_ref->{options}};
-	foreach my $key (@DEP_NAMES) {
+	foreach my $key ('require', 'input', 'final') {
 		foreach my $sub_file (keys %{$sub_info_ref->{$key}}) {
 			my $text = transform_file($sub_file, \%options);
 			my $file = eval_text($text, $args_ref, $proc_vars_ref, $global_vars_ref);
-			$info_ref->{$key}{$file} = $text;
+			if ($key eq 'final') {
+				$info_ref->{output}{$file} = $text;
+			} else {
+				$info_ref->{$key}{$file} = $text;
+			}
 		}
 	}
 	return $info_ref;
@@ -1925,8 +1929,8 @@ sub show_info
 		print "No any variable is required for " . ($proc_name ? "procedure '$proc_name'" : "current inline command") . ".\n\n";
 	}
 
-	my @text_list = ( 'Require', 'Input', 'Temporary', 'Intermediate', 'Output' );
-	my @files_list = ( $info_ref->{require}, $info_ref->{input}, $info_ref->{temp}, $info_ref->{output}, $info_ref->{final} );
+	my @text_list = ( 'Require', 'Input', 'Intermediate', 'Temporary', 'Output' );
+	my @files_list = ( $info_ref->{require}, $info_ref->{input}, $info_ref->{output}, $info_ref->{temp}, $info_ref->{final} );
 	if ($help_mode == 1) {
 		splice @text_list, 2, 2;
 		splice @files_list, 2, 2;
