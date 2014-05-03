@@ -1668,7 +1668,14 @@ sub run_cmd
 		return undef if not defined $ret;
 	} elsif (exists $cmd_ref->{block}) {
 		# code block
+		my $run_id = get_new_run_id;
+		log_print "$indent($run_id) [block] starts (" . ($cmd_ref->{block}->{parallel} ? "parallel" : "sequential") . ")\n";
+
+		my $file = "$LOG_DIR/$run_id.block";
+		append_file $file, "parallel=" . ($cmd_ref->{block}->{parallel} ? "yes" : "no") . "\n";
+
 		$ret = run_block($cmd_ref->{block}, $indent, $args_ref, \%proc_vars);
+		log_print "$indent($run_id) [block] ends (" . ($cmd_ref->{block}->{parallel} ? "parallel" : "sequential") . ")\n";
 		return undef if not defined $ret;
 	} else {
 		# For single bash command
@@ -1871,8 +1878,8 @@ sub run_proc
 			log_print "$indent($run_id) [skip] $cmd\n";
 			return 0;
 		}
-		log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 	}
+	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
 
 	if ($test_mode) {
 		run_block($proc_ref, $indent, $args_ref, \%proc_vars);
