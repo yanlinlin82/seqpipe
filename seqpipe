@@ -37,7 +37,7 @@ my $EMPTY_LINE      = '^\s*$';
 my $COMMENT_LINE    = '^\s*#';
 my $VERSION_LINE    = '^\s*#\[(seqpipe\s+|)version="[^"]*".*\]\s*$';
 my $ATTR_LINE       = '^\s*#\[(\w+\s+|)(\s*([\w\.]+)="[^"]*"(\s+([\w\.]+)="[^"]*")*|)\s*\]\s*$';
-my $FUNC_LINE       = '^\s*(function\s+([\w\.]+)(\(\s*\)|)|([\w\.]+)\s*\(\s*\))\s*({|{{|)\s*$';
+my $FUNC_LINE       = '^\s*(function\s+([\w\.]+)(\(\s*\)|)|([\w\.]+)\s*\(\s*\))\s*({|{{|)\s*(\s#.*|)$';
 my $VAR_LINE        = '^\s*([\w\.]+)\s*=(.*)$';
 my $BRACKET_LEFT    = '^\s*({|{{|SP_parallel_begin)\s*$';
 my $BRACKET_RIGHT   = '^\s*(}|}}|SP_parallel_end)\s*$';
