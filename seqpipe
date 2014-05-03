@@ -1578,6 +1578,21 @@ sub run_primitive
 	return $action->($cmd_ref, @_);
 }
 
+sub remove_leading_spaces
+{
+	my $text = shift;
+	my @lines = split(/\n/, $text);
+	if (@lines) {
+		if ($lines[0] =~ /^(\s*).*$/) {
+			my $space = $1;
+			foreach my $line (@lines) {
+				$line =~ s/^$space//g;
+			}
+		}
+	}
+	return join("\n", @lines);
+}
+
 sub run_cmd
 {
 	my ($proc_name, $cmd_ref, $indent, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
@@ -1608,7 +1623,8 @@ sub run_cmd
 			}
 		} else {
 			my $run_id = get_new_run_id;
-			my $cmd_result = eval_text($cmd_ref->{command}, $args_ref, \%proc_vars, $global_vars_ref);
+			my $cmd_text = remove_leading_spaces($cmd_ref->{command});
+			my $cmd_result = eval_text($cmd_text, $args_ref, \%proc_vars, $global_vars_ref);
 
 			my $info_ref;
 			if (not $test_mode) {
@@ -1902,7 +1918,7 @@ sub print_usage
 SeqPipe: a SEQuencing data analsysis PIPEline framework
 Version: 0.4.12 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
-Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
+Copyright: 2012-2014, Centre for Bioinformatics, Peking University, China
 Websites: http://seqpipe.googlecode.com
           http://www.cbi.pku.edu.cn
 
