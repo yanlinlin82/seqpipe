@@ -1850,7 +1850,7 @@ sub show_info
 	print "\n";
 
 	if (%{$info_ref->{req_vars}} or ($help_mode == 2 and %{$info_ref->{opt_vars}})) {
-		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "inline command") . ":\n";
+		print "Variables for " . ($proc_name ? "procedure '$proc_name'" : "current inline command") . ":\n";
 
 		if (%{$info_ref->{req_vars}}) {
 			foreach my $name (sort keys %{$info_ref->{req_vars}}) {
@@ -1865,6 +1865,8 @@ sub show_info
 			}
 			print "\n";
 		}
+	} else {
+		print "No any variable is required for " . ($proc_name ? "procedure '$proc_name'" : "current inline command") . ".\n\n";
 	}
 
 	my @text_list = ( 'Require', 'Input', 'Temporary', 'Output' );
@@ -1892,7 +1894,7 @@ sub show_info
 
 	if ($help_mode < 2 and %{$info_ref->{opt_vars}}) {
 		print "NOTE: Use '-H' option to see all variables for "
-				. ($proc_name ? "procedure '$proc_name'" : "inline command") . ".\n\n";
+				. ($proc_name ? "procedure '$proc_name'" : "current inline command") . ".\n\n";
 	}
 	exit 1;
 }
@@ -2068,7 +2070,7 @@ if ($help_mode) {
 if (not $test_mode) {
 	die "Can not run internal procedures '$proc_name' directly!" if $proc_name =~ /^_/;
 	if (%{$info_ref->{req_vars}}) {
-		die "Variable(s) required for " . ($proc_name ? "procedure '$proc_name'" : "inline command")
+		die "Variable(s) required for " . ($proc_name ? "procedure '$proc_name'" : "current inline command")
 			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "";
 	}
 	if (exists $info_ref->{require}) {
