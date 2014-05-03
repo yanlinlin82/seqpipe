@@ -1877,12 +1877,11 @@ sub run_proc
 		$ret = run_block($proc_ref, $indent, $args_ref, \%proc_vars);
 		
 		if (defined $ret and $ret == 0 and not $keep_temp) {
-
-			# When successeed, remove intermediate files
-			foreach my $item (keys %{$proc_ref->{temp}}) {
+			# When successeed, remove temporary files
+			foreach my $item (keys %{$info_ref->{temp}}) {
 				my $file = eval_text($item, $args_ref, \%proc_vars, $global_vars_ref);
 				if (-e $file) {
-					log_printf "$indent($run_id) removes intemediate file '%s'\n", $file;
+					log_printf "$indent($run_id) removes temporary file '%s'\n", $file;
 					unlink $file;
 				}
 			}
@@ -1994,7 +1993,7 @@ Options:
    -t <int>             Max thread number in parallel. default: ' . $max_thread_number . '
    -s <shell>           Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
    -f                   Force to re-run when output files are already latest.
-   -k                   Keep intermediate files.
+   -k                   Keep temporary files.
    -R                   Show the raw procedure declaration.
    -T                   Test mode, show commands rather than execute them.
 
