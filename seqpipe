@@ -2,7 +2,6 @@
 use strict;
 use warnings;
 use File::Basename;
-use File::stat;
 use Cwd 'abs_path';
 use Fcntl qw(:flock);
 
@@ -1247,7 +1246,7 @@ sub show_proc
 ############################################################
 # Run pipeline
 
-sub check_files
+sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 {
 	my ($info_ref, $indent, $run_id) = @_;
 
@@ -1273,7 +1272,7 @@ sub check_files
 			}
 			if (-e $output) {
 				foreach my $input (keys %{$info_ref->{input}}) {
-					if ((stat($input))->mtime > (stat($output))->mtime) {
+					if (-M $input < -M $output) {
 						return 0;
 					}
 				}
