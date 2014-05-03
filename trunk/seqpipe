@@ -68,6 +68,7 @@ my $show_mode = 0;
 my $verbose = 0;
 
 my $auto_load = 1;
+my $force_run = 0;
 my $keep_temp = 0;
 my $shell = '/bin/bash';
 
@@ -1617,12 +1618,14 @@ sub run_cmd
 
 				$info_ref = check_cmd($cmd_ref, $args_ref, \%proc_vars, $global_vars_ref);
 
-				my $check_ret = check_files($info_ref, $indent, $run_id);
-				if ($check_ret < 0) {
-					return { ret => $check_ret, vars => \%proc_vars };
-				} elsif ($check_ret > 0) {
-					log_print "$indent($run_id) [skip] $cmd_ref->{command}\n";
-					return { ret => 0, vars => \%proc_vars };
+				if (not $force_run) {
+					my $check_ret = check_files($info_ref, $indent, $run_id);
+					if ($check_ret < 0) {
+						return { ret => $check_ret, vars => \%proc_vars };
+					} elsif ($check_ret > 0) {
+						log_print "$indent($run_id) [skip] $cmd_ref->{command}\n";
+						return { ret => 0, vars => \%proc_vars };
+					}
 				}
 
 				if ($max_thread_number > 1) {
@@ -1784,7 +1787,7 @@ sub run_proc
 	
 	my $info_ref = check_proc($proc_ref, $args_ref);
 
-	if (not $test_mode) {
+	if (not $test_mode and not $force_run) {
 		$ret = check_files($info_ref, $indent, $run_id);
 		return $ret if $ret < 0;
 		if ($ret > 0) {
@@ -1915,6 +1918,7 @@ Options:
    -D                   Disable to load default pipelines.
    -t <int>             Max thread number in parallel. default: ' . $max_thread_number . '
    -s <shell>           Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
+   -f                   Force to re-run when output files are already latest.
    -k                   Keep intermediate files.
    -R                   Show the raw procedure declaration.
    -T                   Test mode, show commands rather than execute them.
@@ -1941,6 +1945,7 @@ my $actions = {
 	'-T' => sub { $test_mode = 1; },
 	'-R' => sub { $show_mode = 1; },
 	'-D' => sub { $auto_load = 0; },
+	'-f' => sub { $force_run = 1; },
 	'-k' => sub { $keep_temp = 1; },
 	'-v' => sub {
 		set_verbose ++$verbose;
