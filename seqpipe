@@ -229,6 +229,7 @@ sub get_all_pipe
 
 sub expand_text
 {
+	# TODO: Use this function (rather than shell) to expand simple texts
 	my @res = ();
 	foreach my $text (@_) {
 		if ($text =~ /{([0-9]+)..([0-9]+)}/) {
@@ -931,7 +932,7 @@ sub load_module
 
 sub merge_info
 {
-	my ($info_ref, $new_info_ref) = @_;
+	my ($info_ref, $new_info_ref, $cmd_ref) = @_;
 	while (my ($name, $value) = each(%{$new_info_ref->{opt_vars}})) {
 		unless (exists $info_ref->{opt_vars}->{$name} or exists $info_ref->{req_vars}->{$name}) {
 			$info_ref->{opt_vars}->{$name} = $value;
@@ -947,16 +948,18 @@ sub merge_info
 	}
 	foreach my $key (@DEP_NAMES) {
 		while (my ($file, $text) = each(%{$new_info_ref->{$key}})) {
-			if ($key eq "require" or $key eq "input") {
-				next if exists $info_ref->{temp}{$file};
-				next if exists $info_ref->{final}{$file};
-				if (exists $info_ref->{output}{$file}) {
-					$info_ref->{temp}{$file} = $info_ref->{output}{$file};
-					delete $info_ref->{output}{$file};
-					next;
+			if ($key eq 'output' or $key eq 'temp' or $key eq 'final') {
+				if (exists $info_ref->{require}{$file}) {
+					die "Require file '$file' is overwritten in " . file_pos($cmd_ref) . "\n";
+				} elsif (exists $info_ref->{input}{$file}) {
+					die "Input file '$file' is overwrittern in " . file_pos($cmd_ref) . "\n";
+				} elsif (exists $info_ref->{output}{$file} or
+						exists $info_ref->{temp}{$file} or
+						exists $info_ref->{final}{$file}) {
+					warn "Output file '$file' is overwrittern in " . file_pos($cmd_ref) . "\n";
 				}
 			}
-			$info_ref->{$key}{$file} = $text unless exists $info_ref->{$key}{$file};
+			$info_ref->{$key}{$file} = $text;
 		}
 	}
 }
@@ -1051,11 +1054,11 @@ sub check_sp_if
 			}
 			# TODO: check if all blocks provide the same file dependency
 		}
-		merge_info $info_ref, $block_info_ref;
+		merge_info $info_ref, $block_info_ref, $cmd_ref;
 	}
 	if (exists $cmd_ref->{else_block}) {
 		my $block_info_ref = check_block($cmd_ref->{else_block}, $args_ref, $proc_vars_ref, $global_vars_ref);
-		merge_info $info_ref, $block_info_ref;
+		merge_info $info_ref, $block_info_ref, $cmd_ref;
 	}
 	return $info_ref;
 }
@@ -1070,7 +1073,7 @@ sub check_sp_while
 			or %{$block_info_ref->{temp}} or %{$block_info_ref->{final}}) {
 		warn "File dependency defined in $cmd_ref->{primitive} block, which may become different in run-time!";
 	}
-	merge_info $info_ref, $block_info_ref;
+	merge_info $info_ref, $block_info_ref, $cmd_ref;
 	return $info_ref;
 }
 
@@ -1086,7 +1089,7 @@ sub check_sp_for
 		warn "File dependency defined in $cmd_ref->{primitive} block, which may become different in run-time!";
 	}
 	delete $proc_vars_ref->{$cmd_ref->{variable}};
-	merge_info $info_ref, $block_info_ref;
+	merge_info $info_ref, $block_info_ref, $cmd_ref;
 	return $info_ref;
 }
 
@@ -1115,9 +1118,16 @@ sub check_cmd
 	if (exists $cmd_ref->{block}) {
 		return check_block($cmd_ref->{block}, $args_ref, $proc_vars_ref, $global_vars_ref);
 	}
+
 	# TODO: warn if require/input/output do not appear in command
-	my $info_ref = { opt_vars => {}, req_vars => {}, require => {}, input => {}, output => {}, temp => {}, final => {} };
-	check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars}, $args_ref, $proc_vars_ref, $global_vars_ref, keys %{$cmd_ref->{files}}, $cmd_ref->{command};
+	my $info_ref = { opt_vars => {}, req_vars => {},
+			require => {}, input => {}, output => {}, temp => {}, final => {} };
+
+	# Get variables in defined files
+	check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars},
+			$args_ref, $proc_vars_ref, $global_vars_ref,
+			keys %{$cmd_ref->{files}}, $cmd_ref->{command};
+
 	while (my ($text, $type) = each(%{$cmd_ref->{files}})) {
 		my $file = eval_text($text, $args_ref, $proc_vars_ref, $global_vars_ref);
 		$info_ref->{$FILE_ATTRS{$type}}{$file} = $text;
@@ -1132,20 +1142,66 @@ sub check_block
 	if ($block_ref->{parallel}) {
 		my %proc_vars = %{$proc_vars_ref};  # Copy all proc variables to avoid changing in parallel block
 		foreach my $cmd_ref (@{$block_ref->{commands}}) {
-			merge_info $info_ref, check_cmd $cmd_ref, $args_ref, \%proc_vars, $global_vars_ref;
-	}
+			my $new_info_ref = check_cmd($cmd_ref, $args_ref, \%proc_vars, $global_vars_ref);
+			merge_info $info_ref, $new_info_ref, $cmd_ref;
+		}
 	} else {
 		foreach my $cmd_ref (@{$block_ref->{commands}}) {
-			merge_info $info_ref, check_cmd $cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref;
+			my $new_info_ref = check_cmd($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref);
+			merge_info $info_ref, $new_info_ref, $cmd_ref;
 		}
 	}
 	return $info_ref;
 }
 
+sub dump_info  # This is for debugging
+{
+	my $info_ref = shift;
+	print "---------------\n";
+	foreach my $key (keys %{$info_ref}) {
+		print "$key: (", join("|", %{$info_ref->{$key}}), ")\n";
+	}
+	print "---------------\n";
+}
+
 sub check_proc
 {
 	my ($proc_ref, $args_ref) = @_;
-	return check_block $proc_ref, $args_ref, {}, $global_vars_list_ref->{$proc_ref->{file}};
+	my $info_ref = check_block $proc_ref, $args_ref, {}, $global_vars_list_ref->{$proc_ref->{file}};
+	dump_info $info_ref if $verbose >= 2;
+	my %intermediates = ();
+	foreach my $key ('require', 'input') {
+		while (my ($file, $text) = each(%{$info_ref->{$key}})) {
+			if ($key eq 'require' and exists $info_ref->{input}{$file}) {
+				# TODO: Should 'require' override 'input'?
+				delete $info_ref->{input}{$file};
+			}
+			foreach my $key2 ('output', 'temp', 'final') {
+				if (exists $info_ref->{$key2}{$file}) {
+					$intermediates{$file} = $text if $key2 eq 'output';
+					delete $info_ref->{$key}{$file};
+					delete $info_ref->{$key2}{$file} if $key2 eq 'output';
+					last;
+				}
+			}
+		}
+	}
+	dump_info $info_ref if $verbose >= 2;
+	if (not %{$info_ref->{final}}) {
+		if (%{$info_ref->{output}}) {
+			%{$info_ref->{final}} = %{$info_ref->{output}};
+			%{$info_ref->{output}} = %intermediates;
+		} else {
+			%{$info_ref->{final}} = %intermediates;
+			%{$info_ref->{output}} = ();
+		}
+	} else {
+		while (my ($file, $text) = each(%intermediates)) {
+			$info_ref->{output}{$file} = $text;
+		}
+	}
+	dump_info $info_ref if $verbose >= 2;
+	return $info_ref;
 }
 
 ############################################################
@@ -1870,11 +1926,11 @@ sub show_info
 		print "No any variable is required for " . ($proc_name ? "procedure '$proc_name'" : "current inline command") . ".\n\n";
 	}
 
-	my @text_list = ( 'Require', 'Input', 'Temporary', 'Output' );
-	my @files_list = ( $info_ref->{require}, $info_ref->{input}, $info_ref->{temp}, $info_ref->{output} );
+	my @text_list = ( 'Require', 'Input', 'Temporary', 'Intermediate', 'Output' );
+	my @files_list = ( $info_ref->{require}, $info_ref->{input}, $info_ref->{temp}, $info_ref->{output}, $info_ref->{final} );
 	if ($help_mode == 1) {
-		splice @text_list, 2, 1;
-		splice @files_list, 2, 1;
+		splice @text_list, 2, 2;
+		splice @files_list, 2, 2;
 	}
 	while (@text_list) {
 		my $msg = (shift @text_list) . " file(s):\n";
