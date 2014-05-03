@@ -1200,13 +1200,15 @@ sub show_cmd
 {
 	my ($cmd_ref, $args_ref) = @_;
 	my @lines;
-	if ($cmd_ref->{name} ne '') {
-		push @lines, "#[name=\"$cmd_ref->{name}\"]";
-	}
-	foreach my $key (keys %FILE_ATTRS) {
-		foreach my $file (keys %{$cmd_ref->{files}}) {
-			push @lines, "#[$key=\"$file\"]"
-				if $cmd_ref->{files}->{$file} eq $key;
+	if ($verbose) {
+		if ($cmd_ref->{name} ne '') {
+			push @lines, "#[name=\"$cmd_ref->{name}\"]";
+		}
+		foreach my $key (keys %FILE_ATTRS) {
+			foreach my $file (keys %{$cmd_ref->{files}}) {
+				push @lines, "#[$key=\"$file\"]"
+					if $cmd_ref->{files}->{$file} eq $key;
+			}
 		}
 	}
 	if (exists $cmd_ref->{primitive}) {
