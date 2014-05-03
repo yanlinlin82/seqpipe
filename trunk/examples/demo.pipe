@@ -1,0 +1,677 @@
+# This file contains examples for a quick start on SeqPipe.
+#
+# Version: ($Id$)
+#
+# For these quick demos, please try to run them yourself and
+#  learn. Everytime after you type the bash shell command:
+#     $ seqpipe -m demo.pipe demo_XXX
+#  check files in .seqpipe/ directory. Following the steps,
+#  it should be easy to grasp usage and spirit of SeqPipe.
+#
+# To run the real example (BWA pair-end read mapping), you
+#  should change into the directory of this demo.pipe, and
+#  also make sure 'bwa' have been installed correctly.
+#
+# Before running any test, you can directly run command:
+#     $ seqpipe
+#  to see version and help message, and then try:
+#     $ seqpipe -D -m demo.pipe -l
+#  to list all available procedures (from this demo.pipe).
+#
+
+############################################################
+# Basic Usage
+############################################################
+
+# DEMO-001: Single line command
+#
+function demo_001
+{
+	echo "Hello, world!"
+}
+# As in bash, following function formats are all equivalent
+function demo_001_a()
+{
+	echo "Hello, world!"
+}
+function demo_001_b( )
+{
+	echo "Hello, world!"
+}
+function demo_001_c( ) {
+	echo "Hello, world!"
+}
+demo_001_d()
+{
+	echo "Hello, world!"
+}
+demo_001_e() {
+	echo "Hello, world!"
+}
+demo_001_f() {{  # This '{{ ... }}' will be explained later
+	echo "Hello, world!"
+}}
+
+# DEMO-002: Mulitple commands & multi-line command
+#
+function demo_002
+{
+	echo "Write to stderr" >/dev/stderr
+	pwd; sleep 1; ls
+	cat demo.pipe | grep function \
+		| wc -l
+}
+
+# DEMO-003: Failure (non-zero return value) terminates pipeline
+#
+function demo_003
+{
+	wc demo.pipe; false
+	echo "This command will never be run!"
+}
+
+# DEMO-004: Using bash conditional expression: '&&', '||'
+#
+function demo_004
+{
+	true && echo "This will be executed!"
+	true || echo "This will not be executed!"
+	false || echo "This works fine!"
+}
+
+# DEMO-005: Bash loop and conditional statements
+#
+function demo_005
+{
+	for c in {1..22} X Y M; do \
+		if [ "$c" == "X" -o $c == "M" ]; then \
+			echo "chr$c"; \
+		fi; \
+	done
+}
+
+############################################################
+# A Real Exmaple
+############################################################
+
+# DEMO-006: BWA pair-end read mapping
+#
+function demo_006
+{
+	bwa index MT.fa
+	bwa aln MT.fa r_1.fq.gz > r_1.fq.gz.sai
+	bwa aln MT.fa r_2.fq.gz > r_2.fq.gz.sai
+	bwa sampe MT.fa r_1.fq.gz.sai r_2.fq.gz.sai r_1.fq.gz r_2.fq.gz > out.sam
+}
+
+# DEMO-007: Running in parallel
+#
+# NOTE: Try to run in parallel (-t option):
+#   $ seqpipe -m demo.pipe demo_007 -t 2
+#
+function demo_007
+{
+	bwa index MT.fa
+
+	{{
+		bwa aln MT.fa r_1.fq.gz > r_1.fq.gz.sai
+		bwa aln MT.fa r_2.fq.gz > r_2.fq.gz.sai
+	}}
+
+	bwa sampe MT.fa r_1.fq.gz.sai r_2.fq.gz.sai r_1.fq.gz r_2.fq.gz > out.sam
+}
+
+# DEMO-008: Nested blocks - parallel vs. sequential
+#
+# NOTE: Try to run in different threads:
+#   $ seqpipe -m demo.pipe demo_008 -t 3
+# or
+#   $ seqpipe -m demo.pipe demo_009 -t 4
+#
+function demo_008
+{{
+	echo a; sleep 3; echo b
+	echo c; sleep 2; echo d
+	{
+		echo e
+		sleep 1
+		{{
+			echo f; sleep 2; echo g
+			echo h; sleep 1; echo i
+		}}
+	}
+}}
+
+# DEMO-009: Define require/input/output files
+#
+# NOTE: Try command:
+#   $ seqpipe -m demo.pipe demo_009 -h
+# or
+#   $ seqpipe -m demo.pipe demo_009 -H
+# Run pipeline:
+#   $ seqpipe -m demo.pipe demo_009
+# And try again with '-f':
+#   $ seqpipe -m demo.pipe demo_009 -f
+#
+function demo_009
+{
+	#[input="MT.fa" output="MT.fa.bwt"]
+	bwa index MT.fa
+
+	{{
+		#[require="MT.fa" require="MT.fa.bwt" input="r_1.fq.gz" output="r_1.fq.gz.sai"]
+		bwa aln MT.fa r_1.fq.gz > r_1.fq.gz.sai
+		#[require="MT.fa" require="MT.fa.bwt" input="r_2.fq.gz" output="r_2.fq.gz.sai"]
+		bwa aln MT.fa r_2.fq.gz > r_2.fq.gz.sai
+	}}
+
+	#[require="MT.fa" require="MT.fa.bwt"]
+	#[input="r_1.fq.gz" input="r_1.fq.gz.sai"]
+	#[input="r_2.fq.gz" input="r_2.fq.gz.sai"]
+	#[output="out.sam"]
+	bwa sampe MT.fa r_1.fq.gz.sai r_2.fq.gz.sai r_1.fq.gz r_2.fq.gz > out.sam
+}
+
+# DEMO-010: Define 'output.temp' files
+#
+# NOTE: Try command:
+#   $ seqpipe -m demo.pipe demo_010 -H
+# Try:
+#   $ seqpipe -m demo.pipe demo_010 -f
+#   $ ls
+# And try again with '-k':
+#   $ seqpipe -m demo.pipe demo_010 -f -k
+#   $ ls
+#
+function demo_010
+{
+	#[input="MT.fa" output="MT.fa.bwt"]
+	bwa index MT.fa
+
+	{{
+		#[require="MT.fa" require="MT.fa.bwt" input="r_1.fq.gz" output.temp="r_1.fq.gz.sai"]
+		bwa aln MT.fa r_1.fq.gz > r_1.fq.gz.sai
+		#[require="MT.fa" require="MT.fa.bwt" input="r_2.fq.gz" output.temp="r_2.fq.gz.sai"]
+		bwa aln MT.fa r_2.fq.gz > r_2.fq.gz.sai
+	}}
+
+	#[require="MT.fa" require="MT.fa.bwt"]
+	#[input="r_1.fq.gz" input="r_1.fq.gz.sai"]
+	#[input="r_2.fq.gz" input="r_2.fq.gz.sai"]
+	#[output="out.sam"]
+	bwa sampe MT.fa r_1.fq.gz.sai r_2.fq.gz.sai r_1.fq.gz r_2.fq.gz > out.sam
+}
+
+# DEMO-011: Use variables to make pipeline flexible
+#
+# NOTE: Try command:
+#   $ seqpipe -m demo.pipe demo_011 -h
+# And try:
+#   $ seqpipe -m demo.pipe demo_011 REF=MT.fa NAME=r OUTPUT=out -f
+#
+function demo_011
+{
+	#[input="${REF}" output="${REF}.bwt"]
+	bwa index ${REF}
+
+	{{
+		#[require="${REF}" require="${REF}.bwt" input="${NAME}_1.fq.gz" output.temp="${NAME}_1.fq.gz.sai"]
+		bwa aln ${REF} ${NAME}_1.fq.gz > ${NAME}_1.fq.gz.sai
+		#[require="${REF}" require="${REF}.bwt" input="${NAME}_2.fq.gz" output.temp="${NAME}_2.fq.gz.sai"]
+		bwa aln ${REF} ${NAME}_2.fq.gz > ${NAME}_2.fq.gz.sai
+	}}
+
+	#[require="${REF}" require="${REF}.bwt"]
+	#[input="${NAME}_1.fq.gz" input="${NAME}_1.fq.gz.sai"]
+	#[input="${NAME}_2.fq.gz" input="${NAME}_2.fq.gz.sai"]
+	#[output="${OUTPUT}.sam"]
+	bwa sampe ${REF} ${NAME}_1.fq.gz.sai ${NAME}_2.fq.gz.sai ${NAME}_1.fq.gz ${NAME}_2.fq.gz > ${OUTPUT}.sam
+}
+
+# DEMO-012: Define sub procedure
+#
+# NOTE: Try command:
+#   $ seqpipe -m demo.pipe demo_012 REF=MT.fa NAME=r OUTPUT=out -f
+# It will call 'bwa_index' subsequently
+#
+function demo_012
+{
+	SP_run _bwa_index REF=${REF}
+
+	{{
+		#[require="${REF}" require="${REF}.bwt" input="${NAME}_1.fq.gz" output.temp="${NAME}_1.fq.gz.sai"]
+		bwa aln ${REF} ${NAME}_1.fq.gz > ${NAME}_1.fq.gz.sai
+		#[require="${REF}" require="${REF}.bwt" input="${NAME}_2.fq.gz" output.temp="${NAME}_2.fq.gz.sai"]
+		bwa aln ${REF} ${NAME}_2.fq.gz > ${NAME}_2.fq.gz.sai
+	}}
+
+	#[require="${REF}" require="${REF}.bwt"]
+	#[input="${NAME}_1.fq.gz" input="${NAME}_1.fq.gz.sai"]
+	#[input="${NAME}_2.fq.gz" input="${NAME}_2.fq.gz.sai"]
+	#[output="${OUTPUT}.sam"]
+	bwa sampe ${REF} ${NAME}_1.fq.gz.sai ${NAME}_2.fq.gz.sai ${NAME}_1.fq.gz ${NAME}_2.fq.gz > ${OUTPUT}.sam
+}
+function _bwa_index
+{
+	#[input="${REF}" output="${REF}.bwt"]
+	bwa index ${REF}
+}
+
+# DEMO-013: Set default value of variables
+#
+# NOTE: Try command:
+#   $ seqpipe -m demo.pipe demo_013 -H
+# Now only 'NAME' is required to specify:
+#   $ seqpipe -m demo.pipe demo_013 NAME=r -f
+#
+function demo_013
+{
+	SP_set REF=MT.fa
+	SP_set OUTPUT=out
+
+	SP_run _bwa_index REF=${REF}
+
+	{{
+		#[require="${REF}" require="${REF}.bwt" input="${NAME}_1.fq.gz" output.temp="${NAME}_1.fq.gz.sai"]
+		bwa aln ${REF} ${NAME}_1.fq.gz > ${NAME}_1.fq.gz.sai
+		#[require="${REF}" require="${REF}.bwt" input="${NAME}_2.fq.gz" output.temp="${NAME}_2.fq.gz.sai"]
+		bwa aln ${REF} ${NAME}_2.fq.gz > ${NAME}_2.fq.gz.sai
+	}}
+
+	#[require="${REF}" require="${REF}.bwt"]
+	#[input="${NAME}_1.fq.gz" input="${NAME}_1.fq.gz.sai"]
+	#[input="${NAME}_2.fq.gz" input="${NAME}_2.fq.gz.sai"]
+	#[output="${OUTPUT}.sam"]
+	bwa sampe ${REF} ${NAME}_1.fq.gz.sai ${NAME}_2.fq.gz.sai ${NAME}_1.fq.gz ${NAME}_2.fq.gz > ${OUTPUT}.sam
+}
+
+# DEMO-014: Determine parameters automatically
+#
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_014 NAME=r -f
+# and check parameters of shell command 'bwa index'
+#
+function demo_014
+{
+	SP_set REF=MT.fa
+	SP_set OUTPUT=out
+
+	SP_run _bwa_index_ex REF=${REF}
+
+	{{
+		#[require="${REF}" require="${REF}.bwt" input="${NAME}_1.fq.gz" output.temp="${NAME}_1.fq.gz.sai"]
+		bwa aln ${REF} ${NAME}_1.fq.gz > ${NAME}_1.fq.gz.sai
+		#[require="${REF}" require="${REF}.bwt" input="${NAME}_2.fq.gz" output.temp="${NAME}_2.fq.gz.sai"]
+		bwa aln ${REF} ${NAME}_2.fq.gz > ${NAME}_2.fq.gz.sai
+	}}
+
+	#[require="${REF}" require="${REF}.bwt"]
+	#[input="${NAME}_1.fq.gz" input="${NAME}_1.fq.gz.sai"]
+	#[input="${NAME}_2.fq.gz" input="${NAME}_2.fq.gz.sai"]
+	#[output="${OUTPUT}.sam"]
+	bwa sampe ${REF} ${NAME}_1.fq.gz.sai ${NAME}_2.fq.gz.sai ${NAME}_1.fq.gz ${NAME}_2.fq.gz > ${OUTPUT}.sam
+}
+function _bwa_index_ex
+{
+	SP_set _ALGORITHM="is"
+
+	# Here we assume a genome is long if its file is bigger than 2Gb
+	SP_if (test -n "$(ls -l ${REF} | awk '$5>=2e9')")
+	{
+		SP_set _ALGORITHM="bwtsw"
+	}
+
+	#[input="${REF}" output="${REF}.bwt"]
+	bwa index -a ${_ALGORITHM} ${REF}
+}
+
+############################################################
+# Advanced Usage - Supported Statements
+############################################################
+
+# DEMO-015: Run shell
+#
+# NOTICE: Try:
+#   $ seqpipe -m demo.pipe demo_015 CMD=ls
+# or
+#   $ seqpipe -m demo.pipe demo_015 CMD='pwd && ls'
+#
+function demo_015
+{
+	${CMD}
+}
+
+# DEMO-016: Assignment statement - SP_set
+#
+function demo_016
+{
+	SP_set A=test foo bar
+	SP_set B={1..4} {a..c}
+	SP_set C=$((3+4))
+	SP_set D=*
+	SP_set E=*.txt
+	echo "A=\"${A}\" B=\"${B}\" C=\"${C}\" D=\"${D}\" E=\"${E}\""
+}
+
+# DEMO-017: Assignment statement - SP_set
+#
+function demo_017
+{
+	SP_set TMP_FILE=$(mktemp)
+	ls > ${TMP_FILE}
+	wc ${TMP_FILE}
+	rm -vf ${TMP_FILE}
+}
+
+# DEMO-018: Bash environment variable
+#
+function demo_018
+{
+	export ABC=abc
+	echo "$ABC $PATH"
+}
+
+# DEMO-019: Conditional statement - SP_if ${VAR}
+#
+# NOTICE: Try:
+#   $ seqpipe -m demo.pipe demo_019
+# or
+#   $ seqpipe -m demo.pipe demo_019 TEXT=abc
+#
+function demo_019
+{
+	SP_set TEXT=
+
+	SP_if ${TEXT}
+	{
+		echo "TEXT=\"${TEXT}\""
+	}
+}
+
+# DEMO-020: Conditional statement - SP_if (command)
+#
+# NOTICE: Try:
+#   $ seqpipe -m demo.pipe demo_020
+# or
+#   $ seqpipe -m demo.pipe demo_020 COND=false
+#
+function demo_020
+{
+	SP_set COND=true
+
+	SP_if (${COND})
+	{
+		echo true
+	}
+}
+
+# DEMO-021: Conditional statement - SP_if !(command)
+#
+# NOTICE: Try:
+#   $ seqpipe -m demo.pipe demo_021
+# or
+#   $ seqpipe -m demo.pipe demo_021 COND=false
+#
+function demo_021
+{
+	SP_set COND=true
+
+	SP_if !(${COND})
+	{
+		echo false
+	}
+}
+
+# DEMO-022: Conditional statement - SP_if ... SP_else_if .. SP_else ...
+#
+# NOTICE: Try:
+#   $ seqpipe -m demo.pipe demo_022
+# or
+#   $ seqpipe -m demo.pipe demo_022 C1=true
+# or
+#   $ seqpipe -m demo.pipe demo_022 C2=true
+#
+function demo_022
+{
+	SP_set C1=false
+	SP_set C2=false
+
+	SP_if (${C1})
+	{
+		echo C1
+	}
+	SP_else_if (${C2})
+	{
+		echo C2
+	}
+	SP_else
+	{
+		echo C3
+	}
+}
+
+# DEMO-023: For loop - SP_for
+#
+# NOTICE: Try:
+#   $ seqpipe -m demo.pipe demo_023
+# or
+#   $ seqpipe -m demo.pipe demo_023 OTHERS="x z"
+#
+function demo_023
+{
+	SP_set OTHERS=
+	SP_for _X=abc *.gz {1..3} $((3+4)) "A B"{a..c} ${OTHERS}
+	{
+		echo ${_X}
+	}
+}
+
+# DEMO-024: For loop in parallel - SP_for_parallel
+#
+# NOTICE: Try:
+#   $ seqpipe -m demo.pipe demo_024 -t 4
+# or
+#   $ seqpipe -m demo.pipe demo_024 OTHERS="x z" -t 6
+#
+function demo_024
+{
+	SP_set OTHERS=
+	SP_for_parallel _X={a..c} g ${OTHERS}
+	{
+		echo "${_X} start"; sleep 1; echo "${_X} end"
+	}
+}
+
+# DEMO-025: While loop - SP_while
+#
+function demo_025
+{
+	SP_set _X=2
+	SP_while (test ${_X} -lt 5)
+	{
+		SP_set _X=$((${_X} + 1))
+		echo "waiting ... (_X=${_X})"; sleep 1
+	}
+	SP_while !(test ${_X} -lt 1)
+	{
+		SP_set _X=$((${_X} / 2))
+		echo "waiting ... (_X=${_X})"; sleep 1
+	}
+}
+
+############################################################
+# More Advanced Usage - Sub Procedure
+############################################################
+
+# DEMO-026: dots in variable list
+#
+# NOTICE: Try:
+#   $ seqpipe -m demo.pipe demo_026 -h       # It works
+# or
+#   $ seqpipe -m demo.pipe demo_026_bad -h   # It fails
+#
+function demo_026
+{
+	SP_run _demo_026_sub ...
+}
+function _demo_026_sub
+{
+	echo ${A} ${B} ${C}
+}
+function demo_026_bad
+{
+	SP_run _demo_026_sub
+}
+
+############################################################
+# More Advanced Usage - File Dependency
+############################################################
+
+# DEMO-027: File dependency with sub procedure
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_027 -h
+#
+function demo_027
+{
+	SP_run _demo_027_sub A=${X} B=${Y} C=${Z}
+}
+function _demo_027_sub
+{
+	#[require="${A}" input="${B}" output="${C}"]
+	cat ${A} ${B} > ${C}
+}
+
+# DEMO-028: File dependency with sub procedure
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_028 W=w X=x Y=y E=.123 -H
+#
+function demo_028
+{
+	# NOTICE:
+	#  The 'E' in first line (SP_set) is local variable of 'function demo_028',
+	#  and the 'E' in second line (SP_run) is parameter of 'function _demo_028_sub'.
+	#  These two 'E's are totally DIFFERENT!!
+	SP_set E=.txt
+	SP_run _demo_028_sub A=${X}${E} B=${Y}${E} C=${W}${E} D=${Z}${E} E=.abc
+}
+function _demo_028_sub
+{
+	SP_set E=.xyz
+	#[require="${A}" input="${B}" output.temp="${C}" output="${D}${E}.txt"]
+	cat ${A} ${B} | tee ${C} > ${D}${E}.txt
+}
+
+# DEMO-029: File dependency
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_029 -H
+#
+function demo_029
+{
+	#[input="${A}" output="${B}"]
+	cat ${A} > ${B}
+
+	#[output="${C}"]
+	date > ${C}   # this command has no any require/input file
+
+	#[input="${B}" input="${C}" output="${D}"]
+	cat ${B} ${C} > ${D}
+}
+
+# DEMO-030: File dependency in parallel block
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_030 -H
+#
+function demo_030
+{
+	{{
+		#[require="${A}" input="${B}" output="${C}"]
+		cat ${A} ${B} > ${C}
+
+		#[require="${D}" input="${E}" output="${F}"]
+		cat ${D} ${E} > ${F}
+	}}
+	#[require="${C}" input="${F}" output.temp="${G}"]
+	cat ${C} ${F} > ${G}
+
+	#[input="${G}" output="${H}"]
+	cat ${G} > ${H}
+}
+
+# DEMO-031: File dependency in if-else blocks
+#
+# TODO: Improve this!!
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_031 -H -v
+#
+function demo_031
+{
+	SP_if (test)
+	{
+		#[input="A" output="C"]
+		echo something
+	}
+	SP_else
+	{
+		#[input="B" output="C"]
+		echo something
+	}
+
+	#[input="C" output="D"]
+	echo something
+}
+
+# DEMO-032: File dependency in while loop block
+#
+# TODO: Improve this!!
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_032 -H -v
+#
+function demo_032
+{
+	SP_set _X=1
+	SP_while (test ${_X} -lt 3)
+	{
+		#[input="${_X}.in" output="${_X}.out"]
+		cat ${_X}.in > ${_X}.out
+
+		SP_set _X=$((${_X} + 1))
+	}
+}
+
+############################################################
+# More Advanced Usage - Failure in Parallel
+############################################################
+
+# DEMO-033: Failure in parallel
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_033 -t 2
+#
+function demo_033
+{{
+	true
+	false
+}}
+
+# DEMO-034: Failure in parallel
+#
+# TODO: Improve this!! No any further command should be run after failure occurs
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_034 -t 2
+#
+function demo_034
+{{
+	sleep 1; false
+	echo a; sleep 2; echo b;
+	SP_for _X=1 2
+	{
+		echo ${_X}; sleep 2
+	}
+}}
