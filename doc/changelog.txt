@@ -1,3 +1,8 @@
+2014-05-04  v0.4.13 (r382)
+* Enable '-f' to force to re-run a pipeline.
+* Fix bug in procedure require/input/output determination.
+* Fix other minor bugs.
+
 2014-04-26  v0.4.12 (r357)
 * Fix bug of potential blocking in running shells in multi-threads.
 * Support multiple inline commands (use '-e' more than once).

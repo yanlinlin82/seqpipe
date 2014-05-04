@@ -951,13 +951,13 @@ sub merge_info
 		while (my ($file, $text) = each(%{$new_info_ref->{$key}})) {
 			if ($key eq 'output' or $key eq 'temp' or $key eq 'final') {
 				if (exists $info_ref->{require}{$file}) {
-					die "Require file '$file' is overwritten in " . file_pos($cmd_ref) . "\n";
+					die "Require file '$file' is overwritten in " . file_pos($cmd_ref);
 				} elsif (exists $info_ref->{input}{$file}) {
-					die "Input file '$file' is overwrittern in " . file_pos($cmd_ref) . "\n";
+					die "Input file '$file' is overwrittern in " . file_pos($cmd_ref);
 				} elsif (exists $info_ref->{output}{$file} or
 						exists $info_ref->{temp}{$file} or
 						exists $info_ref->{final}{$file}) {
-					warn "Output file '$file' is overwrittern in " . file_pos($cmd_ref) . "\n";
+					warn "Output file '$file' is overwrittern in " . file_pos($cmd_ref);
 				}
 			}
 			$info_ref->{$key}{$file} = $text;
@@ -998,7 +998,7 @@ sub check_sp_run
 	my ($cmd_ref, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
 	my $info_ref = { opt_vars => {}, req_vars => {}, require => {}, input => {}, output => {}, temp => {}, final => {} };
 	my $proc_ref = $procs_ref->{$cmd_ref->{proc_name}}
-		or die "Unknown procedure '$cmd_ref->{proc_name}' for $cmd_ref->{primitive} at " . file_pos($cmd_ref);
+		or die "Unknown procedure '$cmd_ref->{proc_name}' for $cmd_ref->{primitive} in " . file_pos($cmd_ref);
 	check_vars_info $info_ref->{opt_vars}, $info_ref->{req_vars}, $args_ref, $proc_vars_ref, $global_vars_ref,
 		map { $_->{value} } @{$cmd_ref->{options}};
 	my $sub_args_ref = {};
@@ -1054,10 +1054,10 @@ sub check_sp_if
 		my $block_info_ref = check_block($cond_ref->{block}, $args_ref, $proc_vars_ref, $global_vars_ref);
 		foreach my $key (@DEP_NAMES) {
 			if (%{$block_info_ref->{$key}}) {
-				warn "File dependency defined in $cmd_ref->{primitive} block, which may become different in run-time!";
+				warn "File dependency defined in $cmd_ref->{primitive} block in " . file_pos($cmd_ref) . "\n"
+					. "   NOTE: Such definition could make procedure dependency undeterminable.";
 				last;
 			}
-			# TODO: check if all blocks provide the same file dependency
 		}
 		merge_info $info_ref, $block_info_ref, $cmd_ref;
 	}
@@ -1076,7 +1076,8 @@ sub check_sp_while
 	my $block_info_ref = check_block($cmd_ref->{block}, $args_ref, $proc_vars_ref, $global_vars_ref);
 	if (%{$block_info_ref->{require}} or %{$block_info_ref->{input}} or %{$block_info_ref->{output}}
 			or %{$block_info_ref->{temp}} or %{$block_info_ref->{final}}) {
-		warn "File dependency defined in $cmd_ref->{primitive} block, which may become different in run-time!";
+		warn "File dependency defined in $cmd_ref->{primitive} block in " . file_pos($cmd_ref) . "\n"
+			. "   NOTE: Such definition could make procedure dependency undeterminable.";
 	}
 	merge_info $info_ref, $block_info_ref, $cmd_ref;
 	return $info_ref;
@@ -1091,7 +1092,8 @@ sub check_sp_for
 	my $block_info_ref = check_block($cmd_ref->{block}, $args_ref, $proc_vars_ref, $global_vars_ref);
 	if (%{$block_info_ref->{require}} or %{$block_info_ref->{input}} or %{$block_info_ref->{output}}
 			or %{$block_info_ref->{temp}} or %{$block_info_ref->{final}}) {
-		warn "File dependency defined in $cmd_ref->{primitive} block, which may become different in run-time!";
+		warn "File dependency defined in $cmd_ref->{primitive} block in " . file_pos($cmd_ref) . "\n"
+			. "   NOTE: Such definition could make procedure dependency undeterminable.";
 	}
 	delete $proc_vars_ref->{$cmd_ref->{variable}};
 	merge_info $info_ref, $block_info_ref, $cmd_ref;
@@ -1991,7 +1993,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analsysis PIPEline framework
-Version: 0.4.12 ($Rev$)
+Version: 0.4.13 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012-2014, Centre for Bioinformatics, Peking University, China
 Websites: http://seqpipe.googlecode.com
@@ -2085,7 +2087,7 @@ while (my $arg = shift @ARGV) {
 
 		if ($2 =~ /\${(\w+)}/) {
 			warn "Unrecommended usage of shell environment '\${$1}' in value of '$name'!\n"
-				. "   NOTE: Please use '\$$1' instead\n"
+				. "   NOTE: Please use '\$$1' instead"
 		}
 	} else {
 		die "Invalid format of option: $arg" if $proc_name or @exec_cmds;

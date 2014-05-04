@@ -507,11 +507,7 @@ function demo_025
 	}
 }
 
-############################################################
-# More Advanced Usage - Sub Procedure
-############################################################
-
-# DEMO-026: dots in variable list
+# DEMO-026: dots in variable list of SP_run
 #
 # NOTICE: Try:
 #   $ seqpipe -m demo.pipe demo_026 -h       # It works
@@ -609,70 +605,27 @@ function demo_030
 	cat ${G} > ${H}
 }
 
-# DEMO-031: File dependency in if-else blocks
-#
-# TODO: Improve this!!
-#
-# Try:
-#   $ seqpipe -m demo.pipe demo_031 -H -v
-#
-function demo_031
-{
-	SP_if (test)
-	{
-		#[input="A" output="C"]
-		echo something
-	}
-	SP_else
-	{
-		#[input="B" output="C"]
-		echo something
-	}
-
-	#[input="C" output="D"]
-	echo something
-}
-
-# DEMO-032: File dependency in while loop block
-#
-# TODO: Improve this!!
-#
-# Try:
-#   $ seqpipe -m demo.pipe demo_032 -H -v
-#
-function demo_032
-{
-	SP_set _X=1
-	SP_while (test ${_X} -lt 3)
-	{
-		#[input="${_X}.in" output="${_X}.out"]
-		cat ${_X}.in > ${_X}.out
-
-		SP_set _X=$((${_X} + 1))
-	}
-}
-
 ############################################################
 # More Advanced Usage - Failure in Parallel
 ############################################################
 
-# DEMO-033: Failure in parallel
+# DEMO-031: Failure in parallel
 #
 # Try:
-#   $ seqpipe -m demo.pipe demo_033 -t 2
+#   $ seqpipe -m demo.pipe demo_031 -t 2
 #
-function demo_033
+function demo_031
 {{
 	true
 	false
 }}
 
-# DEMO-034: Failure in parallel
+# DEMO-032: Failure in parallel
 #
 # Try:
-#   $ seqpipe -m demo.pipe demo_034 -t 2
+#   $ seqpipe -m demo.pipe demo_032 -t 2
 #
-function demo_034
+function demo_032
 {{
 	sleep 1; false
 	echo a; sleep 2; echo b;
