@@ -340,6 +340,14 @@ function demo_015
 {
 	${CMD}
 }
+# Also, you can try the 'inline' mode:
+#   $ seqpipe -e 'ls'
+# or
+#   $ seqpipe -e 'pwd && ls'
+# or
+#   $ seqpipe -e 'pwd' -e 'ls'
+# which should be almost the same as above 'demo_015'.
+#
 
 # DEMO-016: Assignment statement - SP_set
 #
