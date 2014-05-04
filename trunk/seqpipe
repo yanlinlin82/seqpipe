@@ -79,6 +79,7 @@ my $global_vars_list_ref = {};  # Global variables (defined outside procedures i
 my %shell_env_vars :shared = ();
 
 my $run_counter :shared = 0;  # Count how many shell commands have run so far.
+my $exiting :shared = 0;  # Set when met any failure or abort signal rose.
 
 ############################################################
 # Time display helper functions
@@ -1582,12 +1583,13 @@ sub run_sp_for
 			$proc_vars_ref->{$name} = $each_value;
 			$ret = run_block($cmd_ref->{block}, $indent, $args_ref, $proc_vars_ref);
 			return undef if not defined $ret;
-			last if $ret != 0;
+			last if $ret != 0 or $exiting;
 		}
 		delete $proc_vars_ref->{$name};
 	} else {
 		my @threads = ();
 		foreach my $each_value (split(/\s+/, $value)) {
+			last if $exiting;
 			my %thd_vars = %{$proc_vars_ref};
 			$thd_vars{$name} = $each_value;
 			push @threads, threads->create(\&run_block, $cmd_ref->{block}, $indent, $args_ref, \%thd_vars);
@@ -1611,7 +1613,7 @@ sub run_sp_while
 	my $ret = 0;
 	my $run_id = get_new_run_id;
 	my $cmd = "SP_while $cmd_ref->{negative}($cmd_ref->{shell})";
-	while (1) {
+	while (not $exiting) {
 		my $cmd_result = eval_text($cmd_ref->{shell}, $args_ref, $proc_vars_ref, $global_vars_ref);
 		my $yes = run_checker($cmd, $cmd_result, $run_id, $cmd_ref->{negative}, $indent);
 		return undef if not defined $ret;
@@ -1665,6 +1667,7 @@ sub run_cmd
 
 	if (exists $cmd_ref->{primitive}) {
 		$ret = run_primitive $cmd_ref, $args_ref, \%proc_vars, $global_vars_ref, $indent;
+		$exiting = 1 if not defined $ret or $ret != 0;
 		return undef if not defined $ret;
 	} elsif (exists $cmd_ref->{block}) {
 		# code block
@@ -1740,6 +1743,7 @@ sub run_cmd
 					}
 				}
 			}
+			$exiting = 1 if not defined $ret or $ret != 0;
 			return undef if not defined $ret;
 		}
 	}
@@ -1773,6 +1777,7 @@ sub run_block
 
 	if ($test_mode) {
 		foreach my $cmd_ref (@cmds) {
+			last if $exiting;
 			my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent . '  ', $args_ref, $proc_vars_ref, $global_vars_ref);
 			if (not defined $cmd_ret) {
 				undef $ret;
@@ -1786,6 +1791,7 @@ sub run_block
 	} else {
 		my @thread_list = ();
 		foreach my $cmd_ref (@cmds) {
+			last if $exiting;
 			if ($can_use_threads and $max_thread_number != 1) {
 				my $thd = threads->create({'context' => 'list'}, \&run_cmd,
 					$block_ref->{proc_name}, $cmd_ref, $indent . '  ', $args_ref, $proc_vars_ref, $global_vars_ref);

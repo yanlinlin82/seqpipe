@@ -669,8 +669,6 @@ function demo_033
 
 # DEMO-034: Failure in parallel
 #
-# TODO: Improve this!! No any further command should be run after failure occurs
-#
 # Try:
 #   $ seqpipe -m demo.pipe demo_034 -t 2
 #
