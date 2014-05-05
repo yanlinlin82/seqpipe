@@ -34,6 +34,7 @@ my $APP_ROOT = dirname abs_path $0;
 
 my $EMPTY_LINE      = '^\s*$';
 my $COMMENT_LINE    = '^\s*#';
+my $DESC_LINE       = '^\s*#\[';
 my $VERSION_LINE    = '^\s*#\[(seqpipe\s+|)version="[^"]*".*\]\s*$';
 my $ATTR_LINE       = '^\s*#\[(\w+\s+|)(\s*([\w\.]+)="[^"]*"(\s+([\w\.]+)="[^"]*")*|)\s*\]\s*$';
 my $FUNC_LINE       = '^\s*(function\s+([\w\.]+)(\(\s*\)|)|([\w\.]+)\s*\(\s*\))\s*({|{{|)\s*(\s#.*|)$';
@@ -141,7 +142,7 @@ sub set_warn_verbose
 	my $stub = q{
 		sub {
 			my $msg = $_[0];
-			$msg =~ s/^(.*)( in .+\(\d+\).*|)(\n.*|)( at .+ line \d+\.\n)$/$1$2$3\n__REPLACE__/m;
+			$msg =~ s/^(.*)( in .+\(\d+\).*)(\n.*|)( at .+ line \d+\.\n)$/$1$2$3\n__REPLACE__/m;
 			warn "WARNING: ", $msg unless exists $warned->{$1};
 			$warned->{$1} = 1;
 		}
@@ -608,7 +609,10 @@ sub read_nonblank_line
 	my ($fp) = @_;
 	while (read_one_line($fp)) {
 		next if $fp->{line} =~ /$EMPTY_LINE/;
-		next if $fp->{line} =~ /$COMMENT_LINE/ and $fp->{line} !~ /$ATTR_LINE/;
+		if ($fp->{line} =~ /$COMMENT_LINE/) {
+			next if $fp->{line} !~ /$DESC_LINE/;
+			warn "Invalid format of attribute in " . file_pos($fp) if $fp->{line} !~ /$ATTR_LINE/;
+		}
 		last;
 	}
 	return defined $fp->{line};
