@@ -817,10 +817,9 @@ sub load_block
 sub load_proc
 {
 	my ($fp, $proc_name, $bracket, $type) = @_;
-	my $line_no = $fp->{line_no};
 	if (exists $procs_ref->{$proc_name}) {
-		die "Duplicated procedure '$proc_name' in " . file_pos($fp)
-			. "\n  Previous definition of '$proc_name' was at $procs_ref->{$proc_name}{file} line $procs_ref->{$proc_name}{line_no}";
+		die "Duplicated procedure '$proc_name' in " . file_pos($fp) . "\n"
+			. "   Previous definition of '$proc_name' was in " . file_pos($procs_ref->{$proc_name});
 	}
 	if ($bracket eq '') {
 		die "'{' or '{{' expected in " . file_pos($fp) unless read_nonblank_line($fp) and $fp->{line} =~ /$BRACKET_LEFT/;
@@ -831,7 +830,8 @@ sub load_proc
 	my $proc_ref = load_block($proc_name, $fp, $bracket);
 	$proc_ref->{name} = $proc_name;
 	$proc_ref->{type} = $type;
-	$proc_ref->{line_no} = $line_no;  # Update 'line_no' to the line of 'function xxx' rather than its block.
+	$proc_ref->{file} = $fp->{file};
+	$proc_ref->{line_no} = $fp->{line_no};  # Update 'line_no' to the line of 'function xxx' rather than its block.
 	$procs_ref->{$proc_name} = $proc_ref;
 }
 
