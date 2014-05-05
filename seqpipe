@@ -1712,7 +1712,7 @@ sub run_cmd
 					if ($check_ret < 0) {
 						return { ret => $check_ret, vars => \%proc_vars };
 					} elsif ($check_ret > 0) {
-						log_print "$indent($run_id) [skip] $cmd_ref->{command}\n";
+						log_print "$indent($run_id) [skip] $cmd_text\n";
 						return { ret => 0, vars => \%proc_vars };
 					}
 				}
