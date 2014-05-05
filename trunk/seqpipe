@@ -1330,30 +1330,34 @@ sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 			return -1;
 		}
 	}
-	
-	if (%{$info_ref->{output}}) {
-		foreach my $output (keys %{$info_ref->{output}}) {
-			if (exists $info_ref->{require}{$output} or exists $info_ref->{input}{$output}) {
-				log_print "$indent($run_id) ERROR: Output file '$output' has also been defined as require or input!\n";
-				return -1;
-			}
-			if (-e $output) {
-				foreach my $input (keys %{$info_ref->{input}}) {
-					if (-M $input < -M $output) {
-						return 0;
-					}
-				}
-			} else {
-				my $output_dir = dirname $output;
-				system 'mkdir', '-p', $output_dir unless -d $output_dir;
-				return 0;
-			}
-		}
-		return 1;
+
+	my $key;
+	if (%{$info_ref->{final}}) {
+		$key = "final";
+	} elsif (%{$info_ref->{output}}) {
+		$key = "output";
 	} else {
 		# Force to run pipeline if no any output file defined.
 		return 0;
 	}
+	foreach my $output (keys %{$info_ref->{$key}}) {
+		if (exists $info_ref->{require}{$output} or exists $info_ref->{input}{$output}) {
+			log_print "$indent($run_id) ERROR: Output file '$output' has also been defined as require or input!\n";
+			return -1;
+		}
+		if (-e $output) {
+			foreach my $input (keys %{$info_ref->{input}}) {
+				if (-M $input < -M $output) {
+					return 0;
+				}
+			}
+		} else {
+			my $output_dir = dirname $output;
+			system 'mkdir', '-p', $output_dir unless -d $output_dir;
+			return 0;
+		}
+	}
+	return 1;
 }
 
 sub append_file
