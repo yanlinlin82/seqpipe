@@ -348,6 +348,8 @@ function demo_015
 #   $ seqpipe -e 'pwd' -e 'ls'
 # which should be almost the same as above 'demo_015'.
 #
+# Another option '-E' could be demo as:
+#   $ seqpipe -E 'echo a; sleep 2; echo b' -E 'echo c; sleep 1; echo d'
 
 # DEMO-016: Assignment statement - SP_set
 #
@@ -531,48 +533,109 @@ function demo_026_bad
 # More Advanced Usage - File Dependency
 ############################################################
 
-# DEMO-027: File dependency with sub procedure
+# DEMO-027: Simple file dependency
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo.pipe demo_027 -h
+# Run:
+#   $ pwd > a
+#   $ ls > b
+#   $ seqpipe -m demo.pipe demo_027 A=a B=b C=c
+# Run again (it will be skipped):
+#   $ seqpipe -m demo.pipe demo_027 A=a B=b C=c
+# Run again (it will not be skipped when 'b' is touched):
+#   $ touch b
+#   $ seqpipe -m demo.pipe demo_027 A=a B=b C=c
+# Run again (it will be still skipped when 'a' is touched):
+#   $ touch a
+#   $ seqpipe -m demo.pipe demo_027 A=a B=b C=c
 #
 function demo_027
-{
-	SP_run _demo_027_sub A=${X} B=${Y} C=${Z}
-}
-function _demo_027_sub
 {
 	#[require="${A}" input="${B}" output="${C}"]
 	cat ${A} ${B} > ${C}
 }
 
-# DEMO-028: File dependency with sub procedure
+# DEMO-028: Output with only require
 #
-# Try:
-#   $ seqpipe -m demo.pipe demo_028 W=w X=x Y=y E=.123 -H
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_028 -h
+# Run:
+#   $ seqpipe -m demo.pipe demo_028 A=a C=c
+# It will be skipped if 'c' exists
 #
 function demo_028
 {
-	# NOTICE:
-	#  The 'E' in first line (SP_set) is local variable of 'function demo_028',
-	#  and the 'E' in second line (SP_run) is parameter of 'function _demo_028_sub'.
-	#  These two 'E's are totally DIFFERENT!!
-	SP_set E=.txt
-	SP_run _demo_028_sub A=${X}${E} B=${Y}${E} C=${W}${E} D=${Z}${E} E=.abc
-}
-function _demo_028_sub
-{
-	SP_set E=.xyz
-	#[require="${A}" input="${B}" output.temp="${C}" output="${D}${E}.txt"]
-	cat ${A} ${B} | tee ${C} > ${D}${E}.txt
+	#[require="${A}" output="${C}"]
+	cat ${A} > ${C}
 }
 
-# DEMO-029: File dependency
+# DEMO-029: Output without require/input
 #
-# Try:
-#   $ seqpipe -m demo.pipe demo_029 -H
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_029 -h
+# It will be skipped if 'c' exists
 #
 function demo_029
+{
+	#[output="${C}"]
+	date > ${C}
+}
+
+# DEMO-030: Output as another command's input
+#
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_030 -H
+#
+function demo_030
+{
+	#[output="${C}"]
+	date > ${C}
+
+	#[input="${C}" output="${D}"]
+	cat ${C} > ${D}
+}
+
+# DEMO-031: Output as another command's require
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_031 -h
+#
+function demo_031
+{
+	#[output="${C}"]
+	date > ${C}
+
+	#[input="${C}" output="${D}"]
+	cat ${C} > ${D}
+}
+
+# DEMO-032: More complex file dependency
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_032 -H
+#
+function demo_032
+{
+	#[require="${A}" input="${B}" output="${C}"]
+	cat ${A} ${B} > ${C}
+
+	#[require="${D}" input="${E}" output="${F}"]
+	cat ${D} ${E} > ${F}
+
+	#[require="${C}" input="${F}" output.temp="${G}"]
+	cat ${C} ${F} > ${G}
+
+	#[input="${G}" output="${H}"]
+	cat ${G} > ${H}
+}
+
+# DEMO-033: Another more complex file dependency
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_033 -H
+#
+function demo_033
 {
 	#[input="${A}" output="${B}"]
 	cat ${A} > ${B}
@@ -584,12 +647,48 @@ function demo_029
 	cat ${B} ${C} > ${D}
 }
 
-# DEMO-030: File dependency in parallel block
+# DEMO-034: File dependency with sub procedure
 #
 # Try:
-#   $ seqpipe -m demo.pipe demo_030 -H
+#   $ seqpipe -m demo.pipe demo_034 -h
 #
-function demo_030
+function demo_034
+{
+	SP_run _demo_033_sub A=${X} B=${Y} C=${Z}
+}
+function _demo_034_sub
+{
+	#[require="${A}" input="${B}" output="${C}"]
+	cat ${A} ${B} > ${C}
+}
+
+# DEMO-035: File dependency with sub procedure
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_035 W=w X=x Y=y E=.123 -H
+#
+function demo_035
+{
+	# NOTICE:
+	#  The 'E' in first line (SP_set) is local variable of 'function demo_035',
+	#  and the 'E' in second line (SP_run) is parameter of 'function _demo_035_sub'.
+	#  These two 'E's are totally DIFFERENT!!
+	SP_set E=.txt
+	SP_run _demo_035_sub A=${X}${E} B=${Y}${E} C=${W}${E} D=${Z}${E} E=.abc
+}
+function _demo_035_sub
+{
+	SP_set E=.xyz
+	#[require="${A}" input="${B}" output.temp="${C}" output="${D}${E}.txt"]
+	cat ${A} ${B} | tee ${C} > ${D}${E}.txt
+}
+
+# DEMO-036: File dependency in parallel block
+#
+# Try:
+#   $ seqpipe -m demo.pipe demo_036 -H
+#
+function demo_036
 {
 	{{
 		#[require="${A}" input="${B}" output="${C}"]
@@ -609,23 +708,23 @@ function demo_030
 # More Advanced Usage - Failure in Parallel
 ############################################################
 
-# DEMO-031: Failure in parallel
+# DEMO-037: Failure in parallel
 #
 # Try:
-#   $ seqpipe -m demo.pipe demo_031 -t 2
+#   $ seqpipe -m demo.pipe demo_037 -t 2
 #
-function demo_031
+function demo_037
 {{
 	true
 	false
 }}
 
-# DEMO-032: Failure in parallel
+# DEMO-038: Failure in parallel
 #
 # Try:
-#   $ seqpipe -m demo.pipe demo_032 -t 2
+#   $ seqpipe -m demo.pipe demo_038 -t 2
 #
-function demo_032
+function demo_038
 {{
 	sleep 1; false
 	echo a; sleep 2; echo b;
