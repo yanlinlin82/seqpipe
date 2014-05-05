@@ -1887,7 +1887,7 @@ sub run_proc
 			return 0;
 		}
 	}
-	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n";
+	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n" if not $test_mode;
 
 	if ($test_mode) {
 		run_block($proc_ref, $indent, $args_ref, \%proc_vars);
