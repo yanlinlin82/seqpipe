@@ -2002,10 +2002,13 @@ Websites: http://seqpipe.googlecode.com
 Usage:
    seqpipe [options] <procedure> [NAME=VALUE ...]
    seqpipe [options] -e <cmd> [-e <cmd> ...] [NAME=VALUE ...]
+   seqpipe [options] -E <cmd> [-E <cmd> ...] [NAME=VALUE ...]
 
 Options:
    -h / -H              Show help messages.
    -v                   Show verbose messages.
+   -e                   Run shell command directly, without writing .pipe file.
+   -E                   Same as "-e", except running in parallel.
    -l / -L [<pattern>]  List current available procedures.
    -m <file>            Load procedure module file, this option can be used many times.
    -D                   Disable to load default pipelines.
@@ -2026,6 +2029,7 @@ Options:
 my $command_line = bash_line_encode(abs_path($0), @ARGV);
 my @module_files = ();
 my @exec_cmds = ();
+my $exec_parallel = 0;
 my $proc_name = '';
 my $args_ref = {};
 my $args_order_ref = [];
@@ -2058,6 +2062,16 @@ my $actions = {
 	},
 	'-e' => sub {
 		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
+		die "Option '-e' and '-E' are not allowed to use at the same time" if @exec_cmds and $exec_parallel;
+		my $cmd = shift @ARGV;
+		die "Empty inline command is not allowed!" if $cmd =~ /^\s*$/;
+		die "Multi-line inline command is not allowed!" if $cmd =~ /\n/;
+		push @exec_cmds, $cmd;
+	},
+	'-E' => sub {
+		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
+		die "Option '-e' and '-E' are not allowed to use at the same time" if @exec_cmds and not $exec_parallel;
+		$exec_parallel = 1;
 		my $cmd = shift @ARGV;
 		die "Empty inline command is not allowed!" if $cmd =~ /^\s*$/;
 		die "Multi-line inline command is not allowed!" if $cmd =~ /\n/;
@@ -2112,12 +2126,14 @@ if ($list_mode) {
 # Prepare for inline mode
 if (@exec_cmds) {
 	$global_vars_list_ref->{''} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => $APP_ROOT };
-	$procs_ref->{''} = { proc_name => '', file => '' };
+	$procs_ref->{''} = { proc_name => '', file => '', parallel => $exec_parallel };
 	my $line_no = 0;
 	foreach my $cmd (@exec_cmds) {
 		++$line_no;
 		push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => $line_no, command => $cmd };
 	}
+	warn "Parallel running (-E) will be ignored because max thread number (-t) is not specified!"
+			if $exec_parallel and $max_thread_number == 1;
 } elsif ($proc_name) {
 	die "Unknown procedure '$proc_name'! Use '-l' to list available procedures."
 		unless exists $procs_ref->{$proc_name};
