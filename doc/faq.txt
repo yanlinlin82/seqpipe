@@ -3,7 +3,7 @@ Frequently Asked Questions
 Version: 0.4.13 ($Rev$)
 
 Q: What does 'SeqPipe' stand for?
-A: SeqPipe means "a SEQuencing data analsysis PIPEline framework".
+A: SeqPipe means "a SEQuencing data analysis PIPEline framework".
 
 Q: Where does SeqPipe record logs?
 A: In the .seqpipe/ subdirectory of the directory when you run SeqPipe. You can explore all the history from .seqpipe/history.log as a start or index, then .seqpipe/<date>.<pid>/* for records of each run session.

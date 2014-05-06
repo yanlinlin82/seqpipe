@@ -1,5 +1,5 @@
-SeqPipe (a SEQuencing data analsysis PIPEline framework)
-========================================================
+SeqPipe (a SEQuencing data analysis PIPEline framework)
+=======================================================
 
 - Version: 0.4.13 ($Rev$)
 - Author: Linlin Yan (yanll@mail.cbi.pku.edu.cn)
