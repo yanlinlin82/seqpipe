@@ -1344,7 +1344,10 @@ sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 			return 0;
 		}
 	} else {
-		push @check_type, ("output", "temp", "final");
+		push @check_type, "final" if %{$info_ref->{final}};
+		push @check_type, "output" if %{$info_ref->{output}};
+		push @check_type, "temp" if %{$info_ref->{temp}};
+		return 0 unless @check_type;
 	}
 	foreach my $type (@check_type) {
 		foreach my $output (keys %{$info_ref->{$type}}) {
