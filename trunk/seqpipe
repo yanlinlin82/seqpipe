@@ -1315,7 +1315,7 @@ sub show_proc
 
 sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 {
-	my ($info_ref, $indent, $run_id) = @_;
+	my ($info_ref, $indent, $run_id, $is_proc) = @_;
 
 	foreach my $require (keys %{$info_ref->{require}}) {
 		if (not -e $require) {
@@ -1331,30 +1331,38 @@ sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 		}
 	}
 
-	my $key;
-	if (%{$info_ref->{final}}) {
-		$key = "final";
-	} elsif (%{$info_ref->{output}}) {
-		$key = "output";
-	} else {
-		# Force to run pipeline if no any output file defined.
-		return 0;
-	}
-	foreach my $output (keys %{$info_ref->{$key}}) {
-		if (exists $info_ref->{require}{$output} or exists $info_ref->{input}{$output}) {
-			log_print "$indent($run_id) ERROR: Output file '$output' has also been defined as require or input!\n";
-			return -1;
-		}
-		if (-e $output) {
-			foreach my $input (keys %{$info_ref->{input}}) {
-				if (-M $input < -M $output) {
-					return 0;
-				}
-			}
+	my @check_type = ();
+	if ($is_proc) {
+		if (%{$info_ref->{final}}) {
+			push @check_type, "final";
+		} elsif (%{$info_ref->{output}}) {
+			push @check_type, "output";
+		} elsif (%{$info_ref->{temp}}) {
+			push @check_type, "temp";
 		} else {
-			my $output_dir = dirname $output;
-			system 'mkdir', '-p', $output_dir unless -d $output_dir;
+			# Force to run pipeline if no any output file defined.
 			return 0;
+		}
+	} else {
+		push @check_type, ("output", "temp", "final");
+	}
+	foreach my $type (@check_type) {
+		foreach my $output (keys %{$info_ref->{$type}}) {
+			if (exists $info_ref->{require}{$output} or exists $info_ref->{input}{$output}) {
+				log_print "$indent($run_id) ERROR: Output file '$output' has also been defined as require or input!\n";
+				return -1;
+			}
+			if (-e $output) {
+				foreach my $input (keys %{$info_ref->{input}}) {
+					if (-M $input < -M $output) {
+						return 0;
+					}
+				}
+			} else {
+				my $output_dir = dirname $output;
+				system 'mkdir', '-p', $output_dir unless -d $output_dir;
+				return 0;
+			}
 		}
 	}
 	return 1;
@@ -1716,7 +1724,7 @@ sub run_cmd
 				$info_ref = check_cmd($cmd_ref, $args_ref, \%proc_vars, $global_vars_ref);
 
 				if (not $force_run) {
-					my $check_ret = check_files($info_ref, $indent, $run_id);
+					my $check_ret = check_files($info_ref, $indent, $run_id, 0);
 					if ($check_ret < 0) {
 						return { ret => $check_ret, vars => \%proc_vars };
 					} elsif ($check_ret > 0) {
@@ -1888,7 +1896,7 @@ sub run_proc
 	my $info_ref = check_proc($proc_ref, $args_ref);
 
 	if (not $test_mode and not $force_run) {
-		$ret = check_files($info_ref, $indent, $run_id);
+		$ret = check_files($info_ref, $indent, $run_id, 1);
 		return $ret if $ret < 0;
 		if ($ret > 0) {
 			log_print "$indent($run_id) [skip] $cmd\n";
