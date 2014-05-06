@@ -2058,7 +2058,9 @@ my $actions = {
 	},
 	'-m' => sub {
 		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
-		push @module_files, abs_path shift @ARGV;
+		my $file = shift @ARGV;
+		die "Can not find pipeline file '$file'!" unless -e $file;
+		push @module_files, abs_path $file;
 	},
 	'-t' => sub {
 		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
