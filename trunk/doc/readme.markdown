@@ -1,7 +1,7 @@
 SeqPipe (a SEQuencing data analsysis PIPEline framework)
 ========================================================
 
-- Version: 0.4.13 ($Id$)
+- Version: 0.4.13 ($Rev$)
 - Author: Linlin Yan (yanll@mail.cbi.pku.edu.cn)
 - Copyright: 2012-2014, Centre for Bioinformatics, Peking University, China
 

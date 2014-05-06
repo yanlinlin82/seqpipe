@@ -1,6 +1,6 @@
 Frequently Asked Questions
 
-$Id$
+Version: 0.4.13 ($Rev$)
 
 Q: What does 'SeqPipe' stand for?
 A: SeqPipe means "a SEQuencing data analsysis PIPEline framework".
