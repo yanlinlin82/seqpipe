@@ -25,11 +25,22 @@
 
 # DEMO-001: Single line command
 #
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_001
+#
 function demo_001
 {
 	echo "Hello, world!"
 }
-# As in bash, following function formats are all equivalent
+# As in bash, following function formats are all equivalent.
+#  You can try them one by one:
+#   $ seqpipe -m demo.pipe demo_001_a
+#   $ seqpipe -m demo.pipe demo_001_b
+#   $ seqpipe -m demo.pipe demo_001_c
+#   $ seqpipe -m demo.pipe demo_001_d
+#   $ seqpipe -m demo.pipe demo_001_e
+#   $ seqpipe -m demo.pipe demo_001_f
+#
 function demo_001_a()
 {
 	echo "Hello, world!"
@@ -54,6 +65,9 @@ demo_001_f() {{  # This '{{ ... }}' will be explained later
 
 # DEMO-002: Mulitple commands & multi-line command
 #
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_002
+#
 function demo_002
 {
 	echo "Write to stderr" >/dev/stderr
@@ -64,6 +78,9 @@ function demo_002
 
 # DEMO-003: Failure (non-zero return value) terminates pipeline
 #
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_003
+#
 function demo_003
 {
 	wc demo.pipe; false
@@ -71,6 +88,9 @@ function demo_003
 }
 
 # DEMO-004: Using bash conditional expression: '&&', '||'
+#
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_004
 #
 function demo_004
 {
@@ -80,6 +100,9 @@ function demo_004
 }
 
 # DEMO-005: Bash loop and conditional statements
+#
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_005
 #
 function demo_005
 {
@@ -95,6 +118,9 @@ function demo_005
 ############################################################
 
 # DEMO-006: BWA pair-end read mapping
+#
+# NOTE: Try:
+#   $ seqpipe -m demo.pipe demo_006
 #
 function demo_006
 {

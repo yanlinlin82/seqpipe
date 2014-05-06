@@ -12,7 +12,7 @@
 
 # DEMO-101: Run shell commands
 #
-# NOTICE: Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_101 CMD=ls
 # or
 #   $ seqpipe -m demo_more.pipe demo_101 CMD='pwd && ls'
@@ -39,6 +39,9 @@ function demo_101
 
 # DEMO-102: Assignment statement - SP_set
 #
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_102
+#
 function demo_102
 {
 	SP_set A=test foo bar
@@ -51,6 +54,9 @@ function demo_102
 
 # DEMO-103: Assignment statement - SP_set
 #
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_103
+#
 function demo_103
 {
 	SP_set TMP_FILE=$(mktemp)
@@ -61,6 +67,9 @@ function demo_103
 
 # DEMO-104: Bash environment variable
 #
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_104
+#
 function demo_104
 {
 	export ABC=abc
@@ -69,7 +78,7 @@ function demo_104
 
 # DEMO-105: Conditional statement - SP_if ${VAR}
 #
-# NOTICE: Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_105
 # or
 #   $ seqpipe -m demo_more.pipe demo_105 TEXT=abc
@@ -86,7 +95,7 @@ function demo_105
 
 # DEMO-106: Conditional statement - SP_if (command)
 #
-# NOTICE: Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_106
 # or
 #   $ seqpipe -m demo_more.pipe demo_106 COND=false
@@ -103,7 +112,7 @@ function demo_106
 
 # DEMO-107: Conditional statement - SP_if !(command)
 #
-# NOTICE: Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_107
 # or
 #   $ seqpipe -m demo_more.pipe demo_107 COND=false
@@ -120,7 +129,7 @@ function demo_107
 
 # DEMO-108: Conditional statement - SP_if ... SP_else_if .. SP_else ...
 #
-# NOTICE: Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_108
 # or
 #   $ seqpipe -m demo_more.pipe demo_108 C1=true
@@ -148,7 +157,7 @@ function demo_108
 
 # DEMO-109: For loop - SP_for
 #
-# NOTICE: Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_109
 # or
 #   $ seqpipe -m demo_more.pipe demo_109 OTHERS="x z"
@@ -164,7 +173,7 @@ function demo_109
 
 # DEMO-110: For loop in parallel - SP_for_parallel
 #
-# NOTICE: Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_110 -t 4
 # or
 #   $ seqpipe -m demo_more.pipe demo_110 OTHERS="x z" -t 6
@@ -179,6 +188,9 @@ function demo_110
 }
 
 # DEMO-111: While loop - SP_while
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_111
 #
 function demo_111
 {
@@ -197,7 +209,7 @@ function demo_111
 
 # DEMO-112: dots in variable list of SP_run
 #
-# NOTICE: Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_112 -h       # It works
 # or
 #   $ seqpipe -m demo_more.pipe demo_112_bad -h   # It fails
@@ -221,7 +233,7 @@ function demo_112_bad
 
 # DEMO-113: Failure in parallel
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_113 -t 2
 #
 function demo_113
@@ -232,7 +244,7 @@ function demo_113
 
 # DEMO-114: Failure in parallel
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_114 -t 2
 #
 function demo_114
@@ -290,6 +302,8 @@ function demo_116
 #
 # NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_117 -h
+# Run:
+#   $ seqpipe -m demo_more.pipe demo_117 C=c
 # It will be skipped if 'c' exists
 #
 function demo_117
@@ -302,6 +316,8 @@ function demo_117
 #
 # NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_118 -H
+# Run:
+#   $ seqpipe -m demo_more.pipe demo_118 C=c D=d
 #
 function demo_118
 {
@@ -314,8 +330,10 @@ function demo_118
 
 # DEMO-119: Output as another command's require
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_119 -h
+# Run:
+#   $ seqpipe -m demo_more.pipe demo_119 C=c D=d
 #
 function demo_119
 {
@@ -328,7 +346,7 @@ function demo_119
 
 # DEMO-120: More complex file dependency
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_120 -H
 #
 function demo_120
@@ -348,7 +366,7 @@ function demo_120
 
 # DEMO-121: Another more complex file dependency
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_121 -H
 #
 function demo_121
@@ -365,7 +383,7 @@ function demo_121
 
 # DEMO-122: File dependency with sub procedure
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_122 -h
 #
 function demo_122
@@ -380,7 +398,7 @@ function _demo_122_sub
 
 # DEMO-123: File dependency with sub procedure
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_123 W=w X=x Y=y E=.123 -H
 #
 function demo_123
@@ -401,7 +419,7 @@ function _demo_123_sub
 
 # DEMO-124: File dependency in parallel block
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_124 -H
 #
 function demo_124
@@ -422,7 +440,7 @@ function demo_124
 
 # DEMO-125: File dependency in parallel block
 #
-# Try:
+# NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_125 -H
 #
 function demo_125
