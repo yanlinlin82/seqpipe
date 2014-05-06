@@ -438,12 +438,31 @@ function demo_124
 	cat ${G} > ${H}
 }
 
-# DEMO-125: File dependency in parallel block
+# DEMO-125: File dependency in if-else blocks
 #
 # NOTE: Try:
 #   $ seqpipe -m demo_more.pipe demo_125 -H
 #
 function demo_125
+{
+	SP_if ${COND}
+	{
+		#[input="${A}" output="${C}"]
+		cat ${A} > ${C}
+	}
+	SP_else
+	{
+		#[input="${B}" output="${C}"]
+		cat ${B} > ${C}
+	}
+}
+
+# DEMO-126: File dependency in for loop
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_126 -H
+#
+function demo_126
 {
 	SP_for _X={1..3} X Y
 	{
