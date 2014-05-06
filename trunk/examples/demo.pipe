@@ -654,7 +654,7 @@ function demo_033
 #
 function demo_034
 {
-	SP_run _demo_033_sub A=${X} B=${Y} C=${Z}
+	SP_run _demo_034_sub A=${X} B=${Y} C=${Z}
 }
 function _demo_034_sub
 {
