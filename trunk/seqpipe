@@ -1910,7 +1910,7 @@ sub run_proc
 
 	if ($test_mode) {
 		run_block($proc_ref, $indent, $args_ref, \%proc_vars);
-		return 1;
+		return 0;
 	} else {
 		$ret = run_block($proc_ref, $indent, $args_ref, \%proc_vars);
 		
