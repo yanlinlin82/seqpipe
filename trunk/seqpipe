@@ -26,8 +26,10 @@ if (not has_module('threads.pm') and not has_module('forks.pm')) {
 # Constants
 
 # Unique ID consists of date, time and pid
-my $UNIQ_ID = sprintf '%02d%02d%02d.%02d%02d.%d',
-	(localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], (localtime)[2], (localtime)[1], $$;
+my $HOSTNAME = `hostname`;
+chomp $HOSTNAME;
+my $UNIQ_ID = sprintf '%02d%02d%02d.%02d%02d.%d.%s',
+	(localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], (localtime)[2], (localtime)[1], $$, $HOSTNAME;
 my $LOG_ROOT = "./.seqpipe";  # All log files are saved in this directory.
 my $LOG_DIR = "$LOG_ROOT/$UNIQ_ID";
 my $APP_ROOT = dirname abs_path $0;
@@ -2012,7 +2014,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analysis PIPEline framework
-Version: 0.4.13 ($Rev$)
+Version: 0.4.14 ($Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012-2014, Centre for Bioinformatics, Peking University, China
 Websites: http://seqpipe.googlecode.com
@@ -2204,7 +2206,7 @@ if (not $test_mode) {
 	system "ln -s -f -n $UNIQ_ID $LOG_ROOT/last";
 
 	# Write whole command line to log
-	open LOG_FILE, ">>$LOG_ROOT/history.log";
+	open LOG_FILE, ">>$LOG_ROOT/history.$HOSTNAME.log";
 	log_print "$UNIQ_ID\t$command_line\n";
 	close LOG_FILE;
 

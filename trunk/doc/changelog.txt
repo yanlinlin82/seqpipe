@@ -1,3 +1,8 @@
+2014-07-19  v0.4.14 (r404)
+* Support '-E' to run inline command in parallel.
+* Add hostname to uniq-ID for each pipeline run.
+* Fix minor bugs and improve tests/demonstrations.
+
 2014-05-04  v0.4.13 (r382)
 * Enable '-f' to force to re-run a pipeline.
 * Fix bug in procedure require/input/output determination.

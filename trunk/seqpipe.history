@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SEQPIPE_DIR=.seqpipe
-SEQPIPE_LOG=${SEQPIPE_DIR}/history.log
+SEQPIPE_LOG=${SEQPIPE_DIR}/history.$(hostname).log
 
 ########################################
 
@@ -11,7 +11,7 @@ function do_show_cmd_line
 	if [ -z "${ID}" ]; then
 		# Without any options, show all records
 		cat ${SEQPIPE_LOG}
-	elif (echo ${ID} | grep -q -E "^[0-9]+(\.[0-9]+)+$") then
+	elif (echo ${ID} | grep -q -E "^[0-9]+(\.[0-9]+)+(|\..*)$") then
 		# With an option of ID, show its record
 		cat ${SEQPIPE_LOG} | awk '$1=="'${ID}'"'
 	elif (echo ${ID} | grep -q -E "^[+-]?0+$") then
@@ -214,7 +214,7 @@ function show_usage
 {
 	echo "
 Histroy Manipulator for SeqPipe (a SEQuencing data analysis PIPEline framework)
-Version: 0.4.13 (\$Rev$)
+Version: 0.4.14 (\$Rev$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
 Websites: http://seqpipe.googlecode.com
