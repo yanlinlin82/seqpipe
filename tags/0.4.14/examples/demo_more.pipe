@@ -1,0 +1,472 @@
+# This file contains more advanced usages of SeqPipe.
+#
+# Version: 0.4.13 ($Rev$)
+#
+# As demo_more.pipe, we strongly recommend you to run them one by
+#  one yourself and learn.
+#
+
+############################################################
+# Run shell commands
+############################################################
+
+# DEMO-101: Run shell commands
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_101 CMD=ls
+# or
+#   $ seqpipe -m demo_more.pipe demo_101 CMD='pwd && ls'
+#
+function demo_101
+{
+	${CMD}
+}
+# Also, you can try the 'inline' mode:
+#   $ seqpipe -e 'ls'
+# or
+#   $ seqpipe -e 'pwd && ls'
+# or
+#   $ seqpipe -e 'pwd' -e 'ls'
+# which should be almost the same as above 'demo_101'.
+#
+# Another option '-E' could be demo as:
+#   $ seqpipe -E 'echo a; sleep 2; echo b' -E 'echo c; sleep 1; echo d' -t 2
+# 
+
+############################################################
+# Supported Statements
+############################################################
+
+# DEMO-102: Assignment statement - SP_set
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_102
+#
+function demo_102
+{
+	SP_set A=test foo bar
+	SP_set B={1..4} {a..c}
+	SP_set C=$((3+4))
+	SP_set D=*
+	SP_set E=*.txt
+	echo "A=\"${A}\" B=\"${B}\" C=\"${C}\" D=\"${D}\" E=\"${E}\""
+}
+
+# DEMO-103: Assignment statement - SP_set
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_103
+#
+function demo_103
+{
+	SP_set TMP_FILE=$(mktemp)
+	ls > ${TMP_FILE}
+	wc ${TMP_FILE}
+	rm -vf ${TMP_FILE}
+}
+
+# DEMO-104: Bash environment variable
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_104
+#
+function demo_104
+{
+	export ABC=abc
+	echo "$ABC $PATH"
+}
+
+# DEMO-105: Conditional statement - SP_if ${VAR}
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_105
+# or
+#   $ seqpipe -m demo_more.pipe demo_105 TEXT=abc
+#
+function demo_105
+{
+	SP_set TEXT=
+
+	SP_if ${TEXT}
+	{
+		echo "TEXT=\"${TEXT}\""
+	}
+}
+
+# DEMO-106: Conditional statement - SP_if (command)
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_106
+# or
+#   $ seqpipe -m demo_more.pipe demo_106 COND=false
+#
+function demo_106
+{
+	SP_set COND=true
+
+	SP_if (${COND})
+	{
+		echo true
+	}
+}
+
+# DEMO-107: Conditional statement - SP_if !(command)
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_107
+# or
+#   $ seqpipe -m demo_more.pipe demo_107 COND=false
+#
+function demo_107
+{
+	SP_set COND=true
+
+	SP_if !(${COND})
+	{
+		echo false
+	}
+}
+
+# DEMO-108: Conditional statement - SP_if ... SP_else_if .. SP_else ...
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_108
+# or
+#   $ seqpipe -m demo_more.pipe demo_108 C1=true
+# or
+#   $ seqpipe -m demo_more.pipe demo_108 C2=true
+#
+function demo_108
+{
+	SP_set C1=false
+	SP_set C2=false
+
+	SP_if (${C1})
+	{
+		echo C1
+	}
+	SP_else_if (${C2})
+	{
+		echo C2
+	}
+	SP_else
+	{
+		echo C3
+	}
+}
+
+# DEMO-109: For loop - SP_for
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_109
+# or
+#   $ seqpipe -m demo_more.pipe demo_109 OTHERS="x z"
+#
+function demo_109
+{
+	SP_set OTHERS=
+	SP_for _X=abc *.gz {1..3} $((3+4)) "A B"{a..c} ${OTHERS}
+	{
+		echo ${_X}
+	}
+}
+
+# DEMO-110: For loop in parallel - SP_for_parallel
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_110 -t 4
+# or
+#   $ seqpipe -m demo_more.pipe demo_110 OTHERS="x z" -t 6
+#
+function demo_110
+{
+	SP_set OTHERS=
+	SP_for_parallel _X={a..c} g ${OTHERS}
+	{
+		echo "${_X} start"; sleep 1; echo "${_X} end"
+	}
+}
+
+# DEMO-111: While loop - SP_while
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_111
+#
+function demo_111
+{
+	SP_set _X=2
+	SP_while (test ${_X} -lt 5)
+	{
+		SP_set _X=$((${_X} + 1))
+		echo "waiting ... (_X=${_X})"; sleep 1
+	}
+	SP_while !(test ${_X} -lt 1)
+	{
+		SP_set _X=$((${_X} / 2))
+		echo "waiting ... (_X=${_X})"; sleep 1
+	}
+}
+
+# DEMO-112: dots in variable list of SP_run
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_112 -h       # It works
+# or
+#   $ seqpipe -m demo_more.pipe demo_112_bad -h   # It fails
+#
+function demo_112
+{
+	SP_run _demo_112_sub ...
+}
+function _demo_112_sub
+{
+	echo ${A} ${B} ${C}
+}
+function demo_112_bad
+{
+	SP_run _demo_112_sub
+}
+
+############################################################
+# Failure in Parallel
+############################################################
+
+# DEMO-113: Failure in parallel
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_113 -t 2
+#
+function demo_113
+{{
+	true
+	false
+}}
+
+# DEMO-114: Failure in parallel
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_114 -t 2
+#
+function demo_114
+{{
+	sleep 1; false
+	echo a; sleep 2; echo b;
+	SP_for _X=1 2
+	{
+		echo ${_X}; sleep 2
+	}
+}}
+
+############################################################
+# File Dependency
+############################################################
+
+# DEMO-115: Simple file dependency
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_115 -h
+# Run:
+#   $ pwd > a
+#   $ ls > b
+#   $ seqpipe -m demo_more.pipe demo_115 A=a B=b C=c
+# Run again (it will be skipped):
+#   $ seqpipe -m demo_more.pipe demo_115 A=a B=b C=c
+# Run again (it will not be skipped when 'b' is touched):
+#   $ touch b
+#   $ seqpipe -m demo_more.pipe demo_115 A=a B=b C=c
+# Run again (it will be still skipped when 'a' is touched):
+#   $ touch a
+#   $ seqpipe -m demo_more.pipe demo_115 A=a B=b C=c
+#
+function demo_115
+{
+	#[require="${A}" input="${B}" output="${C}"]
+	cat ${A} ${B} > ${C}
+}
+
+# DEMO-116: Output with only require
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_116 -h
+# Run:
+#   $ seqpipe -m demo_more.pipe demo_116 A=a C=c
+# It will be skipped if 'c' exists
+#
+function demo_116
+{
+	#[require="${A}" output="${C}"]
+	cat ${A} > ${C}
+}
+
+# DEMO-117: Output without require/input
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_117 -h
+# Run:
+#   $ seqpipe -m demo_more.pipe demo_117 C=c
+# It will be skipped if 'c' exists
+#
+function demo_117
+{
+	#[output="${C}"]
+	date > ${C}
+}
+
+# DEMO-118: Output as another command's input
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_118 -H
+# Run:
+#   $ seqpipe -m demo_more.pipe demo_118 C=c D=d
+#
+function demo_118
+{
+	#[output="${C}"]
+	date > ${C}
+
+	#[input="${C}" output="${D}"]
+	cat ${C} > ${D}
+}
+
+# DEMO-119: Output as another command's require
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_119 -h
+# Run:
+#   $ seqpipe -m demo_more.pipe demo_119 C=c D=d
+#
+function demo_119
+{
+	#[output="${C}"]
+	date > ${C}
+
+	#[input="${C}" output="${D}"]
+	cat ${C} > ${D}
+}
+
+# DEMO-120: More complex file dependency
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_120 -H
+#
+function demo_120
+{
+	#[require="${A}" input="${B}" output="${C}"]
+	cat ${A} ${B} > ${C}
+
+	#[require="${D}" input="${E}" output="${F}"]
+	cat ${D} ${E} > ${F}
+
+	#[require="${C}" input="${F}" output.temp="${G}"]
+	cat ${C} ${F} > ${G}
+
+	#[input="${G}" output="${H}"]
+	cat ${G} > ${H}
+}
+
+# DEMO-121: Another more complex file dependency
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_121 -H
+#
+function demo_121
+{
+	#[input="${A}" output="${B}"]
+	cat ${A} > ${B}
+
+	#[output="${C}"]
+	date > ${C}   # this command has no any require/input file
+
+	#[input="${B}" input="${C}" output="${D}"]
+	cat ${B} ${C} > ${D}
+}
+
+# DEMO-122: File dependency with sub procedure
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_122 -h
+#
+function demo_122
+{
+	SP_run _demo_122_sub A=${X} B=${Y} C=${Z}
+}
+function _demo_122_sub
+{
+	#[require="${A}" input="${B}" output="${C}"]
+	cat ${A} ${B} > ${C}
+}
+
+# DEMO-123: File dependency with sub procedure
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_123 W=w X=x Y=y E=.123 -H
+#
+function demo_123
+{
+	# NOTICE:
+	#  The 'E' in first line (SP_set) is local variable of 'function demo_123',
+	#  and the 'E' in second line (SP_run) is parameter of 'function _demo_123_sub'.
+	#  These two 'E's are totally DIFFERENT!!
+	SP_set E=.txt
+	SP_run _demo_123_sub A=${X}${E} B=${Y}${E} C=${W}${E} D=${Z}${E} E=.abc
+}
+function _demo_123_sub
+{
+	SP_set E=.xyz
+	#[require="${A}" input="${B}" output.temp="${C}" output="${D}${E}.txt"]
+	cat ${A} ${B} | tee ${C} > ${D}${E}.txt
+}
+
+# DEMO-124: File dependency in parallel block
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_124 -H
+#
+function demo_124
+{
+	{{
+		#[require="${A}" input="${B}" output="${C}"]
+		cat ${A} ${B} > ${C}
+
+		#[require="${D}" input="${E}" output="${F}"]
+		cat ${D} ${E} > ${F}
+	}}
+	#[require="${C}" input="${F}" output.temp="${G}"]
+	cat ${C} ${F} > ${G}
+
+	#[input="${G}" output="${H}"]
+	cat ${G} > ${H}
+}
+
+# DEMO-125: File dependency in if-else blocks
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_125 -H
+#
+function demo_125
+{
+	SP_if ${COND}
+	{
+		#[input="${A}" output="${C}"]
+		cat ${A} > ${C}
+	}
+	SP_else
+	{
+		#[input="${B}" output="${C}"]
+		cat ${B} > ${C}
+	}
+}
+
+# DEMO-126: File dependency in for loop
+#
+# NOTE: Try:
+#   $ seqpipe -m demo_more.pipe demo_126 -H
+#
+function demo_126
+{
+	SP_for _X={1..3} X Y
+	{
+		#[input="${_X}.in" output="${_X}.out"]
+		cat ${_X}.in > ${_X}.out
+	}
+}

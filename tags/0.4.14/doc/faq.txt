@@ -1,0 +1,18 @@
+Frequently Asked Questions
+
+Version: 0.4.13 ($Rev$)
+
+Q: What does 'SeqPipe' stand for?
+A: SeqPipe means "a SEQuencing data analysis PIPEline framework".
+
+Q: Where does SeqPipe record logs?
+A: In the .seqpipe/ subdirectory of the directory when you run SeqPipe. You can explore all the history from .seqpipe/history.log as a start or index, then .seqpipe/<date>.<pid>/* for records of each run session.
+
+Q: Why SeqPipe reports "Warning: Your Perl does not support threads! Parallel mode is disabled."?
+A: SeqPipe use Perl's ithread (or 'forks' package) to support parallel mode. You may re-install Perl with ithread option or use 'forks' packages instead.
+
+Q: How can I avoid to write a .pipe file?
+A: Yes, with the inline mode of SeqPipe. For example: $ seqpipe -e 'ls -l -Fa ${DIR}' DIR=/home
+
+Q: Can I use SeqPipe in OpenPBS/Torque environment?
+A: Yes, with option '-s qsub_sync'.
