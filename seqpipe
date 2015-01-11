@@ -206,10 +206,17 @@ sub get_new_run_id
 ############################################################
 # Directory walking
 
+sub expand_tilde
+{
+	my $file = shift;
+	$file =~ s,^~/,$ENV{HOME}/,;
+	return $file;
+}
+
 sub dir_walk
 {
 	my ($path, $file_proc, $dir_proc) = @_;
-	if (-d $path) {
+	if (-d expand_tilde($path)) {
 		opendir my $dh, $path or die "Can not open directory '$path': $!";
 		my @res;
 		while (my $item = readdir $dh) {
@@ -892,13 +899,6 @@ sub load_module_conf
 	close_file $fp;
 }
 
-sub file_exists
-{
-	my $file = shift;
-	$file =~ s,^~/,$ENV{HOME}/,;
-	return -e $file;
-}
-
 sub load_module
 {
 	my ($file, $type) = @_;
@@ -938,7 +938,7 @@ sub load_module
 	close_file $fp;
 
 	# Load configure file to overwrite the default values of global variables
-	load_module_conf("$file.conf", $file, 1) if file_exists "$file.conf";
+	load_module_conf("$file.conf", $file, 1) if -e expand_tilde("$file.conf");
 }
 
 ############################################################
@@ -1327,14 +1327,14 @@ sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 	my ($info_ref, $indent, $run_id, $is_proc) = @_;
 
 	foreach my $require (keys %{$info_ref->{require}}) {
-		if (not file_exists $require) {
+		if (not -e expand_tilde($require)) {
 			log_print "$indent($run_id) ERROR: Required file '$require' does not exist!\n";
 			return -1;
 		}
 	}
 
 	foreach my $input (keys %{$info_ref->{input}}) {
-		if (not file_exists $input) {
+		if (not -e expand_tilde($input)) {
 			log_print "$indent($run_id) ERROR: Input file '$input' does not exist!\n";
 			return -1;
 		}
@@ -1364,15 +1364,15 @@ sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 				log_print "$indent($run_id) ERROR: Output file '$output' has also been defined as require or input!\n";
 				return -1;
 			}
-			if (file_exists $output) {
+			if (-e expand_tilde($output)) {
 				foreach my $input (keys %{$info_ref->{input}}) {
-					if (-M $input < -M $output) {
+					if (-M expand_tilde($input) < -M expand_tilde($output)) {
 						return 0;
 					}
 				}
 			} else {
 				my $output_dir = dirname $output;
-				system 'mkdir', '-p', $output_dir unless -d $output_dir;
+				system 'mkdir', '-p', $output_dir unless -d expand_tilde($output_dir);
 				return 0;
 			}
 		}
@@ -1767,7 +1767,7 @@ sub run_cmd
 			if (not $test_mode and (not defined $ret or $ret != 0)) {
 				foreach my $output (keys %{$info_ref->{output}}, keys %{$info_ref->{temp}}, keys %{$info_ref->{final}}) {
 					my $file = eval_text($output, $args_ref, \%proc_vars, $global_vars_ref);
-					if (file_exists $file) {
+					if (-e expand_tilde($file)) {
 						log_print "$indent($run_id) removes bad output file '$file'!\n";
 						unlink $file;
 					}
@@ -1927,7 +1927,7 @@ sub run_proc
 			# When successeed, remove temporary files
 			foreach my $item (keys %{$info_ref->{temp}}) {
 				my $file = eval_text($item, $args_ref, \%proc_vars, $global_vars_ref);
-				if (file_exists $file) {
+				if (-e expand_tilde($file)) {
 					log_printf "$indent($run_id) removes temporary file '%s'\n", $file;
 					unlink $file;
 				}
@@ -2079,7 +2079,7 @@ my $actions = {
 	'-m' => sub {
 		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
 		my $file = shift @ARGV;
-		die "Can not find pipeline file '$file'!" unless file_exists $file;
+		die "Can not find pipeline file '$file'!" unless -e expand_tilde($file);
 		push @module_files, abs_path $file;
 	},
 	'-t' => sub {
@@ -2196,12 +2196,12 @@ if (not $test_mode) {
 	}
 	if (exists $info_ref->{require}) {
 		foreach my $file (sort keys %{$info_ref->{require}}) {
-			die "Require file '$file' does not exist!" unless file_exists $file;
+			die "Require file '$file' does not exist!" unless -e expand_tilde($file);
 		}
 	}
 	if (exists $info_ref->{input}) {
 		foreach my $file (sort keys %{$info_ref->{input}}) {
-			die "Input file '$file' does not exist!" unless file_exists $file;
+			die "Input file '$file' does not exist!" unless -e expand_tilde($file);
 		}
 	}
 
