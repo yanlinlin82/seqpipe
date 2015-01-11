@@ -214,7 +214,7 @@ function show_usage
 {
 	echo "
 Histroy Manipulator for SeqPipe (a SEQuencing data analysis PIPEline framework)
-Version: 0.4.14 (\$Rev$)
+Version: 0.4.14 (\$Id$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012-2013, Centre for Bioinformatics, Peking University, China
 Websites: http://seqpipe.googlecode.com

@@ -2014,7 +2014,7 @@ sub print_usage
 {
 	print '
 SeqPipe: a SEQuencing data analysis PIPEline framework
-Version: 0.4.14 ($Rev$)
+Version: 0.4.14 ($Id$)
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012-2014, Centre for Bioinformatics, Peking University, China
 Websites: http://seqpipe.googlecode.com
