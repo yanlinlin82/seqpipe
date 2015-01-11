@@ -164,26 +164,28 @@ sub set_verbose
 }
 set_verbose 0;
 
-sub log_print
-{
-	if ($test_mode) {
-		print @_;
-	} else {
+my $log_print_ref  = \&print;
+my $log_printf_ref = \&printf;
+
+sub log_print  { &{$log_print_ref}(@_); }
+sub log_printf { &{$log_printf_ref}(@_); }
+
+sub log_to_die {
+	$log_print_ref  = sub { die @_; };
+	$log_printf_ref = sub { my $s = sprintf @_; die $s; };
+}
+
+sub log_enable_lock {
+	$log_print_ref = sub {
 		flock LOG_FILE, LOCK_EX;
 		print LOG_FILE @_;
 		flock LOG_FILE, LOCK_UN;
-	}
-}
-
-sub log_printf
-{
-	if ($test_mode) {
-		printf @_;
-	} else {
+	};
+	$log_printf_ref = sub {
 		flock LOG_FILE, LOCK_EX;
 		printf LOG_FILE @_;
 		flock LOG_FILE, LOCK_UN;
-	}
+	};
 }
 
 ############################################################
@@ -1324,18 +1326,18 @@ sub show_proc
 
 sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 {
-	my ($info_ref, $indent, $run_id, $is_proc) = @_;
+	my ($info_ref, $is_proc, $prefix) = @_;
 
 	foreach my $require (keys %{$info_ref->{require}}) {
 		if (not -e expand_tilde($require)) {
-			log_print "$indent($run_id) ERROR: Required file '$require' does not exist!\n";
+			log_print $prefix . "Required file '$require' does not exist!\n";
 			return -1;
 		}
 	}
 
 	foreach my $input (keys %{$info_ref->{input}}) {
 		if (not -e expand_tilde($input)) {
-			log_print "$indent($run_id) ERROR: Input file '$input' does not exist!\n";
+			log_print $prefix . "Input file '$input' does not exist!\n";
 			return -1;
 		}
 	}
@@ -1361,7 +1363,7 @@ sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 	foreach my $type (@check_type) {
 		foreach my $output (keys %{$info_ref->{$type}}) {
 			if (exists $info_ref->{require}{$output} or exists $info_ref->{input}{$output}) {
-				log_print "$indent($run_id) ERROR: Output file '$output' has also been defined as require or input!\n";
+				log_print $prefix . "Output file '$output' has also been defined as require or input!\n";
 				return -1;
 			}
 			if (-e expand_tilde($output)) {
@@ -1736,7 +1738,7 @@ sub run_cmd
 				$info_ref = check_cmd($cmd_ref, $args_ref, \%proc_vars, $global_vars_ref);
 
 				if (not $force_run) {
-					my $check_ret = check_files($info_ref, $indent, $run_id, 0);
+					my $check_ret = check_files($info_ref, 0, "$indent($run_id) ERROR: ");
 					if ($check_ret < 0) {
 						return { ret => $check_ret, vars => \%proc_vars };
 					} elsif ($check_ret > 0) {
@@ -1908,7 +1910,7 @@ sub run_proc
 	my $info_ref = check_proc($proc_ref, $args_ref);
 
 	if (not $test_mode and not $force_run) {
-		$ret = check_files($info_ref, $indent, $run_id, 1);
+		$ret = check_files($info_ref, 1, "$indent($run_id) ERROR: ");
 		return $ret if $ret < 0;
 		if ($ret > 0) {
 			log_print "$indent($run_id) [skip] $cmd\n";
@@ -2189,23 +2191,24 @@ if ($help_mode) {
 
 # Write log files
 if (not $test_mode) {
+
 	die "Can not run internal procedures '$proc_name' directly!" if $proc_name =~ /^_/;
 	if (%{$info_ref->{req_vars}}) {
 		die "Variable(s) required for " . ($proc_name ? "procedure '$proc_name'" : "current inline command")
 			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "";
 	}
-	if (exists $info_ref->{require}) {
-		foreach my $file (sort keys %{$info_ref->{require}}) {
-			die "Require file '$file' does not exist!" unless -e expand_tilde($file);
-		}
-	}
-	if (exists $info_ref->{input}) {
-		foreach my $file (sort keys %{$info_ref->{input}}) {
-			die "Input file '$file' does not exist!" unless -e expand_tilde($file);
+
+	if (not $force_run) {
+		log_to_die();
+		my $ret = check_files($info_ref, 1, "");
+		if ($ret > 0) {
+			print "Procedure '$proc_name' skipped.\n";
+			exit 0;
 		}
 	}
 
 	set_signal_handler();
+	log_enable_lock();
 
 	# Prepare log directory
 	mkdir $LOG_ROOT or die "Can't create directory '$LOG_ROOT'!" unless -d $LOG_ROOT;
