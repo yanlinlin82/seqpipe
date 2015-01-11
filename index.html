@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Seqpipe by yanlinlin82</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Seqpipe</h1>
+        <p>a SEQuencing data analysis PIPEline framework</p>
+        <p class="view"><a href="https://github.com/yanlinlin82/seqpipe">View the Project on GitHub <small>yanlinlin82/seqpipe</small></a></p>
+        <ul>
+          <li><a href="https://github.com/yanlinlin82/seqpipe/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/yanlinlin82/seqpipe/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/yanlinlin82/seqpipe">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h1>
+<a id="seqpipe" class="anchor" href="#seqpipe" aria-hidden="true"><span class="octicon octicon-link"></span></a>SeqPipe</h1>
+
+<p>a SEQuencing data analysis PIPEline framework</p>
+
+<h2>
+<a id="introduction" class="anchor" href="#introduction" aria-hidden="true"><span class="octicon octicon-link"></span></a>Introduction</h2>
+
+<p>SeqPipe is a command line-based pipeline framework for bioinformatics research. It has predefined many common useful pipelines for high throughput sequencing data analysis and is very easy for both bioinformaticians and biology researchers to launch different tools.</p>
+
+<p>More importantly, SeqPipe could record as many related information as possible to ensure the analysis procedure is reproducible, which is essential in scientific research.</p>
+
+<h2>
+<a id="features" class="anchor" href="#features" aria-hidden="true"><span class="octicon octicon-link"></span></a>Features</h2>
+
+<p>There are some features of SeqPipe, for which you may like to use it as your handy framework in your daily data analysis.</p>
+
+<ul>
+<li>
+<strong>GNU bash-like syntax</strong> - Defining a pipeline in SeqPipe is almost the same as writing a function in GNU bash. Most your pre-existed bash scripts may be very easy to migrate to SeqPipe framework, from which you will benefit a lot, such as logs and re-use, while keep the scripts as clear as possible.</li>
+<li>
+<strong>Logging automatically</strong> - When running pipeline with SeqPipe, it will automatically record command lines, parameters, program versions, running time and other log files. All of those are useful and also important for you to track every step of your analysis, which could help you to make research results be reproducible.</li>
+<li>
+<strong>Run in parallel easily</strong> - It is very easy to define which steps in a pipeline should be run in parallel, without adding any complexity to the scripts.</li>
+<li>
+<strong>File dependency checking</strong> - SeqPipe could check input/output file dependency for each step, therefore those already finished steps could be skipped automatically, especially when you restart a pipeline after it was somehow aborted.</li>
+<li>
+<strong>Predefined pipelines</strong> - SeqPipe predefined many common pipelines for high throughput sequencing data analysis, including read mapping and variant calling. They are easy-to-use for experienced bioinformaticians and also useful for newbie to start learning the workflows.</li>
+</ul>
+      </section>
+    </div>
+    <footer>
+      <p>Project maintained by <a href="https://github.com/yanlinlin82">yanlinlin82</a></p>
+      <p>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></p>
+    </footer>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+              <script type="text/javascript">
+            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+          </script>
+          <script type="text/javascript">
+            try {
+              var pageTracker = _gat._getTracker("UA-9456583-6");
+            pageTracker._trackPageview();
+            } catch(err) {}
+          </script>
+
+  </body>
+</html>
