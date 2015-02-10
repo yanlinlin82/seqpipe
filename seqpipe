@@ -233,8 +233,15 @@ sub dir_walk
 
 sub get_all_pipe
 {
-	# Get all .pipe files in directories, including their sub directories.
-	map { dir_walk $_, sub { grep /\.pipe$/, $_[0] }, sub { shift; sort @_ } } @_;
+	map {
+		if (-d expand_tilde($_)) {
+			# Get all .pipe files in directories, including their sub directories.
+			dir_walk $_, sub { grep /\.pipe$/, $_[0] }, sub { shift; sort @_ }
+		} else {
+			# Force to load specified files, which may not be named as '*.pipe'
+			expand_tilde($_);
+		}
+	} @_;
 }
 
 ############################################################
