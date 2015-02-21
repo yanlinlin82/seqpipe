@@ -1,3 +1,7 @@
+2015-02-22  v0.4.15
+* Support '-v' to show stdout/stderr messages of commands.
+* Support '~' for home directory in filenames.
+
 2014-07-19  v0.4.14 (r404)
 * Support '-E' to run inline command in parallel.
 * Add hostname to uniq-ID for each pipeline run.
