@@ -2037,9 +2037,15 @@ sub list_proc
 
 sub print_usage
 {
-	print '
+	my $git_hash = '$Id$';
+	my $version_suffix = "";
+	if ($git_hash =~ /Id: (.*) /) {
+		$version_suffix = ' (' . substr($1, 0, 7) . ')';
+	}
+
+	print "
 SeqPipe: a SEQuencing data analysis PIPEline framework
-Version: 0.4.14 ($Id$)
+Version: 0.4.14$version_suffix
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
 Copyright: 2012-2015, Centre for Bioinformatics, Peking University, China
 Websites: http://seqpipe.googlecode.com
@@ -2054,18 +2060,18 @@ Options:
    -h / -H              Show help messages.
    -v                   Show verbose messages.
    -e                   Run shell command directly, without writing .pipe file.
-   -E                   Same as "-e", except running in parallel.
+   -E                   Same as '-e', except running in parallel.
    -l / -L [<pattern>]  List current available procedures.
    -m <file>            Load procedure module file, this option can be used many times.
    -D                   Disable to load default pipelines.
-   -t <int>             Max thread number in parallel. default: ' . $max_thread_number . '
-   -s <shell>           Send commands to another shell (such as "qsub_sync"), default: ' . $shell . '
+   -t <int>             Max thread number in parallel. default: $max_thread_number
+   -s <shell>           Send commands to another shell (such as 'qsub_sync'), default: $shell
    -f                   Force to re-run when output files are already latest.
    -k                   Keep temporary files.
    -R                   Show the raw procedure declaration.
    -T                   Test mode, show commands rather than execute them.
 
-';
+";
 }
 
 ############################################################
