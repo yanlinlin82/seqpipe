@@ -1487,8 +1487,17 @@ sub run_shell
 
 	my $name = $cmd_name;
 	$name = try_guess_name($command) if $name eq '';
-	my $err = "2>>$LOG_DIR/$run_id.$name.err";
-	my $out = ">>$LOG_DIR/$run_id.$name.log";
+
+	my $err;
+	my $out;
+	if ($verbose) {
+		$err = "2> >(tee -a $LOG_DIR/$run_id.$name.err >&2)";
+		$out = "> >(tee -a $LOG_DIR/$run_id.$name.log)";
+	} else {
+		$err = "2>>$LOG_DIR/$run_id.$name.err";
+		$out = ">>$LOG_DIR/$run_id.$name.log";
+	}
+
 	append_file "$LOG_DIR/$run_id.$name.cmd", $command, "\n";
 
 	my $start_time = time;
