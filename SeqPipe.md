@@ -1,0 +1,7 @@
+# Introduction #
+
+SeqPipe is a sequencing data analsysis pipeline framework, which should help bioinformaticians and biology researchers to do data analysis and record all related information.
+
+# Motivation #
+
+Reproduction is one of the most important things during scientific research. In the field of bioinformatics, we generate and analyze different types of huge data with different methods. Since the tools and parameters that we use are changing all the times according to the improving, we need a tool or a framework to help us record all the things to make sure we can reproduce the analysis procedure we did before. That is what SeqPipe is trying to do - record as many as possible for reproduciability.

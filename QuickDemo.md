@@ -1,0 +1,47 @@
+# Prepare the Script #
+First, create a text file (e.g.: demo.pipe) to describe a very simple "pipeline":
+```
+function say_hello
+{
+        echo "Hello, world!"
+}
+```
+
+# Run the Script #
+As following, the first line is the bash command, and the rest are the printed messages on screen:
+```
+$ seqpipe -m demo.pipe say_hello
+[121111.21283] /opt/build/seqpipe/seqpipe -m demo.pipe say_hello
+Log sysinfo: _sysinfo
+(1) SP_run say_hello
+(1) starts at 2012-11-11 00:11:10
+  (2) [shell] echo "Hello, world!"
+  (2) starts at 2012-11-11 00:11:10
+  (2) ends at 2012-11-11 00:11:10 (elapsed: 0s)
+(1) ends at 2012-11-11 00:11:11 (elapsed: 1s)
+Pipeline finished successfully!
+```
+
+# Check the Log Files #
+  1. SeqPipe will record the bash command and its pid into .seqpipe/history.log file:
+```
+$ ls -1shF .seqpipe/
+total 8.0K
+4.0K 121111.21283/
+4.0K history.log
+```
+  1. And other log files in a sub directory under .seqpipe with name consisted with date and pid:
+```
+$ ls -1shF .seqpipe/121111.21283/
+total 16K
+4.0K 2.echo.cmd
+   0 2.echo.err
+4.0K 2.echo.log
+4.0K log
+4.0K sysinfo
+```
+  1. One of the log of standard output.
+```
+$ cat .seqpipe/121111.21283/2.echo.log
+Hello, world!
+```
