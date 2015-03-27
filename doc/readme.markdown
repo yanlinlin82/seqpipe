@@ -1,9 +1,9 @@
 SeqPipe (a SEQuencing data analysis PIPEline framework)
 =======================================================
 
-- Version: 0.4.14 ($Id$)
+- Version: 0.4.16 ($Id$)
 - Author: Linlin Yan (yanll@mail.cbi.pku.edu.cn)
-- Copyright: 2012-2014, Centre for Bioinformatics, Peking University, China
+- Copyright: 2012-2015, Centre for Bioinformatics, Peking University, China
 
 Thank you very much for choosing SeqPipe! Please do not hesitate to email me if
 you have _any_ question or suggestion about SeqPipe.
@@ -101,7 +101,6 @@ main directories and files are introduced as following:
 
     ${SP_ROOT}/seqpipe.history   Utility tool for manipulating log files.
     ${SP_ROOT}/uxcat             A wrapper script for cat/zcat/gzcat.
-    ${SP_ROOT}/qsub_sync         Attempt for using SeqPipe in Torque cluster.
 
 ---------------------------------------------------------------------------
 

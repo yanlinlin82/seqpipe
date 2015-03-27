@@ -1,3 +1,7 @@
+2015-03-27  v0.4.16
+* Support 'SEQPIPE_LIB' environment variable for searching module file.
+* Remove buggy 'qsub_sync'.
+
 2015-02-22  v0.4.15
 * Support '-v' to show stdout/stderr messages of commands.
 * Support '~' for home directory in filenames.
