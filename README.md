@@ -17,3 +17,35 @@ There are some features of SeqPipe, for which you may like to use it as your han
 - **Run in parallel easily** - It is very easy to define which steps in a pipeline should be run in parallel, without adding any complexity to the scripts.
 - **File dependency checking** - SeqPipe could check input/output file dependency for each step, therefore those already finished steps could be skipped automatically, especially when you restart a pipeline after it was somehow aborted.
 - **Predefined pipelines** - SeqPipe predefined many common pipelines for high throughput sequencing data analysis, including read mapping and variant calling. They are easy-to-use for experienced bioinformaticians and also useful for newbie to start learning the workflows.
+
+## Quick Start
+
+1. Install by git (recommended, easy to update new version):
+
+        git clone http://github.com/yanlinlin82/seqpipe /path/to/install/seqpipe/
+        export PATH=$PATH:/path/to/install/seqpipe/
+    
+    or install by wget (or other downloader):
+    
+        wget -N http://github.com/yanlinlin82/seqpipe/archive/master.zip
+        unzip master.zip
+        mv seqpipe-master /path/to/install/seqpipe/
+        export PATH=$PATH:/path/to/install/seqpipe/
+
+2. Write a simple pipeline:
+
+        cat <<EOF> foo.pipe
+        foo() {
+            echo "Hello, world!"
+            date
+        }
+        EOF
+
+3. Run the pipeline:
+
+        seqpipe -m foo.pipe foo
+
+4. Check the log files:
+
+        ls -l -R .seqpipe/
+    
