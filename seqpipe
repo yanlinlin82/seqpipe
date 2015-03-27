@@ -215,6 +215,21 @@ sub expand_tilde
 	return $file;
 }
 
+sub search_module_file
+{
+	my $file = shift;
+	if ($file =~ /^~/) {
+		$file = expand_tilde $file;
+	} elsif (! -e $file and defined $ENV{SEQPIPE_LIB}) {
+		foreach my $path (split(':', $ENV{SEQPIPE_LIB})) {
+			if (-e "$path/$file") {
+				return "$path/$file";
+			}
+		}
+	}
+	return $file;
+}
+
 sub dir_walk
 {
 	my ($path, $file_proc, $dir_proc) = @_;
@@ -2103,7 +2118,8 @@ my $actions = {
 	'-m' => sub {
 		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
 		my $file = shift @ARGV;
-		die "Can not find pipeline file '$file'!" unless -e expand_tilde($file);
+		$file = search_module_file $file;
+		die "Can not find pipeline file '$file'!" unless -e $file;
 		push @module_files, abs_path $file;
 	},
 	'-t' => sub {
