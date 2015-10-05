@@ -2254,7 +2254,7 @@ if (not $test_mode) {
 	# Prepare log directory
 	mkdir $LOG_ROOT or die "Can't create directory '$LOG_ROOT'!" unless -d $LOG_ROOT;
 	mkdir $LOG_DIR or die "Can't create directory '$LOG_DIR'!";
-	system "ln -s -f -n $UNIQ_ID $LOG_ROOT/last";
+	system "flock $LOG_ROOT -c 'ln -s -f -n $UNIQ_ID $LOG_ROOT/last'";
 
 	# Write whole command line to log
 	open LOG_FILE, ">>$LOG_ROOT/history.$HOSTNAME.log";
