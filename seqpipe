@@ -600,8 +600,9 @@ sub eval_text
 
 sub open_file
 {
-	open my $handle, "<$_[0]" or die "Can not open file '$_[0]': $!";
-	return { handle => $handle, file => $_[0], lene_no => 0, line => '' };
+	my $filename = shift;
+	open my $handle, "<", $filename or die "Can not open file '$filename': $!";
+	return { handle => $handle, file => $filename, lene_no => 0, line => '' };
 }
 
 sub close_file
@@ -2257,7 +2258,7 @@ if (not $test_mode) {
 	system "flock $LOG_ROOT -c 'ln -s -f -n $UNIQ_ID $LOG_ROOT/last'";
 
 	# Write whole command line to log
-	open LOG_FILE, ">>$LOG_ROOT/history.$HOSTNAME.log";
+	open LOG_FILE, ">>", "$LOG_ROOT/history.$HOSTNAME.log";
 	log_print "$UNIQ_ID\t$command_line\n";
 	close LOG_FILE;
 
