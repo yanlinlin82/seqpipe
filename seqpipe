@@ -39,10 +39,10 @@ my $COMMENT_LINE    = '^\s*#';
 my $DESC_LINE       = '^\s*#\[';
 my $VERSION_LINE    = '^\s*#\[(seqpipe\s+|)version="[^"]*".*\]\s*$';
 my $ATTR_LINE       = '^\s*#\[(\w+\s+|)(\s*([\w\.]+)="[^"]*"(\s+([\w\.]+)="[^"]*")*|)\s*\]\s*$';
-my $FUNC_LINE       = '^\s*(function\s+([\w\.]+)(\(\s*\)|)|([\w\.]+)\s*\(\s*\))\s*({|{{|)\s*(\s#.*|)$';
+my $FUNC_LINE       = '^\s*(function\s+([\w\.]+)(\(\s*\)|)|([\w\.]+)\s*\(\s*\))\s*(\{|\{\{|)\s*(\s#.*|)$';
 my $VAR_LINE        = '^\s*([\w\.]+)\s*=(.*)$';
-my $BRACKET_LEFT    = '^\s*({|{{|SP_parallel_begin)\s*$';
-my $BRACKET_RIGHT   = '^\s*(}|}}|SP_parallel_end)\s*$';
+my $BRACKET_LEFT    = '^\s*(\{|\{\{|SP_parallel_begin)\s*$';
+my $BRACKET_RIGHT   = '^\s*(\}|\}\}|SP_parallel_end)\s*$';
 my $INC_LINE        = '^\s*(SP_include|source|\.)\s+(.*)\s*$';
 my $PRIMITIVE       = '^\s*(SP_\w+)(\s|$)';
 my $SP_SET          = '^\s*SP_set\s+([\w\.]+)\s*=(.*)$';
@@ -330,7 +330,7 @@ sub check_text
 	my ($text, $args_ref, $vars_ref, $gvars_ref, $info_ref, $skip_ref) = @_;
 	my $value = '';
 	# TODO: keep those ${XXX} in single quote marks not replaced.
-	while ($text =~ /^(.*?)\${(\w+)}(.*)$/s) {
+	while ($text =~ /^(.*?)\$\{(\w+)\}(.*)$/s) {
 		my $name = $2;
 		$text = $3;
 		$value .= $1;
@@ -468,7 +468,7 @@ sub check_vars_dep
 			$value = $global_vars_ref->{$name};
 		}
 		
-		while ($value =~ /\${(\w+)}/g) {
+		while ($value =~ /\$\{(\w+)\}/g) {
 			my $dep = $1;
 			die "Cyclic-dependency between variables '$name' and '$dep' detected!" if has_dep($dep, $name, \%deps);
 			add_dep($name, $dep, \%deps);
@@ -482,7 +482,7 @@ sub check_vars_info
 
 	while (@texts) {
 		my $text = shift @texts;
-		while ($text =~ /\${(\w+)}/g) {
+		while ($text =~ /\$\{(\w+)\}/g) {
 			next if exists $opt_vars_ref->{$1} or exists $req_vars_ref->{$1};
 			if (exists $args_ref->{$1}) {
 				push @texts, $opt_vars_ref->{$1} = $args_ref->{$1};
@@ -523,7 +523,7 @@ sub get_vars_dep
 
 	my %deps = ();
 	foreach my $name (keys %vars) {
-		while ($vars{$name} =~ /\${(\w+)}/g) {
+		while ($vars{$name} =~ /\$\{(\w+)\}/g) {
 			next if $name eq $1;           # Ignore self-dependency
 			next if not exists $vars{$1};  # Ignore undefined variable
 			die "Cyclic-dependency between variables '$name' and '$1' detected!" if has_dep($1, $name, \%deps);
@@ -600,9 +600,8 @@ sub eval_text
 
 sub open_file
 {
-	my $filename = shift;
-	open my $handle, "<", $filename or die "Can not open file '$filename': $!";
-	return { handle => $handle, file => $filename, lene_no => 0, line => '' };
+	open my $handle, "<$_[0]" or die "Can not open file '$_[0]': $!";
+	return { handle => $handle, file => $_[0], lene_no => 0, line => '' };
 }
 
 sub close_file
@@ -1006,7 +1005,7 @@ sub merge_info
 sub transform_file  # This function only applys the option transform on a file name
 {
 	my ($file, $options_ref) = @_;
-	my @parts = split /\${(\w+)}/, $file;
+	my @parts = split /\$\{(\w+)\}/, $file;
 	my $result = shift @parts;
 	while (@parts) {
 		my $name = shift @parts;
@@ -1557,7 +1556,7 @@ sub eval_text_in_shell
 		last if $result =~ /\?/;
 		return $result;
 	}
-	$result =~ s/\${(\w+)}/'\${$1}'/g;
+	$result =~ s/\$\{(\w+)\}/'\${$1}'/g;
 	my $cmd = "echo $result";
 	if (open my $fh, '-|', "echo $cmd|$shell") {
 		$result = join('', <$fh>);
@@ -2173,7 +2172,7 @@ while (my $arg = shift @ARGV) {
 		push @{$args_order_ref}, $name;
 		die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
 
-		if ($2 =~ /\${(\w+)}/) {
+		if ($2 =~ /\$\{(\w+)\}/) {
 			warn "Unrecommended usage of shell environment '\${$1}' in value of '$name'!\n"
 				. "   NOTE: Please use '\$$1' instead"
 		}
@@ -2258,7 +2257,7 @@ if (not $test_mode) {
 	system "flock $LOG_ROOT -c 'ln -s -f -n $UNIQ_ID $LOG_ROOT/last'";
 
 	# Write whole command line to log
-	open LOG_FILE, ">>", "$LOG_ROOT/history.$HOSTNAME.log";
+	open LOG_FILE, ">>$LOG_ROOT/history.$HOSTNAME.log";
 	log_print "$UNIQ_ID\t$command_line\n";
 	close LOG_FILE;
 
