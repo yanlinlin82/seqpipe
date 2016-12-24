@@ -1,0 +1,5 @@
+seqpipe
+.*.swp
+*.o
+*.d
+.seqpipe/
