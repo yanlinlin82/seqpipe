@@ -15,15 +15,17 @@ std::string System::GetHostname()
 
 std::string System::GetFullCommandLine()
 {
-	auto filename = "/proc/" + std::to_string(getpid()) + "/cmdline";
-	std::ifstream file(filename);
-	std::string cmdLine;
-	std::string word;
-	while (std::getline(file, word, '\0')) {
-		if (!cmdLine.empty()) {
-			cmdLine += ' ';
+	static std::string cmdLine;
+	if (cmdLine.empty()) {
+		auto filename = "/proc/" + std::to_string(getpid()) + "/cmdline";
+		std::ifstream file(filename);
+		std::string word;
+		while (std::getline(file, word, '\0')) {
+			if (!cmdLine.empty()) {
+				cmdLine += ' ';
+			}
+			cmdLine += EncodeShell(word);
 		}
-		cmdLine += EncodeShell(word);
 	}
 	return cmdLine;
 }

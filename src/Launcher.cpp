@@ -6,9 +6,11 @@
 #include <cstdlib>
 #include <ctime>
 #include <unistd.h>
+#include <sys/wait.h>
 #include "Launcher.h"
 #include "System.h"
 #include "Semaphore.h"
+#include "LogFile.h"
 
 static const std::string LOG_ROOT = ".seqpipe";
 
@@ -26,6 +28,29 @@ void Launcher::PrintUsage()
 		"   -f         Force to re-run when output files are already latest.\n"
 		"   -k         Keep temporary files.\n"
 		<< std::endl;
+}
+
+std::string RemoveSpecialCharacters(const std::string& s)
+{
+	std::string t;
+	for (size_t i = 0; i < s.size(); ++i) {
+		if (s[i] == '-' || s[i] == '_' || s[i] == '+' ||
+				(s[i] >= '0' && s[i] <= '9') ||
+				(s[i] >= 'A' && s[i] <= 'Z') ||
+				(s[i] >= 'a' && s[i] <= 'z')) {
+			t += s[i];
+		} else if (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') {
+			break;
+		}
+	}
+	return t;
+}
+
+void WriteFile(const std::string& filename, const std::string& s)
+{
+	std::ofstream file(filename);
+	file << s << std::endl;
+	file.close();
 }
 
 bool Launcher::ParseArgs(const std::list<std::string>& args)
@@ -67,6 +92,67 @@ bool Launcher::ParseArgs(const std::list<std::string>& args)
 	return true;
 }
 
+std::string TimeString(time_t t)
+{
+	tm tmBuf;
+	localtime_r(&t, &tmBuf);
+	char buffer[32] = "";
+	snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d",
+			tmBuf.tm_year + 1900, tmBuf.tm_mon + 1, tmBuf.tm_mday,
+			tmBuf.tm_hour, tmBuf.tm_min, tmBuf.tm_sec);
+	return buffer;
+}
+
+std::string DiffTimeString(int elapsed)
+{
+	std::string s;
+
+	if (elapsed >= 86400) {
+		s += std::to_string(elapsed / 86400) + "d";
+		elapsed %= 86400;
+	}
+	if (elapsed >= 3600) {
+		s += (s.empty() ? "" : " ") + std::to_string(elapsed / 3600) + "h";
+		elapsed %= 3600;
+	}
+	if (elapsed >= 60) {
+		s += (s.empty() ? "" : " ") + std::to_string(elapsed / 60) + "m";
+		elapsed %= 60;
+	}
+	if (s.empty() || elapsed > 0) {
+		s += (s.empty() ? "" : " ") + std::to_string(elapsed) + "s";
+	}
+	return s;
+}
+
+int ExecuteShellCommand(const std::string& cmd)
+{
+	pid_t pid = fork();
+	if (pid < 0) {
+		return -1;
+	} else if (pid == 0) {
+		execl("/bin/bash", "bash", "-c", cmd.c_str(), NULL);
+		exit(1);
+	} else {
+		int status;
+		waitpid(pid, &status, 0);
+		if (WIFEXITED(status)) {
+			return WEXITSTATUS(status);
+		} else {
+			return -1;
+		}
+	}
+}
+
+std::string JoinCommandLine(const std::string& cmd, const std::vector<std::string>& arguments)
+{
+	std::string cmdLine = cmd;
+	for (const auto arg : arguments) {
+		cmdLine += ' ' + System::EncodeShell(arg);
+	}
+	return cmdLine;
+}
+
 int Launcher::Run(const std::list<std::string>& args)
 {
 	if (!ParseArgs(args)) {
@@ -103,21 +189,47 @@ int Launcher::Run(const std::list<std::string>& args)
 	WriteToHistoryLog(uniqueId);
 	CreateLastSymbolicLink(uniqueId);
 
+	log_ = logDir + "/log";
+	counter_ = 0;
+
+	LogFile logFile(log_);
+	logFile.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
+
 	if (commandIsPipeFile_) {
 		std::cerr << "Error: Unimplemented!\n";
 		return 1;
 	}
 
-	return RunCommand(command_, arguments_);
-}
+	++counter_;
+	const auto cmdLine = JoinCommandLine(command_, arguments_);
 
-int Launcher::RunCommand(const std::string& cmd, const std::vector<std::string>& arguments)
-{
-	std::string cmdLine = command_;
-	for (const auto arg : arguments_) {
-		cmdLine += ' ' + System::EncodeShell(arg);
+	logFile.WriteLine(Msg() << "(" << counter_ << ") [shell] " << cmdLine);
+	time_t t0 = time(NULL);
+	logFile.WriteLine(Msg() << "(" << counter_ << ") starts at " << TimeString(t0));
+
+	std::string name = std::to_string(counter_) + "." + RemoveSpecialCharacters(command_);
+
+	WriteFile(logDir + "/" + name + ".cmd", cmdLine);
+
+	std::string fullCmdLine = "( " + cmdLine + " )";
+	if (verbose_ > 0) {
+		fullCmdLine += " 2> >(tee -a " + logDir + "/" + name + ".err >&2)";
+		fullCmdLine += " > >(tee -a " + logDir + "/" + name + ".log)";
+	} else {
+		fullCmdLine += " 2>>" + logDir + "/" + name + ".err";
+		fullCmdLine += " >>" + logDir + "/" + name + ".log";
 	}
-	return system(cmdLine.c_str());
+	int retVal = ExecuteShellCommand(fullCmdLine.c_str());
+
+	time_t t = time(NULL);
+	logFile.WriteLine(Msg() << "(" << counter_ << ") ends at " << TimeString(t) << " (elapsed: " << DiffTimeString(t - t0) << ")");
+
+	if (retVal != 0) {
+		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "!");
+	} else {
+		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished successfully!");
+	}
+	return retVal;
 }
 
 bool Launcher::WriteToHistoryLog(const std::string& uniqueId)

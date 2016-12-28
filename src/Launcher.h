@@ -12,7 +12,6 @@ public:
 private:
 	bool ParseArgs(const std::list<std::string>& args);
 	void PrintUsage();
-	int RunCommand(const std::string& cmd, const std::vector<std::string>& arguments);
 	bool WriteToHistoryLog(const std::string& uniqueId);
 	bool CreateLastSymbolicLink(const std::string& uniqueId);
 private:
@@ -24,6 +23,9 @@ private:
 	std::string command_;
 	bool commandIsPipeFile_ = false;
 	std::vector<std::string> arguments_;
+
+	std::string log_;
+	size_t counter_;
 };
 
 #endif
