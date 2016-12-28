@@ -9,7 +9,8 @@ MODULES  := $(patsubst %.cpp,%,$(wildcard src/*.cpp))
 GITVER := $(shell git rev-parse --short HEAD)
 
 CXX      ?= g++
-CXXFLAGS ?= -std=c++11 -Wall -O2 -DGITVER=\"${GITVER}\"
+#CXXFLAGS ?= -std=c++11 -Wall -O2 -DGITVER=\"${GITVER}\"
+CXXFLAGS ?= -std=c++11 -g -DGITVER=\"${GITVER}\"
 LDFLAGS  ?= -pthread
 
 #----------------------------------------------------------#

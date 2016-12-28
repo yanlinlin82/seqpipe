@@ -1,12 +1,14 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <mutex>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <unistd.h>
 #include "Launcher.h"
 #include "System.h"
+#include "Semaphore.h"
 
 static const std::string LOG_ROOT = ".seqpipe";
 
@@ -120,8 +122,10 @@ int Launcher::RunCommand(const std::string& cmd, const std::vector<std::string>&
 
 bool Launcher::WriteToHistoryLog(const std::string& uniqueId)
 {
-	// TODO: lock for 'history.log'
 	const auto historyLog = LOG_ROOT + "/history." + System::GetHostname() + ".log";
+
+	Semaphore sem("/seqpipe");
+	std::lock_guard<Semaphore> lock(sem);
 
 	std::ofstream file(historyLog, std::ios::app);
 	if (!file.is_open()) {
@@ -137,8 +141,10 @@ bool Launcher::WriteToHistoryLog(const std::string& uniqueId)
 
 bool Launcher::CreateLastSymbolicLink(const std::string& uniqueId)
 {
-	// TODO: lock for 'last'
 	const auto lastLink = LOG_ROOT + "/last";
+
+	Semaphore sem("/seqpipe");
+	std::lock_guard<Semaphore> lock(sem);
 
 	if (System::CheckFileExists(lastLink)) {
 		unlink(lastLink.c_str());
