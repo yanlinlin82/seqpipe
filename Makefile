@@ -24,7 +24,7 @@ ${TARGET}: ${MODULES:%=%.o}
 	${CXX} ${LDFLAGS} -o $@ $^
 
 %.o: %.cpp
-	${CXX} ${CXXFLAGS} -c -o $@ $^
+	${CXX} ${CXXFLAGS} -c -o $@ $<
 
 #----------------------------------------------------------#
 # dependency auto checking
