@@ -11,8 +11,13 @@ public:
 private:
 	bool ParseArgs(const std::list<std::string>& args);
 	void PrintUsage();
+	int ListHistory();
+	int ShowHistory();
+	int RemoveHistory();
 private:
 	int verbose_ = 0;
+	std::string command_;
+	std::string idOrOrder_;
 };
 
 #endif
