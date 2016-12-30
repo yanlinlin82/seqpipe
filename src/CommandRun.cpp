@@ -7,14 +7,14 @@
 #include <ctime>
 #include <unistd.h>
 #include <sys/wait.h>
-#include "Launcher.h"
+#include "CommandRun.h"
 #include "System.h"
 #include "Semaphore.h"
 #include "LogFile.h"
 
 static const std::string LOG_ROOT = ".seqpipe";
 
-void Launcher::PrintUsage()
+void CommandRun::PrintUsage()
 {
 	std::cout << "\n"
 		"Usage:\n"
@@ -53,7 +53,7 @@ void WriteFile(const std::string& filename, const std::string& s)
 	file.close();
 }
 
-bool Launcher::ParseArgs(const std::list<std::string>& args)
+bool CommandRun::ParseArgs(const std::list<std::string>& args)
 {
 	for (auto it = args.begin(); it != args.end(); ++it) {
 		const auto& arg = *it;
@@ -153,7 +153,7 @@ std::string JoinCommandLine(const std::string& cmd, const std::vector<std::strin
 	return cmdLine;
 }
 
-int Launcher::Run(const std::list<std::string>& args)
+int CommandRun::Run(const std::list<std::string>& args)
 {
 	if (!ParseArgs(args)) {
 		return 1;
@@ -232,7 +232,7 @@ int Launcher::Run(const std::list<std::string>& args)
 	return retVal;
 }
 
-bool Launcher::WriteToHistoryLog(const std::string& uniqueId)
+bool CommandRun::WriteToHistoryLog(const std::string& uniqueId)
 {
 	const auto historyLog = LOG_ROOT + "/history." + System::GetHostname() + ".log";
 
@@ -251,7 +251,7 @@ bool Launcher::WriteToHistoryLog(const std::string& uniqueId)
 	return true;
 }
 
-bool Launcher::CreateLastSymbolicLink(const std::string& uniqueId)
+bool CommandRun::CreateLastSymbolicLink(const std::string& uniqueId)
 {
 	const auto lastLink = LOG_ROOT + "/last";
 

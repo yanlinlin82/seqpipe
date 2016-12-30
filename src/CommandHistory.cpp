@@ -1,7 +1,7 @@
 #include <iostream>
-#include "History.h"
+#include "CommandHistory.h"
 
-void History::PrintUsage()
+void CommandHistory::PrintUsage()
 {
 	std::cout << "\n"
 		"Usage:\n"
@@ -15,7 +15,7 @@ void History::PrintUsage()
 		<< std::endl;
 }
 
-bool History::ParseArgs(const std::list<std::string>& args)
+bool CommandHistory::ParseArgs(const std::list<std::string>& args)
 {
 	for (auto it = args.begin(); it != args.end(); ++it) {
 		const auto& arg = *it;
@@ -34,7 +34,7 @@ bool History::ParseArgs(const std::list<std::string>& args)
 	return true;
 }
 
-int History::Run(const std::list<std::string>& args)
+int CommandHistory::Run(const std::list<std::string>& args)
 {
 	if (!ParseArgs(args)) {
 		return 1;

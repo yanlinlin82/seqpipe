@@ -1,10 +1,10 @@
-#ifndef HISTORY_H__
-#define HISTORY_H__
+#ifndef COMMAND_HISTORY_H__
+#define COMMAND_HISTORY_H__
 
 #include <list>
 #include <string>
 
-class History
+class CommandHistory
 {
 public:
 	int Run(const std::list<std::string>& args);

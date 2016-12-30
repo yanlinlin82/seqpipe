@@ -1,11 +1,11 @@
-#ifndef LAUNCHER_H__
-#define LAUNCHER_H__
+#ifndef COMMAND_RUN_H__
+#define COMMAND_RUN_H__
 
 #include <list>
 #include <string>
 #include <vector>
 
-class Launcher
+class CommandRun
 {
 public:
 	int Run(const std::list<std::string>& args);

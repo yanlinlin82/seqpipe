@@ -1,8 +1,8 @@
 #include <iostream>
 #include <string>
 #include <list>
-#include "Launcher.h"
-#include "History.h"
+#include "CommandRun.h"
+#include "CommandHistory.h"
 
 static const std::string VERSION = "0.5.0 (" GITVER ")";
 
@@ -39,12 +39,12 @@ int main(int argc, const char** argv)
 	args.pop_front();
 
 	if (cmd == "run") {
-		Launcher launcher;
-		return launcher.Run(args);
+		CommandRun cmd;
+		return cmd.Run(args);
 
 	} else if (cmd == "history") {
-		History history;
-		return history.Run(args);
+		CommandHistory cmd;
+		return cmd.Run(args);
 
 	} else if (cmd == "version") {
 		std::cout << VERSION << std::endl;
