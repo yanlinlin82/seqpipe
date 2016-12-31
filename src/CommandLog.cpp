@@ -4,8 +4,7 @@
 #include "CommandLog.h"
 #include "System.h"
 #include "Semaphore.h"
-
-static const std::string LOG_ROOT = ".seqpipe";
+#include "SeqPipe.h"
 
 void CommandLog::PrintUsage()
 {
@@ -87,22 +86,20 @@ int CommandLog::ShowHistory()
 
 bool CommandLog::RelinkLastSymbolic(const std::string& uniqueId)
 {
-	const auto lastLink = LOG_ROOT + "/last";
-
 	Semaphore sem("/seqpipe");
 	std::lock_guard<Semaphore> lock(sem);
 
-	if (System::CheckFileExists(lastLink)) {
-		int retVal = unlink(lastLink.c_str());
+	if (System::CheckFileExists(LOG_LAST)) {
+		int retVal = unlink(LOG_LAST.c_str());
 		if (retVal != 0) {
-			std::cerr << "Warning: Can not remove existed symbolic link '" + lastLink + "'! err: " << retVal << std::endl;
+			std::cerr << "Warning: Can not remove existed symbolic link '" + LOG_LAST + "'! err: " << retVal << std::endl;
 		}
 	}
 
 	if (!uniqueId.empty()) {
-		int retVal = symlink(uniqueId.c_str(), lastLink.c_str());
+		int retVal = symlink(uniqueId.c_str(), LOG_LAST.c_str());
 		if (retVal != 0) {
-			std::cerr << "Warning: Can not create symbolic link '" + lastLink + "' to '" << uniqueId << "'! err: " << retVal << std::endl;
+			std::cerr << "Warning: Can not create symbolic link '" + LOG_LAST + "' to '" << uniqueId << "'! err: " << retVal << std::endl;
 		}
 	}
 	return true;
@@ -110,17 +107,15 @@ bool CommandLog::RelinkLastSymbolic(const std::string& uniqueId)
 
 int CommandLog::RemoveHistory()
 {
-	const auto lastLink = LOG_ROOT + "/last";
-
 	if (!System::CheckDirectoryExists(LOG_ROOT + "/" + idOrOrder_)) {
 		std::cerr << "Error: Directory '" + LOG_ROOT + "/" + idOrOrder_ + "' does not exist!" << std::endl;
 		return 1;
 	}
 
 	char path[1024] = "";
-	readlink(lastLink.c_str(), path, sizeof(path));
+	readlink(LOG_LAST.c_str(), path, sizeof(path));
 	if (path == idOrOrder_) {
-		unlink(lastLink.c_str());
+		unlink(LOG_LAST.c_str());
 
 	}
 	return 1;

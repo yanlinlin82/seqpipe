@@ -6,13 +6,11 @@
 #include <cstdlib>
 #include <ctime>
 #include <unistd.h>
-#include <sys/wait.h>
 #include "CommandRun.h"
 #include "System.h"
 #include "Semaphore.h"
 #include "LogFile.h"
-
-static const std::string LOG_ROOT = ".seqpipe";
+#include "SeqPipe.h"
 
 void CommandRun::PrintUsage()
 {
@@ -234,15 +232,13 @@ bool CommandRun::WriteToHistoryLog(const std::string& uniqueId)
 
 bool CommandRun::CreateLastSymbolicLink(const std::string& uniqueId)
 {
-	const auto lastLink = LOG_ROOT + "/last";
-
 	Semaphore sem("/seqpipe");
 	std::lock_guard<Semaphore> lock(sem);
 
-	if (System::CheckFileExists(lastLink)) {
-		unlink(lastLink.c_str());
+	if (System::CheckFileExists(LOG_LAST)) {
+		unlink(LOG_LAST.c_str());
 	}
-	int retVal = symlink(uniqueId.c_str(), lastLink.c_str());
+	int retVal = symlink(uniqueId.c_str(), LOG_LAST.c_str());
 	if (retVal != 0) {
 		std::cerr << "Warning: Can not create symbolic link '.seqpipe/last' to '" << uniqueId << "'! err: " << retVal << std::endl;
 	}
