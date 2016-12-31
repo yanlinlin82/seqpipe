@@ -4,6 +4,7 @@
 #include <list>
 #include <string>
 #include <vector>
+#include "Launcher.h"
 
 class CommandRun
 {
@@ -25,7 +26,8 @@ private:
 	std::vector<std::string> arguments_;
 
 	std::string log_;
-	size_t counter_;
+
+	Launcher launcher_;
 };
 
 #endif

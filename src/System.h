@@ -13,6 +13,7 @@ public:
 	static bool CheckFileExists(const std::string& path);
 	static bool CheckDirectoryExists(const std::string& path);
 	static bool CreateDirectory(const std::string& path, int mode = 0755);
+	static bool IsTextFile(const std::string& path);
 
 	static std::string GetUniqueId();
 	static std::string EncodeShell(const std::string& s);

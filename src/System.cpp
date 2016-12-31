@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <vector>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -49,6 +50,39 @@ bool System::CreateDirectory(const std::string& path, int mode)
 	return (mkdir(path.c_str(), mode) == 0);
 }
 
+bool System::IsTextFile(const std::string& path)
+{
+	std::ifstream file(path, std::ifstream::binary);
+	if (!file) {
+		return false;
+	}
+
+	file.seekg(0, file.end);
+	int length = file.tellg();
+	file.seekg(0, file.beg);
+
+	if (length > 4 * 1024) {
+		length = 4 * 1024;
+	}
+	std::vector<char> buffer;
+	buffer.resize(length);
+
+	file.read(&buffer[0], length);
+	if (!file) {
+		file.close();
+		return false;
+	}
+	for (int i = 0; i < file.gcount(); ++i) {
+		int c = buffer[i];
+		if (c > 0 && c < 0x20 && c != '\r' && c != '\t' && c != '\n') {
+			file.close();
+			return false;
+		}
+	}
+	file.close();
+	return true;
+}
+
 std::string System::GetUniqueId()
 {
 	char buffer[64] = "";
@@ -96,4 +130,3 @@ int System::Execute(const std::string& cmdLine)
 		}
 	}
 }
-
