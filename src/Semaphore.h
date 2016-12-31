@@ -2,6 +2,7 @@
 #define SEMAPHORE_H__
 
 #include <string>
+#include <mutex>
 #include <semaphore.h>
 
 class Semaphore

@@ -125,25 +125,6 @@ std::string DiffTimeString(int elapsed)
 	return s;
 }
 
-int ExecuteShellCommand(const std::string& cmd)
-{
-	pid_t pid = fork();
-	if (pid < 0) {
-		return -1;
-	} else if (pid == 0) {
-		execl("/bin/bash", "bash", "-c", cmd.c_str(), NULL);
-		exit(1);
-	} else {
-		int status;
-		waitpid(pid, &status, 0);
-		if (WIFEXITED(status)) {
-			return WEXITSTATUS(status);
-		} else {
-			return -1;
-		}
-	}
-}
-
 std::string JoinCommandLine(const std::string& cmd, const std::vector<std::string>& arguments)
 {
 	std::string cmdLine = cmd;
@@ -219,7 +200,7 @@ int CommandRun::Run(const std::list<std::string>& args)
 		fullCmdLine += " 2>>" + logDir + "/" + name + ".err";
 		fullCmdLine += " >>" + logDir + "/" + name + ".log";
 	}
-	int retVal = ExecuteShellCommand(fullCmdLine.c_str());
+	int retVal = System::Execute(fullCmdLine.c_str());
 
 	time_t t = time(NULL);
 	logFile.WriteLine(Msg() << "(" << counter_ << ") ends at " << TimeString(t) << " (elapsed: " << DiffTimeString(t - t0) << ")");

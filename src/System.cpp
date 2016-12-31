@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include "System.h"
 
@@ -76,3 +77,23 @@ std::string System::EncodeShell(const std::string& s)
 		return s;
 	}
 }
+
+int System::Execute(const std::string& cmdLine)
+{
+	pid_t pid = fork();
+	if (pid < 0) {
+		return -1;
+	} else if (pid == 0) {
+		execl("/bin/bash", "bash", "-c", cmdLine.c_str(), NULL);
+		exit(1);
+	} else {
+		int status;
+		waitpid(pid, &status, 0);
+		if (WIFEXITED(status)) {
+			return WEXITSTATUS(status);
+		} else {
+			return -1;
+		}
+	}
+}
+

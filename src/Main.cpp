@@ -2,7 +2,7 @@
 #include <string>
 #include <list>
 #include "CommandRun.h"
-#include "CommandHistory.h"
+#include "CommandLog.h"
 
 static const std::string VERSION = "0.5.0 (" GITVER ")";
 
@@ -17,7 +17,7 @@ static void PrintUsage()
 		"Usage:\n"
 		"   seqpipe run [options] <workflow.pipe> [NAME=VALUE ...]\n"
 		"   seqpipe run [options] <command> [arguments ...]\n"
-		"   seqpipe history [options]\n"
+		"   seqpipe log [options]\n"
 		"   seqpipe version\n"
 		"\n"
 		"Options:\n"
@@ -42,8 +42,8 @@ int main(int argc, const char** argv)
 		CommandRun cmd;
 		return cmd.Run(args);
 
-	} else if (cmd == "history") {
-		CommandHistory cmd;
+	} else if (cmd == "log") {
+		CommandLog cmd;
 		return cmd.Run(args);
 
 	} else if (cmd == "version") {
