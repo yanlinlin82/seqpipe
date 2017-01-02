@@ -30,9 +30,13 @@ void CommandRun::PrintUsage()
 
 bool CommandRun::ParseArgs(const std::list<std::string>& args)
 {
+	std::string cmd;
+	bool cmdIsPipeFile = false;
+	std::vector<std::string> arguments;
+
 	for (auto it = args.begin(); it != args.end(); ++it) {
 		const auto& arg = *it;
-		if ((command_.empty() || commandIsPipeFile_) && arg[0] == '-') {
+		if ((cmd.empty() || cmdIsPipeFile) && arg[0] == '-') {
 			if (arg == "-h") {
 				PrintUsage();
 				return false;
@@ -53,27 +57,27 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 				std::cerr << "Error: Unknown option '" << arg << "'!" << std::endl;
 				return false;
 			}
-		} else if (command_.empty()) {
-			command_ = arg;
-			if (!launcher_.CheckIfPipeFile(command_)) {
-				commandIsPipeFile_ = false;
+		} else if (cmd.empty()) {
+			cmd = arg;
+			if (!launcher_.CheckIfPipeFile(cmd)) {
+				cmdIsPipeFile = false;
 			} else {
-				if (!launcher_.LoadPipeFile(command_)) {
-					std::cerr << "Error: Failed to load pipe file '" << command_ << "'!" << std::endl;
+				if (!launcher_.LoadPipeFile(cmd)) {
+					std::cerr << "Error: Failed to load pipe file '" << cmd << "'!" << std::endl;
 					return false;
 				}
-				commandIsPipeFile_ = true;
+				cmdIsPipeFile = true;
 			}
 		} else {
-			arguments_.push_back(arg);
+			arguments.push_back(arg);
 		}
 	}
-	if (command_.empty()) {
+	if (cmd.empty()) {
 		PrintUsage();
 		return false;
 	}
-	if (!commandIsPipeFile_) {
-		launcher_.AppendCommand(command_, arguments_);
+	if (!cmdIsPipeFile) {
+		launcher_.AppendCommand(cmd, arguments);
 	}
 	return true;
 }
@@ -88,25 +92,16 @@ int CommandRun::Run(const std::list<std::string>& args)
 	const auto logDir = LOG_ROOT + "/" + uniqueId;
 
 	if (!System::CheckDirectoryExists(LOG_ROOT)) {
-		if (verbose_ > 0) {
-			std::cerr << "Create directory: '" << LOG_ROOT << "'" << std::endl;
-		}
 		System::CreateDirectory(LOG_ROOT);
 	}
 	if (!System::CheckDirectoryExists(logDir)) {
-		if (verbose_ > 0) {
-			std::cerr << "Create directory: '" << logDir << "'" << std::endl;
-		}
 		System::CreateDirectory(logDir);
 	}
 
 	WriteToHistoryLog(uniqueId);
 	CreateLastSymbolicLink(uniqueId);
 
-	log_ = logDir + "/log";
-	size_t counter_ = 0;
-
-	LogFile logFile(log_);
+	LogFile logFile(logDir + "/log");
 	logFile.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
 
 	int retVal = launcher_.Run(logFile, logDir, verbose_);

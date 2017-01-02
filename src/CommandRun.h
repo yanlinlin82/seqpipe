@@ -21,12 +21,6 @@ private:
 	bool forceRun_ = false;
 	bool keepTemp_ = false;
 
-	std::string command_;
-	bool commandIsPipeFile_ = false;
-	std::vector<std::string> arguments_;
-
-	std::string log_;
-
 	Launcher launcher_;
 };
 
