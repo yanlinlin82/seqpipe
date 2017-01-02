@@ -116,6 +116,9 @@ int CommandRun::Run(const std::list<std::string>& args)
 	if (!PrepareToRun(logDir, uniqueId)) {
 		return 1;
 	}
+	if (!RecordSysInfo(logDir + "/sysinfo")) {
+		return 1;
+	}
 
 	LogFile logFile(logDir + "/log");
 	logFile.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
@@ -155,5 +158,31 @@ bool CommandRun::CreateLastSymbolicLink(const std::string& uniqueId)
 		std::cerr << "Warning: Can not create symbolic link '.seqpipe/last' to '" << uniqueId << "'! err: " << retVal << std::endl;
 	}
 
+	return true;
+}
+
+bool CommandRun::RecordSysInfo(const std::string& filename)
+{
+	std::ofstream file(filename);
+	if (!file.is_open()) {
+		std::cerr << "Error: Can not write to file '" << filename << "'!" << std::endl;
+		return false;
+	}
+
+	file << "===== System Information =====\n"
+		"System: " + System::RunShell("uname -a") +
+		"\n"
+		"Date: " + System::RunShell("date '+%Y-%m-%d %H:%M:%S'") +
+		"Pwd : " + System::RunShell("pwd") +
+		"\n"
+		"CPU:\n" + System::RunShell("lscpu") +
+		"\n"
+		"Memory:\n" + System::RunShell("free -g") +
+		"\n"
+		"===== SeqPipe Version =====\n"
+		"SeqPipe: " + VERSION + "\n"
+		<< std::endl;
+
+	file.close();
 	return true;
 }

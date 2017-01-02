@@ -138,3 +138,20 @@ int System::Execute(const std::string& cmdLine)
 		}
 	}
 }
+
+std::string System::RunShell(const std::string& cmdLine)
+{
+	FILE* fp = popen(cmdLine.c_str(), "r");
+	std::string text;
+	if (fp) {
+		while (!feof(fp)) {
+			char buffer[1024];
+			size_t n = fread(buffer, 1, sizeof(buffer), fp);
+			if (n > 0) {
+				text.insert(text.end(), buffer, buffer + n);
+			}
+		}
+	}
+	fclose(fp);
+	return text;
+}

@@ -20,6 +20,7 @@ public:
 	static std::string EncodeShell(const std::string& s);
 
 	static int Execute(const std::string& cmdLine);
+	static std::string RunShell(const std::string& cmdLine);
 };
 
 #endif

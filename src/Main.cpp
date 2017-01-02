@@ -3,8 +3,7 @@
 #include <list>
 #include "CommandRun.h"
 #include "CommandLog.h"
-
-static const std::string VERSION = "0.5.0 (" GITVER ")";
+#include "SeqPipe.h"
 
 static void PrintUsage()
 {
