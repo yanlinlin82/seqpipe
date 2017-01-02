@@ -1,4 +1,6 @@
 #include <fstream>
+#include <atomic>
+#include <csignal>
 #include "Launcher.h"
 #include "System.h"
 #include "StringUtils.h"
@@ -14,15 +16,6 @@ bool Launcher::CheckIfPipeFile(const std::string& command)
 	return true;
 }
 
-static std::string GetFirstWord(const std::string& s)
-{
-	std::string::size_type pos = s.find_first_of(" \t\n\r");
-	if (pos != std::string::npos) {
-		return s.substr(0, pos);
-	}
-	return s;
-}
-
 bool Launcher::LoadPipeFile(const std::string& filename)
 {
 	std::ifstream file(filename);
@@ -33,7 +26,7 @@ bool Launcher::LoadPipeFile(const std::string& filename)
 	std::string line;
 	while (std::getline(file, line)) {
 		CommandItem item;
-		item.name_ = GetFirstWord(line);
+		item.name_ = StringUtils::GetFirstWord(line);
 		item.cmdLine_ = line;
 		commandLines_.push_back(item);
 	}
@@ -67,9 +60,27 @@ static void WriteFile(const std::string& filename, const std::string& s)
 	file.close();
 }
 
+std::atomic<bool> killed(false);
+
+void MySigAction(int signum, siginfo_t* siginfo, void* ucontext)
+{
+	killed = true;
+#if 0
+	time_t now = time(NULL);
+	logFile.WriteLine(Msg() << "(0) Aborts at " + StringUtils::TimeString(now));
+#endif
+}
+
 int Launcher::Run(LogFile& logFile, const std::string& logDir, int verbose)
 {
-	for (size_t i = 0; i < commandLines_.size(); ++i) {
+	struct sigaction sa = { };
+	sa.sa_sigaction = MySigAction;
+	sa.sa_flags = SA_SIGINFO;
+
+	sigaction(SIGINT, &sa, NULL);
+	sigaction(SIGTERM, &sa, NULL);
+
+	for (size_t i = 0; i < commandLines_.size() && !killed; ++i) {
 		const std::string name = std::to_string(i + 1) + "." + StringUtils::RemoveSpecialCharacters(commandLines_[i].name_);
 		const auto& cmdLine = commandLines_[i].cmdLine_;
 

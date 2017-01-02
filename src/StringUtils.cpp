@@ -1,5 +1,14 @@
 #include "StringUtils.h"
 
+std::string StringUtils::GetFirstWord(const std::string& s)
+{
+	std::string::size_type pos = s.find_first_of(" \t\n\r");
+	if (pos != std::string::npos) {
+		return s.substr(0, pos);
+	}
+	return s;
+}
+
 std::string StringUtils::TimeString(time_t t)
 {
 	tm tmBuf;
