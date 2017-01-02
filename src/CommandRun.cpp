@@ -82,6 +82,28 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 	return true;
 }
 
+bool CommandRun::PrepareToRun(const std::string& logDir, const std::string& uniqueId)
+{
+	Semaphore sem("/seqpipe");
+	std::lock_guard<Semaphore> lock(sem);
+
+	if (!System::EnsureDirectory(LOG_ROOT)) {
+		return false;
+	}
+	if (!System::EnsureDirectory(logDir)) {
+		return false;
+	}
+
+	if (!WriteToHistoryLog(uniqueId)) {
+		return false;
+	}
+
+	if (!CreateLastSymbolicLink(uniqueId)) {
+		return false;
+	}
+	return true;
+}
+
 int CommandRun::Run(const std::list<std::string>& args)
 {
 	if (!ParseArgs(args)) {
@@ -91,15 +113,9 @@ int CommandRun::Run(const std::list<std::string>& args)
 	const auto uniqueId = System::GetUniqueId();
 	const auto logDir = LOG_ROOT + "/" + uniqueId;
 
-	if (!System::CheckDirectoryExists(LOG_ROOT)) {
-		System::CreateDirectory(LOG_ROOT);
+	if (!PrepareToRun(logDir, uniqueId)) {
+		return 1;
 	}
-	if (!System::CheckDirectoryExists(logDir)) {
-		System::CreateDirectory(logDir);
-	}
-
-	WriteToHistoryLog(uniqueId);
-	CreateLastSymbolicLink(uniqueId);
 
 	LogFile logFile(logDir + "/log");
 	logFile.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
@@ -117,9 +133,6 @@ bool CommandRun::WriteToHistoryLog(const std::string& uniqueId)
 {
 	const auto historyLog = LOG_ROOT + "/history." + System::GetHostname() + ".log";
 
-	Semaphore sem("/seqpipe");
-	std::lock_guard<Semaphore> lock(sem);
-
 	std::ofstream file(historyLog, std::ios::app);
 	if (!file.is_open()) {
 		std::cerr << "Error: Can not write to history file '" << historyLog << "'!" << std::endl;
@@ -134,9 +147,6 @@ bool CommandRun::WriteToHistoryLog(const std::string& uniqueId)
 
 bool CommandRun::CreateLastSymbolicLink(const std::string& uniqueId)
 {
-	Semaphore sem("/seqpipe");
-	std::lock_guard<Semaphore> lock(sem);
-
 	if (System::CheckFileExists(LOG_LAST)) {
 		unlink(LOG_LAST.c_str());
 	}

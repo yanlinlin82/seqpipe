@@ -50,6 +50,14 @@ bool System::CreateDirectory(const std::string& path, int mode)
 	return (mkdir(path.c_str(), mode) == 0);
 }
 
+bool System::EnsureDirectory(const std::string& path, int mode)
+{
+	if (CheckDirectoryExists(path)) {
+		return true;
+	}
+	return CreateDirectory(path, mode);
+}
+
 bool System::IsTextFile(const std::string& path)
 {
 	std::ifstream file(path, std::ifstream::binary);
