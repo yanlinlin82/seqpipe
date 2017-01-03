@@ -10,6 +10,9 @@ bool Launcher::CheckIfPipeFile(const std::string& command)
 	if (!System::CheckFileExists(command)) {
 		return false;
 	}
+	if (System::HasExecutiveAttribute(command)) {
+		return false;
+	}
 	if (!System::IsTextFile(command)) {
 		return false;
 	}

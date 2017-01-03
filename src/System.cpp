@@ -32,7 +32,6 @@ std::string System::GetFullCommandLine()
 	return cmdLine;
 }
 
-
 bool System::CheckFileExists(const std::string& path)
 {
 	struct stat buffer;
@@ -89,6 +88,12 @@ bool System::IsTextFile(const std::string& path)
 	}
 	file.close();
 	return true;
+}
+
+bool System::HasExecutiveAttribute(const std::string& path)
+{
+	struct stat buffer;
+	return (stat(path.c_str(), &buffer) == 0 && (buffer.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)));
 }
 
 std::string System::GetUniqueId()

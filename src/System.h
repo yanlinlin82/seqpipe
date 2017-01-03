@@ -15,6 +15,7 @@ public:
 	static bool CreateDirectory(const std::string& path, int mode = 0755);
 	static bool EnsureDirectory(const std::string& path, int mode = 0755);
 	static bool IsTextFile(const std::string& path);
+	static bool HasExecutiveAttribute(const std::string& path);
 
 	static std::string GetUniqueId();
 	static std::string EncodeShell(const std::string& s);
