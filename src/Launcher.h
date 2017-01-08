@@ -17,12 +17,14 @@ class Launcher
 public:
 	static bool CheckIfPipeFile(const std::string& command);
 	bool LoadPipeFile(const std::string& filename);
+	bool WritePipeFile(const std::string& filename) const;
 
 	bool AppendCommand(const std::string&  cmd, const std::vector<std::string>& arguments);
 	std::string JoinCommandLine(const std::string& cmd, const std::vector<std::string>& arguments);
 
 	int Run(LogFile& logFile, const std::string& logDir, int verbose);
 private:
+	std::vector<std::string> originPipeline_;
 	std::vector<CommandItem> commandLines_;
 };
 

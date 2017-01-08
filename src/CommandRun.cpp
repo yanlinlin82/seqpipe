@@ -141,6 +141,10 @@ int CommandRun::Run(const std::list<std::string>& args)
 	if (!RecordSysInfo(logDir + "/sysinfo")) {
 		return 1;
 	}
+	if (!launcher_.WritePipeFile(logDir + "/pipeline")) {
+		std::cerr << "Error: Can not write file '" << logDir << "/pipeline'!" << std::endl;
+		return 1;
+	}
 
 	LogFile logFile(logDir + "/log");
 	logFile.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());

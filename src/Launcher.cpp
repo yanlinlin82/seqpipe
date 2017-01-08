@@ -1,6 +1,7 @@
 #include <fstream>
 #include <atomic>
 #include <regex>
+#include <cassert>
 #include <csignal>
 #include "Launcher.h"
 #include "System.h"
@@ -22,6 +23,8 @@ bool Launcher::CheckIfPipeFile(const std::string& command)
 
 bool Launcher::LoadPipeFile(const std::string& filename)
 {
+	assert(originPipeline_.empty());
+
 	std::ifstream file(filename);
 	if (!file) {
 		return false;
@@ -29,6 +32,7 @@ bool Launcher::LoadPipeFile(const std::string& filename)
 
 	std::string line;
 	while (std::getline(file, line)) {
+		originPipeline_.push_back(line);
 		if (std::regex_match(line, std::regex("^\\s*#"))) {
 			continue;
 		}
@@ -36,6 +40,21 @@ bool Launcher::LoadPipeFile(const std::string& filename)
 		item.name_ = StringUtils::GetFirstWord(line);
 		item.cmdLine_ = line;
 		commandLines_.push_back(item);
+	}
+
+	file.close();
+	return true;
+}
+
+bool Launcher::WritePipeFile(const std::string& filename) const
+{
+	std::ofstream file(filename);
+	if (!file) {
+		return false;
+	}
+
+	for (const auto& s : originPipeline_) {
+		file << s << std::endl;
 	}
 
 	file.close();
