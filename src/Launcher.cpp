@@ -1,5 +1,6 @@
 #include <fstream>
 #include <atomic>
+#include <regex>
 #include <csignal>
 #include "Launcher.h"
 #include "System.h"
@@ -28,6 +29,9 @@ bool Launcher::LoadPipeFile(const std::string& filename)
 
 	std::string line;
 	while (std::getline(file, line)) {
+		if (std::regex_match(line, std::regex("^\\s*#"))) {
+			continue;
+		}
 		CommandItem item;
 		item.name_ = StringUtils::GetFirstWord(line);
 		item.cmdLine_ = line;
