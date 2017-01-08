@@ -72,12 +72,19 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 			arguments.push_back(arg);
 		}
 	}
-	if (cmd.empty()) {
-		PrintUsage();
-		return false;
-	}
-	if (!cmdIsPipeFile) {
-		launcher_.AppendCommand(cmd, arguments);
+	if (isatty(fileno(stdin))) {
+		if (cmd.empty()) {
+			PrintUsage();
+			return false;
+		}
+		if (!cmdIsPipeFile) {
+			launcher_.AppendCommand(cmd, arguments);
+		}
+	} else {
+		if (!launcher_.LoadPipeFile("/dev/stdin")) {
+			std::cerr << "Error: Failed to load pipe from stdin!" << std::endl;
+			return false;
+		}
 	}
 	return true;
 }
