@@ -53,6 +53,21 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 				forceRun_ = true;
 			} else if (arg == "-k") {
 				keepTemp_ = true;
+			} else if (arg == "-") {
+				if (cmd.empty()) {
+					if (isatty(fileno(stdin))) {
+						std::cerr << "Error: Failed to load pipe file from stdin!" << std::endl;
+						return false;
+					}
+					cmd = "/dev/stdin";
+					if (!launcher_.LoadPipeFile(cmd)) {
+						std::cerr << "Error: Failed to load pipe file from stdin!" << std::endl;
+						return false;
+					}
+				} else {
+					std::cerr << "Error: Unexpected option '" << arg << "'!" << std::endl;
+					return false;
+				}
 			} else {
 				std::cerr << "Error: Unknown option '" << arg << "'!" << std::endl;
 				return false;
