@@ -109,6 +109,11 @@ int Launcher::Run(LogFile& logFile, const std::string& logDir, int verbose)
 
 		time_t t = time(NULL);
 		logFile.WriteLine(Msg() << "(" << i + 1 << ") ends at " << StringUtils::TimeString(t) << " (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
+
+		if (retVal != 0) {
+			logFile.WriteLine(Msg() << "(" << i + 1 << ") returns " << retVal);
+			return retVal;
+		}
 	}
 	return 0;
 }
