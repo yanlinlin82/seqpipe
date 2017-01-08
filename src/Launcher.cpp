@@ -72,9 +72,12 @@ std::string Launcher::JoinCommandLine(const std::string& cmd, const std::vector<
 
 bool Launcher::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
 {
+	auto cmdLine = JoinCommandLine(cmd, arguments);
+	originPipeline_.push_back(cmdLine);
+
 	CommandItem item;
 	item.name_ = cmd;
-	item.cmdLine_ = JoinCommandLine(cmd, arguments);
+	item.cmdLine_ = cmdLine;
 	commandLines_.push_back(item);
 	return true;
 }
