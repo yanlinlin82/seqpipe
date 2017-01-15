@@ -3,12 +3,13 @@
 #include <list>
 #include "CommandRun.h"
 #include "CommandLog.h"
+#include "CommandRunDeprecated.h"
 #include "SeqPipe.h"
 
 static void PrintUsage()
 {
 	std::cout << "\n"
-		"SeqPipe: A framework for SEQuencing data analysis PIPElines\n"
+		"SeqPipe: a framework for SEQuencing data analysis PIPElines\n"
 		"Version: " << VERSION << "\n"
 		"Author : Linlin Yan (yanlinlin82<at>gmail.com)\n"
 		"Website: https://github.com/yanlinlin82/seqpipe\n"
@@ -19,9 +20,12 @@ static void PrintUsage()
 		"   seqpipe log [options]\n"
 		"   seqpipe version\n"
 		"\n"
-		"Options:\n"
-		"   -h   Show help messages.\n"
-		"   -v   Show verbose messages.\n"
+		"Deprecated Usage (Compatible to v0.4.x):\n"
+		"   seqpipe [options] <procedure> [NAME=VALUE ...]\n"
+		"   seqpipe [options] -e <cmd> [-e <cmd> ...] [NAME=VALUE ...]\n"
+		"   seqpipe [options] -E <cmd> [-E <cmd> ...] [NAME=VALUE ...]\n"
+		"\n"
+		"Type 'seqpipe -h' to see help messages for deprecated usage.\n"
 		<< std::endl;
 }
 
@@ -34,22 +38,24 @@ int main(int argc, const char** argv)
 		return 1;
 	}
 
-	const auto cmd = args.front();
-	args.pop_front();
+	const auto name = args.front();
 
-	if (cmd == "run") {
+	if (name == "run") {
+		args.pop_front();
 		CommandRun cmd;
 		return cmd.Run(args);
 
-	} else if (cmd == "log") {
+	} else if (name == "log") {
+		args.pop_front();
 		CommandLog cmd;
 		return cmd.Run(args);
 
-	} else if (cmd == "version") {
+	} else if (name == "version") {
+		args.pop_front();
 		std::cout << VERSION << std::endl;
 		return 0;
 	}
 
-	std::cerr << "Error: Unknown command '" << cmd << "'" << std::endl;
-	return 1;
+	CommandRunDeprecated cmd;
+	return cmd.Run(args);
 }
