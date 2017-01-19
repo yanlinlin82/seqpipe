@@ -139,3 +139,8 @@ int Launcher::Run(LogFile& logFile, const std::string& logDir, int verbose)
 	}
 	return 0;
 }
+
+std::vector<std::string> Launcher::GetModules() const
+{
+	return modules_;
+}

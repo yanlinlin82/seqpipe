@@ -23,9 +23,11 @@ public:
 	std::string JoinCommandLine(const std::string& cmd, const std::vector<std::string>& arguments);
 
 	int Run(LogFile& logFile, const std::string& logDir, int verbose);
+	std::vector<std::string> GetModules() const;
 private:
 	std::vector<std::string> originPipeline_;
 	std::vector<CommandItem> commandLines_;
+	std::vector<std::string> modules_;
 };
 
 #endif
