@@ -33,6 +33,7 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 	std::string cmd;
 	bool cmdIsPipeFile = false;
 	std::vector<std::string> arguments;
+	bool loaded = false;
 
 	for (auto it = args.begin(); it != args.end(); ++it) {
 		const auto& arg = *it;
@@ -64,6 +65,7 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 						std::cerr << "Error: Failed to load pipe file from stdin!" << std::endl;
 						return false;
 					}
+					loaded = true;
 				} else {
 					std::cerr << "Error: Unexpected option '" << arg << "'!" << std::endl;
 					return false;
@@ -82,6 +84,7 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 					return false;
 				}
 				cmdIsPipeFile = true;
+				loaded = true;
 			}
 		} else {
 			arguments.push_back(arg);
@@ -95,7 +98,7 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 		if (!cmdIsPipeFile) {
 			launcher_.AppendCommand(cmd, arguments);
 		}
-	} else {
+	} else if (!loaded) {
 		if (!launcher_.LoadPipeFile("/dev/stdin")) {
 			std::cerr << "Error: Failed to load pipe from stdin!" << std::endl;
 			return false;
