@@ -1,5 +1,6 @@
 #include <iostream>
 #include <regex>
+#include "Launcher.h"
 #include "CommandRunDeprecated.h"
 
 void CommandRunDeprecated::PrintUsage()
@@ -58,7 +59,7 @@ bool CommandRunDeprecated::ParseArgs(const std::list<std::string>& args)
 				listMode_ = 2;
 			} else if (arg == "-m") {
 				const auto& moduleFile = *(++it);
-				if (!launcher_.LoadPipeFile(moduleFile)) {
+				if (!pipeline_.Load(moduleFile)) {
 					std::cerr << "Error: Failed to load pipe file '" << moduleFile << "'!" << std::endl;
 					return false;
 				}
@@ -90,7 +91,7 @@ bool CommandRunDeprecated::ParseArgs(const std::list<std::string>& args)
 
 	if (!cmdList.empty()) {
 		for (const auto& cmd : cmdList) {
-			launcher_.AppendCommand(cmd, {});
+			pipeline_.AppendCommand(cmd, {});
 		}
 	}
 	return true;
@@ -98,7 +99,7 @@ bool CommandRunDeprecated::ParseArgs(const std::list<std::string>& args)
 
 void CommandRunDeprecated::ListModules()
 {
-	const auto modules = launcher_.GetModules();
+	const auto modules = pipeline_.GetModules();
 	std::cout << std::endl;
 	for (const auto& m : modules) {
 		std::cout << "   " << m << std::endl;
@@ -121,5 +122,6 @@ int CommandRunDeprecated::Run(const std::list<std::string>& args)
 		return 0;
 	}
 
-	return launcher_.Run(verbose_);
+	Launcher launcher;
+	return launcher.Run(pipeline_, verbose_);
 }

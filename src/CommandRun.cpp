@@ -9,6 +9,7 @@
 #include "System.h"
 #include "LogFile.h"
 #include "SeqPipe.h"
+#include "Launcher.h"
 #include "StringUtils.h"
 
 void CommandRun::PrintUsage()
@@ -60,7 +61,7 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 						return false;
 					}
 					cmd = "/dev/stdin";
-					if (!launcher_.LoadPipeFile(cmd)) {
+					if (!pipeline_.Load(cmd)) {
 						std::cerr << "Error: Failed to load pipe file from stdin!" << std::endl;
 						return false;
 					}
@@ -75,10 +76,10 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 			}
 		} else if (cmd.empty()) {
 			cmd = arg;
-			if (!launcher_.CheckIfPipeFile(cmd)) {
+			if (!Pipeline::CheckIfPipeFile(cmd)) {
 				cmdIsPipeFile = false;
 			} else {
-				if (!launcher_.LoadPipeFile(cmd)) {
+				if (!pipeline_.Load(cmd)) {
 					std::cerr << "Error: Failed to load pipe file '" << cmd << "'!" << std::endl;
 					return false;
 				}
@@ -95,10 +96,10 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 			return false;
 		}
 		if (!cmdIsPipeFile) {
-			launcher_.AppendCommand(cmd, arguments);
+			pipeline_.AppendCommand(cmd, arguments);
 		}
 	} else if (!loaded) {
-		if (!launcher_.LoadPipeFile("/dev/stdin")) {
+		if (!pipeline_.Load("/dev/stdin")) {
 			std::cerr << "Error: Failed to load pipe from stdin!" << std::endl;
 			return false;
 		}
@@ -112,5 +113,6 @@ int CommandRun::Run(const std::list<std::string>& args)
 		return 1;
 	}
 
-	return launcher_.Run(verbose_);
+	Launcher launcher;
+	return launcher.Run(pipeline_, verbose_);
 }

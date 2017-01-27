@@ -4,7 +4,7 @@
 #include <list>
 #include <string>
 #include <vector>
-#include "Launcher.h"
+#include "Pipeline.h"
 
 class CommandRunDeprecated
 {
@@ -23,8 +23,7 @@ private:
 	bool forceRun_ = false;
 	bool keepTemp_ = false;
 
-	Launcher launcher_;
+	Pipeline pipeline_;
 };
 
 #endif
-

@@ -4,7 +4,7 @@
 #include <list>
 #include <string>
 #include <vector>
-#include "Launcher.h"
+#include "Pipeline.h"
 
 class CommandRun
 {
@@ -19,7 +19,7 @@ private:
 	bool forceRun_ = false;
 	bool keepTemp_ = false;
 
-	Launcher launcher_;
+	Pipeline pipeline_;
 };
 
 #endif
