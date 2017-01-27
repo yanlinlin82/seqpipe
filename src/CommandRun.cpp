@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include "CommandRun.h"
 #include "System.h"
-#include "Semaphore.h"
 #include "LogFile.h"
 #include "SeqPipe.h"
 #include "StringUtils.h"
@@ -107,111 +106,11 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 	return true;
 }
 
-bool CommandRun::PrepareToRun(const std::string& logDir, const std::string& uniqueId)
-{
-	Semaphore sem("/seqpipe");
-	std::lock_guard<Semaphore> lock(sem);
-
-	if (!System::EnsureDirectory(LOG_ROOT)) {
-		return false;
-	}
-	if (!System::EnsureDirectory(logDir)) {
-		return false;
-	}
-
-	if (!WriteToHistoryLog(uniqueId)) {
-		return false;
-	}
-
-	if (!CreateLastSymbolicLink(uniqueId)) {
-		return false;
-	}
-	return true;
-}
-
 int CommandRun::Run(const std::list<std::string>& args)
 {
 	if (!ParseArgs(args)) {
 		return 1;
 	}
 
-	const auto uniqueId = System::GetUniqueId();
-	const auto logDir = LOG_ROOT + "/" + uniqueId;
-
-	if (!PrepareToRun(logDir, uniqueId)) {
-		return 1;
-	}
-	if (!RecordSysInfo(logDir + "/sysinfo")) {
-		return 1;
-	}
-	if (!launcher_.WritePipeFile(logDir + "/pipeline")) {
-		std::cerr << "Error: Can not write file '" << logDir << "/pipeline'!" << std::endl;
-		return 1;
-	}
-
-	LogFile logFile(logDir + "/log");
-	logFile.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
-
-	int retVal = launcher_.Run(logFile, logDir, verbose_);
-	if (retVal != 0) {
-		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "!");
-	} else {
-		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished successfully!");
-	}
-	return retVal;
-}
-
-bool CommandRun::WriteToHistoryLog(const std::string& uniqueId)
-{
-	const auto historyLog = LOG_ROOT + "/history." + System::GetHostname() + ".log";
-
-	std::ofstream file(historyLog, std::ios::app);
-	if (!file.is_open()) {
-		std::cerr << "Error: Can not write to history file '" << historyLog << "'!" << std::endl;
-		return false;
-	}
-
-	file << uniqueId << '\t' << System::GetFullCommandLine() << std::endl;
-	file.close();
-
-	return true;
-}
-
-bool CommandRun::CreateLastSymbolicLink(const std::string& uniqueId)
-{
-	if (System::CheckFileExists(LOG_LAST)) {
-		unlink(LOG_LAST.c_str());
-	}
-	int retVal = symlink(uniqueId.c_str(), LOG_LAST.c_str());
-	if (retVal != 0) {
-		std::cerr << "Warning: Can not create symbolic link '.seqpipe/last' to '" << uniqueId << "'! err: " << retVal << std::endl;
-	}
-
-	return true;
-}
-
-bool CommandRun::RecordSysInfo(const std::string& filename)
-{
-	std::ofstream file(filename);
-	if (!file.is_open()) {
-		std::cerr << "Error: Can not write to file '" << filename << "'!" << std::endl;
-		return false;
-	}
-
-	file << "===== System Information =====\n"
-		"System: " + System::RunShell("uname -a") +
-		"\n"
-		"Date: " + System::RunShell("date '+%Y-%m-%d %H:%M:%S'") +
-		"Pwd : " + System::RunShell("pwd") +
-		"\n"
-		"CPU:\n" + System::RunShell("lscpu") +
-		"\n"
-		"Memory:\n" + System::RunShell("free -g") +
-		"\n"
-		"===== SeqPipe Version =====\n"
-		"SeqPipe: " + VERSION + "\n"
-		<< std::endl;
-
-	file.close();
-	return true;
+	return launcher_.Run(verbose_);
 }

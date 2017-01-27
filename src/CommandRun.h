@@ -13,10 +13,6 @@ public:
 private:
 	bool ParseArgs(const std::list<std::string>& args);
 	void PrintUsage();
-	bool WriteToHistoryLog(const std::string& uniqueId);
-	bool CreateLastSymbolicLink(const std::string& uniqueId);
-	bool PrepareToRun(const std::string& logDir, const std::string& uniqueId);
-	bool RecordSysInfo(const std::string& filename);
 private:
 	int verbose_ = 0;
 	int maxJobNumber_ = 0;

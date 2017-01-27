@@ -19,11 +19,18 @@ public:
 	bool LoadPipeFile(const std::string& filename);
 	bool WritePipeFile(const std::string& filename) const;
 
-	bool AppendCommand(const std::string&  cmd, const std::vector<std::string>& arguments);
+	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
 	std::string JoinCommandLine(const std::string& cmd, const std::vector<std::string>& arguments);
 
 	int Run(LogFile& logFile, const std::string& logDir, int verbose);
 	std::vector<std::string> GetModules() const;
+
+	int Run(int verbose);
+private:
+	bool WriteToHistoryLog(const std::string& uniqueId);
+	bool CreateLastSymbolicLink(const std::string& uniqueId);
+	bool PrepareToRun(const std::string& logDir, const std::string& uniqueId);
+	bool RecordSysInfo(const std::string& filename);
 private:
 	std::vector<std::string> originPipeline_;
 	std::vector<CommandItem> commandLines_;

@@ -87,6 +87,12 @@ bool CommandRunDeprecated::ParseArgs(const std::list<std::string>& args)
 			const auto& value = sm[2];
 		}
 	}
+
+	if (!cmdList.empty()) {
+		for (const auto& cmd : cmdList) {
+			launcher_.AppendCommand(cmd, {});
+		}
+	}
 	return true;
 }
 
@@ -115,5 +121,5 @@ int CommandRunDeprecated::Run(const std::list<std::string>& args)
 		return 0;
 	}
 
-	return 0;
+	return launcher_.Run(verbose_);
 }
