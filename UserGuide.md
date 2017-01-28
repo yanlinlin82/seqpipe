@@ -86,8 +86,12 @@ There are different ways to install SeqPipe. Choose any one you like:
 
         $ seqpipe -m foo.pipe  # now no need to specify the procedure name
 
+2. Try inline mode:
 
-2. Use `seqpipe` to record commands:
+        $ seqpipe -e date -e pwd
+        $ head .seqpipe/last/*.log  # check outputs
+
+3. Use `seqpipe` to record commands:
 
         $ seq 1 3 | awk '{print "echo Hello - "$1}' | seqpipe run
 
