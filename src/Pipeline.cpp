@@ -32,25 +32,18 @@ std::vector<std::string> Pipeline::GetProcNameList() const
 
 bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc)
 {
-	auto it = procList_.find(name);
-	if (it != procList_.end()) {
-		std::cerr << "ERROR: Duplicated procedure '" << name << "' in " << file.Pos() << "\n"
-			"   Previous definition of '" << name << "' was in " << it->second.Pos() << std::endl;
-		return false;
-	}
-
 	if (leftBracket.empty()) {
 		while (file.ReadLine()) {
 			if (PipeFile::IsEmptyLine(file.CurrentLine())) {
 				continue;
 			} else if (PipeFile::IsCommentLine(file.CurrentLine())) {
 				if (PipeFile::IsDescLine(file.CurrentLine())) {
-					std::cerr << "ERROR: Unexpected attribute line in " << file.Pos() << std::endl;
+					std::cerr << "ERROR: Unexpected attribute line at " << file.Pos() << std::endl;
 					return false;
 				}
 				continue;
 			} else if (!PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
-				std::cerr << "ERROR: Unexpected line in " << file.Pos() << "\n"
+				std::cerr << "ERROR: Unexpected line at " << file.Pos() << "\n"
 					"   Only '{' or '{{' was expected here." << std::endl;
 				return false;
 			}
@@ -63,11 +56,11 @@ bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string lef
 		std::string rightBracket;
 		if (PipeFile::IsRightBracket(file.CurrentLine(), rightBracket)) {
 			if (leftBracket == "{" && rightBracket == "}}") {
-				std::cerr << "ERROR: Unexpected right bracket in " << file.Pos() << "\n"
+				std::cerr << "ERROR: Unexpected right bracket at " << file.Pos() << "\n"
 					"   Right bracket '}' was expected here." << std::endl;
 				return false;
 			} else if (leftBracket == "{{" && rightBracket == "}") {
-				std::cerr << "ERROR: Unexpected right bracket in " << file.Pos() << "\n"
+				std::cerr << "ERROR: Unexpected right bracket at " << file.Pos() << "\n"
 					"   Right bracket '}}' was expected here." << std::endl;
 				return false;
 			}
@@ -140,6 +133,7 @@ bool Procedure::AppendCommand(const std::string& cmd, const std::vector<std::str
 bool Pipeline::Load(const std::string& filename)
 {
 	std::map<std::string, std::string> confMap;
+	std::map<std::string, std::string> procAtLineNo;
 
 	PipeFile file;
 	if (!file.Open(filename)) {
@@ -153,7 +147,7 @@ bool Pipeline::Load(const std::string& filename)
 		if (PipeFile::IsCommentLine(file.CurrentLine())) {
 			if (PipeFile::IsDescLine(file.CurrentLine())) {
 				if (!PipeFile::ParseAttrLine(file.CurrentLine())) {
-					std::cerr << "WARNING: Invalid format of attribute in " << file.Pos() << "!" << std::endl;
+					std::cerr << "WARNING: Invalid format of attribute at " << file.Pos() << "!" << std::endl;
 				}
 			}
 			continue;
@@ -176,6 +170,13 @@ bool Pipeline::Load(const std::string& filename)
 
 		std::string leftBracket;
 		if (PipeFile::IsFuncLine(file.CurrentLine(), name, leftBracket)) {
+			if (procAtLineNo.find(name) != procAtLineNo.end()) {
+				std::cerr << "ERROR: Duplicated procedure '" << name << "' at " << file.Pos() << "\n"
+					"   Previous definition of '" << name << "' was in " << procAtLineNo[name] << std::endl;
+				return false;
+			}
+			procAtLineNo[name] = file.Pos();
+
 			Procedure proc;
 			if (!LoadProc(file, name, leftBracket, proc)) {
 				return false;

@@ -24,7 +24,6 @@ class Procedure
 {
 public:
 	std::string Name() const { return name_; }
-	std::string Pos() const { return pos_; }
 	Block GetBlock() const { return block_; }
 
 	void SetName(const std::string& name) { name_ = name; }
@@ -34,7 +33,6 @@ public:
 private:
 	std::string name_;
 	Block block_;
-	std::string pos_; // format as "filename(line-no)"
 };
 
 class Pipeline

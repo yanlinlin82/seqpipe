@@ -18,7 +18,7 @@ bool PipeFile::Open(const std::string& filename)
 std::string PipeFile::Pos() const
 {
 	assert(file_.is_open());
-	return filename_ + "(" + std::to_string(lineNo_) + ")";
+	return ("line " + std::to_string(lineNo_) + " of file '" + filename_ + "'");
 }
 
 bool PipeFile::ReadLine()
