@@ -56,7 +56,7 @@ bool StringUtils::ParseCommandLine(const std::string& s, std::string& cmd, std::
 
 	std::string word;
 	for (size_t i = 0; i < s.size(); ++i) {
-		if (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') {
+		if (isspace(s[i])) { // space, '\t', '\r', '\n', '\f', '\v'
 			if (!word.empty()) {
 				args.push_back(word);
 				word = "";
@@ -135,15 +135,6 @@ bool StringUtils::ParseCommandLine(const std::string& s, std::string& cmd, std::
 	args.pop_front();
 	arguments = std::vector<std::string>(args.begin(), args.end());
 	return true;
-}
-
-std::string StringUtils::GetFirstWord(const std::string& s)
-{
-	std::string::size_type pos = s.find_first_of(" \t\n\r");
-	if (pos != std::string::npos) {
-		return s.substr(0, pos);
-	}
-	return s;
 }
 
 std::string StringUtils::RemoveSpecialCharacters(const std::string& s)
