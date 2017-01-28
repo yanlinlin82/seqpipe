@@ -112,18 +112,6 @@ std::string System::DirName(const std::string& path)
 	return dirname(&buffer[0]);
 }
 
-std::string System::GetUniqueId()
-{
-	char buffer[64] = "";
-	time_t now = time(NULL);
-	struct tm tmBuf;
-	localtime_r(&now, &tmBuf);
-	snprintf(buffer, sizeof(buffer), "%02d%02d%02d.%02d%02d.%d.",
-			tmBuf.tm_year % 100, tmBuf.tm_mon + 1, tmBuf.tm_mday,
-			tmBuf.tm_hour, tmBuf.tm_min, getpid());
-	return (buffer + GetHostname());
-}
-
 std::string System::EncodeShell(const std::string& s)
 {
 	if (s.find_first_of(" \t\r\n\'\"$!()[]{};|\\/") != std::string::npos) {

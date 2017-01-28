@@ -38,15 +38,9 @@ static void SetSigAction()
 	sigaction(SIGTERM, &sa, NULL);
 }
 
-unsigned int LauncherCounter::FetchID()
-{
-	std::lock_guard<std::mutex> lock(mutex_);
-	return ++counter_;
-}
-
 int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent)
 {
-	unsigned int id = counter_.FetchID();
+	unsigned int id = counter_.FetchId();
 
 	const std::string name = std::to_string(id) + "." + procName;
 
@@ -66,7 +60,7 @@ int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, std
 
 int Launcher::RunShell(const CommandItem& item, std::string indent)
 {
-	unsigned int id = counter_.FetchID();
+	unsigned int id = counter_.FetchId();
 
 	const std::string name = std::to_string(id) + "." + StringUtils::RemoveSpecialCharacters(item.name_);
 	const auto& cmdLine = item.cmdLine_;
@@ -113,6 +107,18 @@ int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, std::string
 	return 0;
 }
 
+std::string Launcher::GetUniqueId()
+{
+	char text[64] = "";
+	time_t now = time(NULL);
+	struct tm buf;
+	localtime_r(&now, &buf);
+	snprintf(text, sizeof(text), "%02d%02d%02d.%02d%02d.%d.",
+			buf.tm_year % 100, buf.tm_mon + 1, buf.tm_mday,
+			buf.tm_hour, buf.tm_min, getpid());
+	return (text + System::GetHostname());
+}
+
 int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose_)
 {
 	LauncherTimer timer;
@@ -122,7 +128,7 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 		return 1;
 	}
 
-	const auto uniqueId = System::GetUniqueId();
+	const auto uniqueId = GetUniqueId();
 	const auto logDir_ = LOG_ROOT + "/" + uniqueId;
 
 	if (!PrepareToRun(logDir_, uniqueId)) {

@@ -3,18 +3,9 @@
 
 #include <string>
 #include <vector>
-#include <mutex>
+#include "LauncherCounter.h"
 #include "LogFile.h"
 #include "Pipeline.h"
-
-class LauncherCounter
-{
-public:
-	unsigned int FetchID();
-private:
-	std::mutex mutex_;
-	unsigned int counter_ = 0;
-};
 
 class Launcher
 {
@@ -29,9 +20,10 @@ private:
 	bool CreateLastSymbolicLink(const std::string& uniqueId);
 	bool PrepareToRun(const std::string& logDir, const std::string& uniqueId);
 	bool RecordSysInfo(const std::string& filename);
+
+	static std::string GetUniqueId();
 private:
 	LauncherCounter counter_;
-
 	LogFile logFile_;
 	std::string logDir_;
 	int verbose_;
