@@ -38,12 +38,12 @@ bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string lef
 				continue;
 			} else if (PipeFile::IsCommentLine(file.CurrentLine())) {
 				if (PipeFile::IsDescLine(file.CurrentLine())) {
-					std::cerr << "ERROR: Unexpected attribute line at " << file.Pos() << std::endl;
+					std::cerr << "Error: Unexpected attribute line at " << file.Pos() << std::endl;
 					return false;
 				}
 				continue;
 			} else if (!PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
-				std::cerr << "ERROR: Unexpected line at " << file.Pos() << "\n"
+				std::cerr << "Error: Unexpected line at " << file.Pos() << "\n"
 					"   Only '{' or '{{' was expected here." << std::endl;
 				return false;
 			}
@@ -56,11 +56,11 @@ bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string lef
 		std::string rightBracket;
 		if (PipeFile::IsRightBracket(file.CurrentLine(), rightBracket)) {
 			if (leftBracket == "{" && rightBracket == "}}") {
-				std::cerr << "ERROR: Unexpected right bracket at " << file.Pos() << "\n"
+				std::cerr << "Error: Unexpected right bracket at " << file.Pos() << "\n"
 					"   Right bracket '}' was expected here." << std::endl;
 				return false;
 			} else if (leftBracket == "{{" && rightBracket == "}") {
-				std::cerr << "ERROR: Unexpected right bracket at " << file.Pos() << "\n"
+				std::cerr << "Error: Unexpected right bracket at " << file.Pos() << "\n"
 					"   Right bracket '}}' was expected here." << std::endl;
 				return false;
 			}
@@ -92,7 +92,7 @@ bool Pipeline::LoadConf(const std::string& filename, std::map<std::string, std::
 			confMap[name] = value;
 		} else {
 			if (!PipeFile::IsEmptyLine(line) && !PipeFile::IsCommentLine(line)) {
-				std::cerr << "ERROR: Invalid syntax of configure file in " << filename << "(" << lineNo << ")\n"
+				std::cerr << "Error: Invalid syntax of configure file in " << filename << "(" << lineNo << ")\n"
 					"  Only global variable definition could be included in configure file!" << std::endl;
 				return false;
 			}
@@ -147,7 +147,7 @@ bool Pipeline::Load(const std::string& filename)
 		if (PipeFile::IsCommentLine(file.CurrentLine())) {
 			if (PipeFile::IsDescLine(file.CurrentLine())) {
 				if (!PipeFile::ParseAttrLine(file.CurrentLine())) {
-					std::cerr << "WARNING: Invalid format of attribute at " << file.Pos() << "!" << std::endl;
+					std::cerr << "Warning: Invalid format of attribute at " << file.Pos() << "!" << std::endl;
 				}
 			}
 			continue;
@@ -171,7 +171,7 @@ bool Pipeline::Load(const std::string& filename)
 		std::string leftBracket;
 		if (PipeFile::IsFuncLine(file.CurrentLine(), name, leftBracket)) {
 			if (procAtLineNo.find(name) != procAtLineNo.end()) {
-				std::cerr << "ERROR: Duplicated procedure '" << name << "' at " << file.Pos() << "\n"
+				std::cerr << "Error: Duplicated procedure '" << name << "' at " << file.Pos() << "\n"
 					"   Previous definition of '" << name << "' was in " << procAtLineNo[name] << std::endl;
 				return false;
 			}
@@ -268,7 +268,7 @@ const Procedure* Pipeline::GetProc(const std::string& name) const
 {
 	if (name.empty()) {
 		if (defaultProc_.GetBlock().items_.empty()) {
-			std::cerr << "ERROR: The procedure name should be provided, since no any global command found.\n"
+			std::cerr << "Error: The procedure name should be provided, since no any global command found.\n"
 				"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
 			return NULL;
 		}
@@ -276,7 +276,7 @@ const Procedure* Pipeline::GetProc(const std::string& name) const
 	} else {
 		auto it = procList_.find(name);
 		if (it == procList_.end()) {
-			std::cerr << "ERROR: Can not find procedure '" << name << "'!" << std::endl;
+			std::cerr << "Error: Can not find procedure '" << name << "'!" << std::endl;
 			return NULL;
 		}
 		return &it->second;
