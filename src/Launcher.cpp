@@ -44,19 +44,19 @@ unsigned int LauncherCounter::FetchID()
 	return ++counter_;
 }
 
-int Launcher::RunProc(const Procedure& proc, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
+int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
 {
 	unsigned int id = counter_.FetchID();
 
-	const std::string name = std::to_string(id) + "." + proc.Name();
+	const std::string name = std::to_string(id) + "." + procName;
 
-	logFile.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << proc.Name());
+	logFile.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << procName);
 	LauncherTimer timer;
 	logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
-	WriteFile(logDir + "/" + name + ".pipeline", proc.Name());
+	WriteFile(logDir + "/" + name + ".pipeline", procName);
 
-	int retVal = RunBlock(proc, logFile, logDir, indent + "  ", verbose);
+	int retVal = RunBlock(pipeline, pipeline.GetCommandLines(procName), logFile, logDir, indent + "  ", verbose);
 
 	timer.Stop();
 	logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
@@ -64,37 +64,49 @@ int Launcher::RunProc(const Procedure& proc, LogFile& logFile, const std::string
 	return retVal;
 }
 
-int Launcher::RunBlock(const Procedure& proc, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
+int Launcher::RunShell(const CommandItem& item, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
 {
-	const auto& cmdLines = proc.GetCommandLines();
-	for (size_t i = 0; i < cmdLines.size() && !killed; ++i) {
+	unsigned int id = counter_.FetchID();
 
-		unsigned int id = counter_.FetchID();
+	const std::string name = std::to_string(id) + "." + StringUtils::RemoveSpecialCharacters(item.name_);
+	const auto& cmdLine = item.cmdLine_;
 
-		const std::string name = std::to_string(id) + "." + StringUtils::RemoveSpecialCharacters(cmdLines[i].name_);
-		const auto& cmdLine = cmdLines[i].cmdLine_;
+	logFile.WriteLine(Msg() << indent << "(" << id << ") [shell] " << cmdLine);
+	LauncherTimer timer;
+	logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
-		logFile.WriteLine(Msg() << indent << "(" << id << ") [shell] " << cmdLine);
-		LauncherTimer timer;
-		logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
+	WriteFile(logDir + "/" + name + ".cmd", cmdLine);
 
-		WriteFile(logDir + "/" + name + ".cmd", cmdLine);
+	std::string fullCmdLine = "( " + cmdLine + " )";
+	if (verbose > 0) {
+		fullCmdLine += " 2> >(tee -a " + logDir + "/" + name + ".err >&2)";
+		fullCmdLine += " > >(tee -a " + logDir + "/" + name + ".log)";
+	} else {
+		fullCmdLine += " 2>>" + logDir + "/" + name + ".err";
+		fullCmdLine += " >>" + logDir + "/" + name + ".log";
+	}
+	int retVal = System::Execute(fullCmdLine.c_str());
 
-		std::string fullCmdLine = "( " + cmdLine + " )";
-		if (verbose > 0) {
-			fullCmdLine += " 2> >(tee -a " + logDir + "/" + name + ".err >&2)";
-			fullCmdLine += " > >(tee -a " + logDir + "/" + name + ".log)";
+	timer.Stop();
+	logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
+
+	if (retVal != 0) {
+		logFile.WriteLine(Msg() << indent << "(" << id << ") returns " << retVal);
+		return retVal;
+	}
+	return 0;
+}
+
+int Launcher::RunBlock(const Pipeline& pipeline, const std::vector<CommandItem>& cmdList, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
+{
+	for (size_t i = 0; i < cmdList.size() && !killed; ++i) {
+		int retVal;
+		if (pipeline.HasProcedure(cmdList[i].name_)) {
+			retVal = RunProc(pipeline, cmdList[i].name_, logFile, logDir, indent, verbose);
 		} else {
-			fullCmdLine += " 2>>" + logDir + "/" + name + ".err";
-			fullCmdLine += " >>" + logDir + "/" + name + ".log";
+			retVal = RunShell(cmdList[i], logFile, logDir, indent, verbose);
 		}
-		int retVal = System::Execute(fullCmdLine.c_str());
-
-		timer.Stop();
-		logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
-
 		if (retVal != 0) {
-			logFile.WriteLine(Msg() << indent << "(" << id << ") returns " << retVal);
 			return retVal;
 		}
 	}
@@ -131,9 +143,9 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 
 	int retVal;
 	if (procName.empty()) {
-		retVal = RunBlock(*proc, logFile, logDir, "", verbose);
+		retVal = RunBlock(pipeline, pipeline.GetCommandLines(""), logFile, logDir, "", verbose);
 	} else {
-		retVal = RunProc(*proc, logFile, logDir, "", verbose);
+		retVal = RunProc(pipeline, procName, logFile, logDir, "", verbose);
 	}
 	timer.Stop();
 	if (retVal != 0) {

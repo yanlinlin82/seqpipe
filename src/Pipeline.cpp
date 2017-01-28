@@ -242,6 +242,24 @@ bool Pipeline::AppendCommand(const std::string& cmd, const std::vector<std::stri
 	return defaultProc_.AppendCommand(cmd, arguments);
 }
 
+bool Pipeline::HasProcedure(const std::string& name) const
+{
+	return procList_.find(name) != procList_.end();
+}
+
+std::vector<CommandItem> Pipeline::GetCommandLines(const std::string& procName) const
+{
+	if (procName.empty()) {
+		return defaultProc_.GetCommandLines();
+	} else {
+		auto it = procList_.find(procName);
+		if (it == procList_.end()) {
+			throw std::runtime_error("Invalid procName");
+		}
+		return it->second.GetCommandLines();
+	}
+}
+
 const Procedure* Pipeline::GetProc(const std::string& name) const
 {
 	if (name.empty()) {

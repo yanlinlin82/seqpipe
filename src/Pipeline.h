@@ -39,8 +39,9 @@ public:
 
 	bool SetDefaultProc(const std::vector<std::string>& cmdList, bool parallel);
 	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
+	bool HasProcedure(const std::string& name) const;
 
-	std::vector<CommandItem> GetCommandLines() const { return defaultProc_.GetCommandLines(); }
+	std::vector<CommandItem> GetCommandLines(const std::string& procName) const;
 	std::vector<std::string> GetProcNameList() const;
 	const Procedure& GetDefaultProc() const { return defaultProc_; }
 
