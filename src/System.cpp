@@ -33,6 +33,15 @@ std::string System::GetFullCommandLine()
 	return cmdLine;
 }
 
+std::string System::GetCurrentExe()
+{
+	char buffer[256] = "";
+	if (readlink("/proc/self/exe", buffer, sizeof(buffer)) < 0) {
+		return "";
+	}
+	return buffer;
+}
+
 bool System::CheckFileExists(const std::string& path)
 {
 	struct stat buffer;

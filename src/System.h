@@ -9,6 +9,7 @@ public:
 	static std::string GetHostname();
 
 	static std::string GetFullCommandLine();
+	static std::string GetCurrentExe();
 
 	static bool CheckFileExists(const std::string& path);
 	static bool CheckDirectoryExists(const std::string& path);

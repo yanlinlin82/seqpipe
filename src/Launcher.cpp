@@ -8,6 +8,7 @@
 #include "StringUtils.h"
 #include "SeqPipe.h"
 #include "Semaphore.h"
+#include "LauncherTimer.h"
 
 static void WriteFile(const std::string& filename, const std::string& s)
 {
@@ -50,15 +51,15 @@ int Launcher::RunProc(const Procedure& proc, LogFile& logFile, const std::string
 	const std::string name = std::to_string(id) + "." + proc.Name();
 
 	logFile.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << proc.Name());
-	time_t t0 = time(NULL);
-	logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << StringUtils::TimeString(t0));
+	LauncherTimer timer;
+	logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
 	WriteFile(logDir + "/" + name + ".pipeline", proc.Name());
 
 	int retVal = RunBlock(proc, logFile, logDir, indent + "  ", verbose);
 
-	time_t t = time(NULL);
-	logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << StringUtils::TimeString(t) << " (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
+	timer.Stop();
+	logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
 
 	return retVal;
 }
@@ -74,8 +75,8 @@ int Launcher::RunBlock(const Procedure& proc, LogFile& logFile, const std::strin
 		const auto& cmdLine = cmdLines[i].cmdLine_;
 
 		logFile.WriteLine(Msg() << indent << "(" << id << ") [shell] " << cmdLine);
-		time_t t0 = time(NULL);
-		logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << StringUtils::TimeString(t0));
+		LauncherTimer timer;
+		logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
 		WriteFile(logDir + "/" + name + ".cmd", cmdLine);
 
@@ -89,8 +90,8 @@ int Launcher::RunBlock(const Procedure& proc, LogFile& logFile, const std::strin
 		}
 		int retVal = System::Execute(fullCmdLine.c_str());
 
-		time_t t = time(NULL);
-		logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << StringUtils::TimeString(t) << " (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
+		timer.Stop();
+		logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
 
 		if (retVal != 0) {
 			logFile.WriteLine(Msg() << indent << "(" << id << ") returns " << retVal);
@@ -102,7 +103,7 @@ int Launcher::RunBlock(const Procedure& proc, LogFile& logFile, const std::strin
 
 int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose)
 {
-	time_t t0 = time(NULL);
+	LauncherTimer timer;
 
 	const Procedure* proc = pipeline.GetProc(procName);
 	if (!proc) {
@@ -134,11 +135,11 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 	} else {
 		retVal = RunProc(*proc, logFile, logDir, "", verbose);
 	}
-	time_t t = time(NULL);
+	timer.Stop();
 	if (retVal != 0) {
-		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
+		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");
 	} else {
-		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished successfully! (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
+		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished successfully! (elapsed: " << timer.Elapse() << ")");
 	}
 	return retVal;
 }
@@ -185,6 +186,7 @@ bool Launcher::RecordSysInfo(const std::string& filename)
 		"\n"
 		"===== SeqPipe Version =====\n"
 		"SeqPipe: " + VERSION + "\n"
+		"SeqPipe Path: " + System::GetCurrentExe() + "\n"
 		<< std::endl;
 
 	file.close();
