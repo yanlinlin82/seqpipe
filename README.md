@@ -21,17 +21,15 @@ A framework for SEQuencing data analysis PIPElines.
 
 2. Pipeline can also be written into file as:
 
-        $ cat <<EOF> foo.pipe
-        hello() {
-            echo "Hello, world!"
-            sleep 1
-            echo "Goodbye!"
-        }
+        $ cat <<EOF> hello.pipe
+        echo "Hello, world!"
+        sleep 1
+        echo "Goodbye!"
         EOF
 
     Then run:
 
-        $ seqpipe -m foo.pipe hello
+        $ seqpipe run hello.pipe
 
     Check log files:
 

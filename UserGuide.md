@@ -44,6 +44,30 @@ There are different ways to install SeqPipe. Choose any one you like:
 
 2. Pipeline can also be written into file as:
 
+        $ cat <<EOF> hello.pipe
+        echo "Hello, world!"
+        sleep 1
+        echo "Goodbye!"
+        EOF
+
+    Then run:
+
+        $ seqpipe run hello.pipe
+
+    Check log files:
+
+        $ ls -lR .seqpipe/last/
+
+    The pipeline file can be passed by pipe like:
+
+        $ seqpipe run < hello.pipe
+        $ cat hello.pipe | seqpipe run
+        $ cat hello.pipe | seqpipe run -  # all these three commands are the same as above
+
+## Usage Examples
+
+1. Try old mode:
+
         $ cat <<EOF> foo.pipe
         hello() {
             echo "Hello, world!"
@@ -52,17 +76,18 @@ There are different ways to install SeqPipe. Choose any one you like:
         }
         EOF
 
-    Then run:
+        $ seqpipe -m foo.pipe hello  # specify 'hello', the name of procedure to run
 
-        $ seqpipe -m foo.pipe hello
+    Or:
 
-    Check log files:
+        $ cat <<EOF>> foo.pipe
+        hello
+        EOF
 
-        $ ls -lR .seqpipe/last/
+        $ seqpipe -m foo.pipe  # now no need to specify the procedure name
 
-## Usage Examples
 
-1. Use `seqpipe` to record commands:
+2. Use `seqpipe` to record commands:
 
         $ seq 1 3 | awk '{print "echo Hello - "$1}' | seqpipe run
 
