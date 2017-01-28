@@ -13,3 +13,10 @@ void LogFile::WriteLine(const std::string& s)
 	std::cout << s << std::endl;
 	file_ << s << std::endl;
 }
+
+void WriteStringToFile(const std::string& filename, const std::string& s)
+{
+	std::ofstream file(filename);
+	file << s << std::endl;
+	file.close();
+}

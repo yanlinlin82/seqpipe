@@ -10,7 +10,7 @@ class LogFile
 {
 public:
 	bool Initialize(const std::string& filename);
-public:
+
 	void WriteLine(const std::string& s);
 private:
 	std::ofstream file_;
@@ -27,5 +27,7 @@ public:
 private:
 	std::ostringstream ss_;
 };
+
+void WriteStringToFile(const std::string& filename, const std::string& s);
 
 #endif

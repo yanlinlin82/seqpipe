@@ -10,13 +10,6 @@
 #include "Semaphore.h"
 #include "LauncherTimer.h"
 
-static void WriteFile(const std::string& filename, const std::string& s)
-{
-	std::ofstream file(filename);
-	file << s << std::endl;
-	file.close();
-}
-
 std::atomic<bool> killed(false);
 
 void MySigAction(int signum, siginfo_t* siginfo, void* ucontext)
@@ -48,7 +41,7 @@ int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, std
 	LauncherTimer timer;
 	logFile_.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
-	WriteFile(logDir_ + "/" + name + ".pipeline", procName);
+	WriteStringToFile(logDir_ + "/" + name + ".pipeline", procName);
 
 	int retVal = RunBlock(pipeline, pipeline.GetBlock(procName), indent + "  ");
 
@@ -69,7 +62,7 @@ int Launcher::RunShell(const CommandItem& item, std::string indent)
 	LauncherTimer timer;
 	logFile_.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
-	WriteFile(logDir_ + "/" + name + ".cmd", cmdLine);
+	WriteStringToFile(logDir_ + "/" + name + ".cmd", cmdLine);
 
 	std::string fullCmdLine = "( " + cmdLine + " )";
 	if (verbose_ > 0) {
