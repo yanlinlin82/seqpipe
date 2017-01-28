@@ -126,7 +126,7 @@ std::string System::GetUniqueId()
 
 std::string System::EncodeShell(const std::string& s)
 {
-	if (s.find_first_of(" \t\r\n\'\"") != std::string::npos) {
+	if (s.find_first_of(" \t\r\n\'\"$!()[]{};|\\/") != std::string::npos) {
 		std::string t;
 		for (size_t i = 0; i < s.size(); ++i) {
 			if (s[i] == '\'') {

@@ -2,6 +2,54 @@
 #include <deque>
 #include "StringUtils.h"
 
+static int ParseHex(int c)
+{
+	if (c >= '0' && c <= '9') {
+		return c - '0';
+	} else if (c >= 'A' && c <= 'F') {
+		return c - 'A' + 10;
+	} else if (c >= 'a' && c <= 'f') {
+		return c - 'a' + 10;
+	} else {
+		return -1;
+	}
+}
+
+static int ParseOct(int c)
+{
+	if (c >= '0' && c <= '7') {
+		return c - '0';
+	} else {
+		return -1;
+	}
+}
+
+static int ParseHex(int c1, int c2)
+{
+	int v1 = ParseHex(c1);
+	if (v1 < 0) {
+		return -1;
+	}
+	int v2 = ParseHex(c2);
+	if (v2 < 0) {
+		return -1;
+	}
+	return v1 * 16 + v2;
+}
+
+static int ParseOct(int c1, int c2)
+{
+	int v1 = ParseOct(c1);
+	if (v1 < 0) {
+		return -1;
+	}
+	int v2 = ParseOct(c2);
+	if (v2 < 0) {
+		return -1;
+	}
+	return v1 * 8 + v2;
+}
+
 bool StringUtils::ParseCommandLine(const std::string& s, std::string& cmd, std::vector<std::string>& arguments)
 {
 	std::deque<std::string> args;
@@ -14,21 +62,20 @@ bool StringUtils::ParseCommandLine(const std::string& s, std::string& cmd, std::
 				word = "";
 			}
 		} else if (s[i] == '\'') {
-			word += s[i];
 			for (++i; i < s.size(); ++i) {
-				word += s[i];
 				if (s[i] == '\'') {
 					break;
 				}
+				word += s[i];
 			}
 			if (i >= s.size()) {
 				return false;
 			}
 		} else if (s[i] == '"') {
-			word += s[i];
 			for (++i; i < s.size(); ++i) {
-				word += s[i];
-				if (s[i] == '\\') {
+				if (s[i] == '"') {
+					break;
+				} else if (s[i] == '\\') {
 					if (i + 1 >= s.size()) {
 						return false;
 					}
@@ -37,31 +84,30 @@ bool StringUtils::ParseCommandLine(const std::string& s, std::string& cmd, std::
 						if (i + 2 >= s.size()) {
 							return false;
 						}
-						if (!isxdigit(s[i + 1]) || !isxdigit(s[i + 2])) {
+						int value = ParseHex(s[i + 1], s[i + 2]);
+						if (value < 0) {
 							return false;
 						}
-						word += "\\x";
-						word += s[i + 1];
-						word += s[i + 2];
+						i += 2;
+						word += static_cast<char>(value);
 					} else if (s[i] == '0') {
 						if (i + 2 >= s.size()) {
 							return false;
 						}
-						if (!(s[i + 1] >= '0' && s[i + 1] <= '7') || !(s[i + 2] >= '0' && s[i + 2] <= '7')) {
+						int value = ParseOct(s[i + 1], s[i + 2]);
+						if (value < 0) {
 							return false;
 						}
-						word += "\\0";
-						word += s[i + 1];
-						word += s[i + 2];
+						i += 2;
+						word += static_cast<char>(value);
 					} else if (s[i] == 't' || s[i] == 'r' || s[i] == 'n' || s[i] == 'b') {
 						word += '\\';
 						word += s[i];
 					} else {
 						return false;
 					}
-				}
-				if (s[i] == '"') {
-					break;
+				} else {
+					word += s[i];
 				}
 			}
 			if (i >= s.size()) {
