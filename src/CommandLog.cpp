@@ -17,6 +17,8 @@ void CommandLog::PrintUsage()
 		"Options:\n"
 		"   -h   Show this help messages.\n"
 		"   -v   Show verbose messages.\n"
+		"\n"
+		"Note: 'seqpipe history' is the synonym of 'seqpipe log'.\n"
 		<< std::endl;
 }
 

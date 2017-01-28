@@ -52,7 +52,7 @@ int main(int argc, const char** argv)
 		CommandRunParallel cmd;
 		return cmd.Run(args);
 
-	} else if (name == "log") {
+	} else if (name == "log" || name == "history") {
 		args.pop_front();
 		CommandLog cmd;
 		return cmd.Run(args);

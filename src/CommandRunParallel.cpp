@@ -7,15 +7,14 @@ void CommandRunParallel::PrintUsage()
 {
 	std::cout << "\n"
 		"Usage:\n"
-		"   seqpipe prun     [options] <commands.txt> [NAME=VALUE ...]\n"
-		"   seqpipe parallel [options] <commands.txt> [NAME=VALUE ...]\n"
+		"   seqpipe prun [options] <commands.txt> [NAME=VALUE ...]\n"
 		"\n"
 		"Options:\n"
 		"   -h         Show this help messages.\n"
 		"   -v         Show verbose messages.\n"
 		"   -t <int>   Max job number in parallel. default as current processor number.\n"
 		"\n"
-		"Note: 'parallel' is the synonym of 'prun'.\n"
+		"Note: 'seqpipe parallel' is the synonym of 'seqpipe prun'.\n"
 		<< std::endl;
 }
 
