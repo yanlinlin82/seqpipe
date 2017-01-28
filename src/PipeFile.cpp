@@ -28,7 +28,5 @@ bool PipeFile::ReadLine()
 		return false;
 	}
 	++lineNo_;
-
-	std::cout << Pos() << "\t" << CurrentLine() << std::endl;
 	return true;
 }
