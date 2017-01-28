@@ -12,7 +12,7 @@ static void PrintUsage()
 		"SeqPipe: a framework for SEQuencing data analysis PIPElines\n"
 		"Version: " << VERSION << "\n"
 		"Author : Linlin Yan (yanlinlin82<at>gmail.com)\n"
-		"Website: https://github.com/yanlinlin82/seqpipe\n"
+		"Website: https://github.com/yanlinlin82/seqpipe/tree/cpp-v0.5\n"
 		"\n"
 		"Usage:\n"
 		"   seqpipe run [options] <workflow.pipe> [NAME=VALUE ...]\n"
