@@ -24,7 +24,7 @@ void MySigAction(int signum, siginfo_t* siginfo, void* ucontext)
 	killed = true;
 #if 0
 	time_t now = time(NULL);
-	logFile.WriteLine(Msg() << "(0) Aborts at " + StringUtils::TimeString(now));
+	logFile_.WriteLine(Msg() << "(0) Aborts at " + StringUtils::TimeString(now));
 #endif
 }
 
@@ -44,67 +44,67 @@ unsigned int LauncherCounter::FetchID()
 	return ++counter_;
 }
 
-int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
+int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent)
 {
 	unsigned int id = counter_.FetchID();
 
 	const std::string name = std::to_string(id) + "." + procName;
 
-	logFile.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << procName);
+	logFile_.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << procName);
 	LauncherTimer timer;
-	logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
+	logFile_.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
-	WriteFile(logDir + "/" + name + ".pipeline", procName);
+	WriteFile(logDir_ + "/" + name + ".pipeline", procName);
 
-	int retVal = RunBlock(pipeline, pipeline.GetBlock(procName), logFile, logDir, indent + "  ", verbose);
+	int retVal = RunBlock(pipeline, pipeline.GetBlock(procName), indent + "  ");
 
 	timer.Stop();
-	logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
+	logFile_.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
 
 	return retVal;
 }
 
-int Launcher::RunShell(const CommandItem& item, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
+int Launcher::RunShell(const CommandItem& item, std::string indent)
 {
 	unsigned int id = counter_.FetchID();
 
 	const std::string name = std::to_string(id) + "." + StringUtils::RemoveSpecialCharacters(item.name_);
 	const auto& cmdLine = item.cmdLine_;
 
-	logFile.WriteLine(Msg() << indent << "(" << id << ") [shell] " << cmdLine);
+	logFile_.WriteLine(Msg() << indent << "(" << id << ") [shell] " << cmdLine);
 	LauncherTimer timer;
-	logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
+	logFile_.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
-	WriteFile(logDir + "/" + name + ".cmd", cmdLine);
+	WriteFile(logDir_ + "/" + name + ".cmd", cmdLine);
 
 	std::string fullCmdLine = "( " + cmdLine + " )";
-	if (verbose > 0) {
-		fullCmdLine += " 2> >(tee -a " + logDir + "/" + name + ".err >&2)";
-		fullCmdLine += " > >(tee -a " + logDir + "/" + name + ".log)";
+	if (verbose_ > 0) {
+		fullCmdLine += " 2> >(tee -a " + logDir_ + "/" + name + ".err >&2)";
+		fullCmdLine += " > >(tee -a " + logDir_ + "/" + name + ".log)";
 	} else {
-		fullCmdLine += " 2>>" + logDir + "/" + name + ".err";
-		fullCmdLine += " >>" + logDir + "/" + name + ".log";
+		fullCmdLine += " 2>>" + logDir_ + "/" + name + ".err";
+		fullCmdLine += " >>" + logDir_ + "/" + name + ".log";
 	}
 	int retVal = System::Execute(fullCmdLine.c_str());
 
 	timer.Stop();
-	logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
+	logFile_.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
 
 	if (retVal != 0) {
-		logFile.WriteLine(Msg() << indent << "(" << id << ") returns " << retVal);
+		logFile_.WriteLine(Msg() << indent << "(" << id << ") returns " << retVal);
 		return retVal;
 	}
 	return 0;
 }
 
-int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
+int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, std::string indent)
 {
 	for (size_t i = 0; i < block.items_.size() && !killed; ++i) {
 		int retVal;
 		if (pipeline.HasProcedure(block.items_[i].name_)) {
-			retVal = RunProc(pipeline, block.items_[i].name_, logFile, logDir, indent, verbose);
+			retVal = RunProc(pipeline, block.items_[i].name_, indent);
 		} else {
-			retVal = RunShell(block.items_[i], logFile, logDir, indent, verbose);
+			retVal = RunShell(block.items_[i], indent);
 		}
 		if (retVal != 0) {
 			return retVal;
@@ -113,7 +113,7 @@ int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, LogFile& lo
 	return 0;
 }
 
-int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose)
+int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose_)
 {
 	LauncherTimer timer;
 
@@ -123,40 +123,40 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 	}
 
 	const auto uniqueId = System::GetUniqueId();
-	const auto logDir = LOG_ROOT + "/" + uniqueId;
+	const auto logDir_ = LOG_ROOT + "/" + uniqueId;
 
-	if (!PrepareToRun(logDir, uniqueId)) {
+	if (!PrepareToRun(logDir_, uniqueId)) {
 		return 1;
 	}
-	if (!RecordSysInfo(logDir + "/sysinfo")) {
+	if (!RecordSysInfo(logDir_ + "/sysinfo")) {
 		return 1;
 	}
-	if (!pipeline.Save(logDir + "/pipeline")) {
-		std::cerr << "Error: Can not write file '" << logDir << "/pipeline'!" << std::endl;
+	if (!pipeline.Save(logDir_ + "/pipeline")) {
+		std::cerr << "Error: Can not write file '" << logDir_ << "/pipeline'!" << std::endl;
 		return 1;
 	}
 
-	LogFile logFile(logDir + "/log");
-	logFile.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
+	logFile_.Initialize(logDir_ + "/log");
+	logFile_.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
 
 	SetSigAction();
 
 	int retVal;
 	if (procName.empty()) {
-		retVal = RunBlock(pipeline, pipeline.GetBlock(""), logFile, logDir, "", verbose);
+		retVal = RunBlock(pipeline, pipeline.GetBlock(""), "");
 	} else {
-		retVal = RunProc(pipeline, procName, logFile, logDir, "", verbose);
+		retVal = RunProc(pipeline, procName, "");
 	}
 	timer.Stop();
 	if (retVal != 0) {
-		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");
+		logFile_.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");
 	} else {
-		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished successfully! (elapsed: " << timer.Elapse() << ")");
+		logFile_.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished successfully! (elapsed: " << timer.Elapse() << ")");
 	}
 	return retVal;
 }
 
-bool Launcher::PrepareToRun(const std::string& logDir, const std::string& uniqueId)
+bool Launcher::PrepareToRun(const std::string& logDir_, const std::string& uniqueId)
 {
 	Semaphore sem("/seqpipe");
 	std::lock_guard<Semaphore> lock(sem);
@@ -164,7 +164,7 @@ bool Launcher::PrepareToRun(const std::string& logDir, const std::string& unique
 	if (!System::EnsureDirectory(LOG_ROOT)) {
 		return false;
 	}
-	if (!System::EnsureDirectory(logDir)) {
+	if (!System::EnsureDirectory(logDir_)) {
 		return false;
 	}
 

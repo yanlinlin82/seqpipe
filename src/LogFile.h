@@ -9,7 +9,7 @@
 class LogFile
 {
 public:
-	explicit LogFile(const std::string& filename);
+	bool Initialize(const std::string& filename);
 public:
 	void WriteLine(const std::string& s);
 private:

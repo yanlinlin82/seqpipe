@@ -1,8 +1,10 @@
 #include <iostream>
 #include "LogFile.h"
 
-LogFile::LogFile(const std::string& filename): file_(filename)
+bool LogFile::Initialize(const std::string& filename)
 {
+	file_.open(filename);
+	return file_.is_open();
 }
 
 void LogFile::WriteLine(const std::string& s)
