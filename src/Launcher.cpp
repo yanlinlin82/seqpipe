@@ -27,7 +27,7 @@ void MySigAction(int signum, siginfo_t* siginfo, void* ucontext)
 #endif
 }
 
-int Launcher::Run(const Pipeline& pipeline, LogFile& logFile, const std::string& logDir, int verbose)
+int Launcher::Run(const Procedure& proc, LogFile& logFile, const std::string& logDir, int verbose)
 {
 	struct sigaction sa = { };
 	sa.sa_sigaction = MySigAction;
@@ -36,7 +36,7 @@ int Launcher::Run(const Pipeline& pipeline, LogFile& logFile, const std::string&
 	sigaction(SIGINT, &sa, NULL);
 	sigaction(SIGTERM, &sa, NULL);
 
-	const auto& cmdLines = pipeline.GetCommandLines();
+	const auto& cmdLines = proc.GetCommandLines();
 	for (size_t i = 0; i < cmdLines.size() && !killed; ++i) {
 		const std::string name = std::to_string(i + 1) + "." + StringUtils::RemoveSpecialCharacters(cmdLines[i].name_);
 		const auto& cmdLine = cmdLines[i].cmdLine_;
@@ -68,8 +68,13 @@ int Launcher::Run(const Pipeline& pipeline, LogFile& logFile, const std::string&
 	return 0;
 }
 
-int Launcher::Run(const Pipeline& pipeline, int verbose)
+int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose)
 {
+	const Procedure* proc = pipeline.GetProc(procName);
+	if (!proc) {
+		return 1;
+	}
+
 	const auto uniqueId = System::GetUniqueId();
 	const auto logDir = LOG_ROOT + "/" + uniqueId;
 
@@ -87,7 +92,7 @@ int Launcher::Run(const Pipeline& pipeline, int verbose)
 	LogFile logFile(logDir + "/log");
 	logFile.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
 
-	int retVal = Run(pipeline, logFile, logDir, verbose);
+	int retVal = Run(*proc, logFile, logDir, verbose);
 	if (retVal != 0) {
 		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "!");
 	} else {

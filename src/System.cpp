@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <libgen.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -94,6 +95,12 @@ bool System::HasExecutiveAttribute(const std::string& path)
 {
 	struct stat buffer;
 	return (stat(path.c_str(), &buffer) == 0 && (buffer.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)));
+}
+
+std::string System::DirName(const std::string& path)
+{
+	std::string buffer = path;
+	return dirname(&buffer[0]);
 }
 
 std::string System::GetUniqueId()

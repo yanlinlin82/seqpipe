@@ -99,10 +99,9 @@ bool CommandRunDeprecated::ParseArgs(const std::list<std::string>& args)
 
 void CommandRunDeprecated::ListModules()
 {
-	const auto modules = pipeline_.GetModules();
-	std::cout << std::endl;
-	for (const auto& m : modules) {
-		std::cout << "   " << m << std::endl;
+	std::cout << "\nCurrent available user-defined procedures:\n";
+	for (const auto& name : pipeline_.GetProcNameList()) {
+		std::cout << "   " << name << "\n";
 	}
 	std::cout << std::endl;
 }
@@ -123,5 +122,5 @@ int CommandRunDeprecated::Run(const std::list<std::string>& args)
 	}
 
 	Launcher launcher;
-	return launcher.Run(pipeline_, verbose_);
+	return launcher.Run(pipeline_, proc_, verbose_);
 }
