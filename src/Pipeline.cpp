@@ -21,63 +21,6 @@ bool Pipeline::CheckIfPipeFile(const std::string& command)
 	return true;
 }
 
-static bool IsEmptyLine(const std::string& s)
-{
-	return std::regex_match(s, std::regex("^\\s*$"));
-}
-
-static bool IsCommentLine(const std::string& s)
-{
-	return std::regex_match(s, std::regex("^\\s*#$"));
-}
-
-static bool IsDescLine(const std::string& s)
-{
-	return std::regex_match(s, std::regex("^\\s*#\\["));
-}
-
-static bool ParseAttrLine(const std::string& s)
-{
-	return std::regex_match(s, std::regex("^\\s*#\\[(\\w+\\s+|)(\\s*([\\w\\.]+)=\"[^\"]*\"(\\s+([\\w\\.]+)=\"[^\"]*\")*|)\\s*\\]\\s*$"));
-}
-
-static bool IsIncLine(const std::string& s, std::string& filename)
-{
-	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("^\\s*(SP_include|source|\\.)\\s+(.*)\\s*$"))) {
-		return false;
-	}
-	filename = sm[2];
-	return true;
-}
-
-static bool IsVarLine(const std::string& s, std::string& name, std::string& value)
-{
-	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("^\\s*([\\w\\.]+)\\s*=(.*)$"))) {
-		return false;
-	}
-	name = sm[1];
-	value = sm[2];
-	return true;
-}
-
-static bool IsFuncLine(const std::string& s, std::string& name, std::string& leftBracket)
-{
-	std::smatch sm;
-	if (std::regex_match(s, sm, std::regex("^\\s*function\\s+([\\w\\.]+)\\s*(\\{|\\{\\{|)\\s*$"))) {
-		name = sm[1];
-		leftBracket = sm[2];
-		return true;
-	}
-	if (std::regex_match(s, sm, std::regex("^\\s*([\\w\\.]+)\\s*\\(\\s*\\)\\s*(\\{|\\{\\{|)\\s*$"))) {
-		name = sm[1];
-		leftBracket = sm[2];
-		return true;
-	}
-	return false;
-}
-
 std::vector<std::string> Pipeline::GetProcNameList() const
 {
 	std::vector<std::string> nameList;
@@ -85,26 +28,6 @@ std::vector<std::string> Pipeline::GetProcNameList() const
 		nameList.push_back(it->first);
 	}
 	return nameList;
-}
-
-static bool IsLeftBracket(const std::string& s, std::string& leftBracket)
-{
-	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("^\\s*({|{{)\\s*$"))) {
-		return false;
-	}
-	leftBracket = sm[1];
-	return true;
-}
-
-static bool IsRightBracket(const std::string& s, std::string& rightBracket)
-{
-	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("^\\s*(}|}})\\s*$"))) {
-		return false;
-	}
-	rightBracket = sm[1];
-	return true;
 }
 
 bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc)
@@ -118,15 +41,15 @@ bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string lef
 
 	if (leftBracket.empty()) {
 		while (file.ReadLine()) {
-			if (IsEmptyLine(file.CurrentLine())) {
+			if (PipeFile::IsEmptyLine(file.CurrentLine())) {
 				continue;
-			} else if (IsCommentLine(file.CurrentLine())) {
-				if (IsDescLine(file.CurrentLine())) {
+			} else if (PipeFile::IsCommentLine(file.CurrentLine())) {
+				if (PipeFile::IsDescLine(file.CurrentLine())) {
 					std::cerr << "ERROR: Unexpected attribute line in " << file.Pos() << std::endl;
 					return false;
 				}
 				continue;
-			} else if (!IsLeftBracket(file.CurrentLine(), leftBracket)) {
+			} else if (!PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
 				std::cerr << "ERROR: Unexpected line in " << file.Pos() << "\n"
 					"   Only '{' or '{{' was expected here." << std::endl;
 				return false;
@@ -138,7 +61,7 @@ bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string lef
 	procList_[name].SetName(name);
 	while (file.ReadLine()) {
 		std::string rightBracket;
-		if (IsRightBracket(file.CurrentLine(), rightBracket)) {
+		if (PipeFile::IsRightBracket(file.CurrentLine(), rightBracket)) {
 			if (leftBracket == "{" && rightBracket == "}}") {
 				std::cerr << "ERROR: Unexpected right bracket in " << file.Pos() << "\n"
 					"   Right bracket '}' was expected here." << std::endl;
@@ -170,10 +93,10 @@ bool Pipeline::LoadConf(const std::string& filename, std::map<std::string, std::
 		++lineNo;
 		std::string name;
 		std::string value;
-		if (IsVarLine(line, name, value)) {
+		if (PipeFile::IsVarLine(line, name, value)) {
 			confMap[name] = value;
 		} else {
-			if (!IsEmptyLine(line) && !IsCommentLine(line)) {
+			if (!PipeFile::IsEmptyLine(line) && !PipeFile::IsCommentLine(line)) {
 				std::cerr << "ERROR: Invalid syntax of configure file in " << filename << "(" << lineNo << ")\n"
 					"  Only global variable definition could be included in configure file!" << std::endl;
 				return false;
@@ -222,12 +145,12 @@ bool Pipeline::Load(const std::string& filename)
 	}
 	while (file.ReadLine()) {
 
-		if (IsEmptyLine(file.CurrentLine())) {
+		if (PipeFile::IsEmptyLine(file.CurrentLine())) {
 			continue;
 		}
-		if (IsCommentLine(file.CurrentLine())) {
-			if (IsDescLine(file.CurrentLine())) {
-				if (!ParseAttrLine(file.CurrentLine())) {
+		if (PipeFile::IsCommentLine(file.CurrentLine())) {
+			if (PipeFile::IsDescLine(file.CurrentLine())) {
+				if (!PipeFile::ParseAttrLine(file.CurrentLine())) {
 					std::cerr << "WARNING: Invalid format of attribute in " << file.Pos() << "!" << std::endl;
 				}
 			}
@@ -235,7 +158,7 @@ bool Pipeline::Load(const std::string& filename)
 		}
 
 		std::string includeFilename;
-		if (IsIncLine(file.CurrentLine(), includeFilename)) {
+		if (PipeFile::IsIncLine(file.CurrentLine(), includeFilename)) {
 			std::cerr << "Loading module '" << includeFilename << "'" << std::endl;
 			if (!LoadConf(System::DirName(file.Filename()) + "/" + includeFilename, confMap)) {
 				return false;
@@ -245,12 +168,12 @@ bool Pipeline::Load(const std::string& filename)
 
 		std::string name;
 		std::string value;
-		if (IsVarLine(file.CurrentLine(), name, value)) {
+		if (PipeFile::IsVarLine(file.CurrentLine(), name, value)) {
 			confMap[name] = value;
 		}
 
 		std::string leftBracket;
-		if (IsFuncLine(file.CurrentLine(), name, leftBracket)) {
+		if (PipeFile::IsFuncLine(file.CurrentLine(), name, leftBracket)) {
 			Procedure proc;
 			if (!LoadProc(file, name, leftBracket, proc)) {
 				return false;
