@@ -102,6 +102,8 @@ int Launcher::RunBlock(const Procedure& proc, LogFile& logFile, const std::strin
 
 int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose)
 {
+	time_t t0 = time(NULL);
+
 	const Procedure* proc = pipeline.GetProc(procName);
 	if (!proc) {
 		return 1;
@@ -132,10 +134,11 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 	} else {
 		retVal = RunProc(*proc, logFile, logDir, "", verbose);
 	}
+	time_t t = time(NULL);
 	if (retVal != 0) {
-		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "!");
+		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
 	} else {
-		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished successfully!");
+		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished successfully! (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
 	}
 	return retVal;
 }
