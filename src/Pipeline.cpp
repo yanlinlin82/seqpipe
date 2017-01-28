@@ -246,7 +246,8 @@ const Procedure* Pipeline::GetProc(const std::string& name) const
 {
 	if (name.empty()) {
 		if (defaultProc_.GetCommandLines().empty()) {
-			std::cerr << "ERROR: No procedure name provided!" << std::endl;
+			std::cerr << "ERROR: The procedure name should be provided, since no any global command found.\n"
+				"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
 			return NULL;
 		}
 		return &defaultProc_;

@@ -33,28 +33,28 @@ bool PipeFile::ReadLine()
 
 bool PipeFile::IsEmptyLine(const std::string& s)
 {
-	return std::regex_match(s, std::regex("^\\s*$"));
+	return std::regex_match(s, std::regex("\\s*"));
 }
 
 bool PipeFile::IsCommentLine(const std::string& s)
 {
-	return std::regex_match(s, std::regex("^\\s*#$"));
+	return std::regex_search(s, std::regex("^\\s*[#]"));
 }
 
 bool PipeFile::IsDescLine(const std::string& s)
 {
-	return std::regex_match(s, std::regex("^\\s*#\\["));
+	return std::regex_search(s, std::regex("^\\s*#\\["));
 }
 
 bool PipeFile::ParseAttrLine(const std::string& s)
 {
-	return std::regex_match(s, std::regex("^\\s*#\\[(\\w+\\s+|)(\\s*([\\w\\.]+)=\"[^\"]*\"(\\s+([\\w\\.]+)=\"[^\"]*\")*|)\\s*\\]\\s*$"));
+	return std::regex_match(s, std::regex("\\s*#\\[(\\w+\\s+|)(\\s*([\\w\\.]+)=\"[^\"]*\"(\\s+([\\w\\.]+)=\"[^\"]*\")*|)\\s*\\]\\s*"));
 }
 
 bool PipeFile::IsIncLine(const std::string& s, std::string& filename)
 {
 	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("^\\s*(SP_include|source|\\.)\\s+(.*)\\s*$"))) {
+	if (!std::regex_match(s, sm, std::regex("\\s*(SP_include|source|\\.)\\s+(.*)\\s*"))) {
 		return false;
 	}
 	filename = sm[2];
@@ -64,7 +64,7 @@ bool PipeFile::IsIncLine(const std::string& s, std::string& filename)
 bool PipeFile::IsVarLine(const std::string& s, std::string& name, std::string& value)
 {
 	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("^\\s*([\\w\\.]+)\\s*=(.*)$"))) {
+	if (!std::regex_match(s, sm, std::regex("\\s*([\\w\\.]+)\\s*=(.*)"))) {
 		return false;
 	}
 	name = sm[1];
@@ -75,12 +75,12 @@ bool PipeFile::IsVarLine(const std::string& s, std::string& name, std::string& v
 bool PipeFile::IsFuncLine(const std::string& s, std::string& name, std::string& leftBracket)
 {
 	std::smatch sm;
-	if (std::regex_match(s, sm, std::regex("^\\s*function\\s+([\\w\\.]+)\\s*(\\{|\\{\\{|)\\s*$"))) {
+	if (std::regex_match(s, sm, std::regex("\\s*function\\s+([\\w\\.]+)\\s*(\\{|\\{\\{|)\\s*"))) {
 		name = sm[1];
 		leftBracket = sm[2];
 		return true;
 	}
-	if (std::regex_match(s, sm, std::regex("^\\s*([\\w\\.]+)\\s*\\(\\s*\\)\\s*(\\{|\\{\\{|)\\s*$"))) {
+	if (std::regex_match(s, sm, std::regex("\\s*([\\w\\.]+)\\s*\\(\\s*\\)\\s*(\\{|\\{\\{|)\\s*"))) {
 		name = sm[1];
 		leftBracket = sm[2];
 		return true;
@@ -91,7 +91,7 @@ bool PipeFile::IsFuncLine(const std::string& s, std::string& name, std::string& 
 bool PipeFile::IsLeftBracket(const std::string& s, std::string& leftBracket)
 {
 	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("^\\s*({|{{)\\s*$"))) {
+	if (!std::regex_match(s, sm, std::regex("\\s*({|{{)\\s*"))) {
 		return false;
 	}
 	leftBracket = sm[1];
@@ -101,7 +101,7 @@ bool PipeFile::IsLeftBracket(const std::string& s, std::string& leftBracket)
 bool PipeFile::IsRightBracket(const std::string& s, std::string& rightBracket)
 {
 	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("^\\s*(}|}})\\s*$"))) {
+	if (!std::regex_match(s, sm, std::regex("\\s*(}|}})\\s*"))) {
 		return false;
 	}
 	rightBracket = sm[1];
