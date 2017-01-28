@@ -20,6 +20,7 @@ public:
 	std::string Pos() const { return pos_; }
 	std::vector<CommandItem> GetCommandLines() const { return commandLines_; }
 
+	void SetName(const std::string& name) { name_ = name; }
 	bool AppendCommand(const std::string& line);
 	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
 private:

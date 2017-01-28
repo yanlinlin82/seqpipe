@@ -27,7 +27,7 @@ void MySigAction(int signum, siginfo_t* siginfo, void* ucontext)
 #endif
 }
 
-int Launcher::Run(const Procedure& proc, LogFile& logFile, const std::string& logDir, int verbose)
+static void SetSigAction()
 {
 	struct sigaction sa = { };
 	sa.sa_sigaction = MySigAction;
@@ -35,15 +35,47 @@ int Launcher::Run(const Procedure& proc, LogFile& logFile, const std::string& lo
 
 	sigaction(SIGINT, &sa, NULL);
 	sigaction(SIGTERM, &sa, NULL);
+}
 
+unsigned int LauncherCounter::FetchID()
+{
+	std::lock_guard<std::mutex> lock(mutex_);
+	return ++counter_;
+}
+
+int Launcher::RunProc(const Procedure& proc, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
+{
+	unsigned int id = counter_.FetchID();
+
+	const std::string name = std::to_string(id) + "." + proc.Name();
+
+	logFile.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << proc.Name());
+	time_t t0 = time(NULL);
+	logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << StringUtils::TimeString(t0));
+
+	WriteFile(logDir + "/" + name + ".pipeline", proc.Name());
+
+	int retVal = RunBlock(proc, logFile, logDir, indent + "  ", verbose);
+
+	time_t t = time(NULL);
+	logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << StringUtils::TimeString(t) << " (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
+
+	return retVal;
+}
+
+int Launcher::RunBlock(const Procedure& proc, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
+{
 	const auto& cmdLines = proc.GetCommandLines();
 	for (size_t i = 0; i < cmdLines.size() && !killed; ++i) {
-		const std::string name = std::to_string(i + 1) + "." + StringUtils::RemoveSpecialCharacters(cmdLines[i].name_);
+
+		unsigned int id = counter_.FetchID();
+
+		const std::string name = std::to_string(id) + "." + StringUtils::RemoveSpecialCharacters(cmdLines[i].name_);
 		const auto& cmdLine = cmdLines[i].cmdLine_;
 
-		logFile.WriteLine(Msg() << "(" << i + 1 << ") [shell] " << cmdLine);
+		logFile.WriteLine(Msg() << indent << "(" << id << ") [shell] " << cmdLine);
 		time_t t0 = time(NULL);
-		logFile.WriteLine(Msg() << "(" << i + 1 << ") starts at " << StringUtils::TimeString(t0));
+		logFile.WriteLine(Msg() << indent << "(" << id << ") starts at " << StringUtils::TimeString(t0));
 
 		WriteFile(logDir + "/" + name + ".cmd", cmdLine);
 
@@ -58,10 +90,10 @@ int Launcher::Run(const Procedure& proc, LogFile& logFile, const std::string& lo
 		int retVal = System::Execute(fullCmdLine.c_str());
 
 		time_t t = time(NULL);
-		logFile.WriteLine(Msg() << "(" << i + 1 << ") ends at " << StringUtils::TimeString(t) << " (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
+		logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << StringUtils::TimeString(t) << " (elapsed: " << StringUtils::DiffTimeString(t - t0) << ")");
 
 		if (retVal != 0) {
-			logFile.WriteLine(Msg() << "(" << i + 1 << ") returns " << retVal);
+			logFile.WriteLine(Msg() << indent << "(" << id << ") returns " << retVal);
 			return retVal;
 		}
 	}
@@ -92,7 +124,14 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 	LogFile logFile(logDir + "/log");
 	logFile.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
 
-	int retVal = Run(*proc, logFile, logDir, verbose);
+	SetSigAction();
+
+	int retVal;
+	if (procName.empty()) {
+		retVal = RunBlock(*proc, logFile, logDir, "", verbose);
+	} else {
+		retVal = RunProc(*proc, logFile, logDir, "", verbose);
+	}
 	if (retVal != 0) {
 		logFile.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "!");
 	} else {

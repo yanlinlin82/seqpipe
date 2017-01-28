@@ -135,6 +135,7 @@ bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string lef
 		}
 	}
 
+	procList_[name].SetName(name);
 	while (file.ReadLine()) {
 		std::string rightBracket;
 		if (IsRightBracket(file.CurrentLine(), rightBracket)) {
@@ -278,16 +279,26 @@ bool Pipeline::Save(const std::string& filename) const
 		return false;
 	}
 
+	bool first = true;
 	for (auto it = procList_.begin(); it != procList_.end(); ++it) {
+		if (first) {
+			first = false;
+		} else {
+			file << "\n";
+		}
+
 		file << it->first << "() {\n";
 		for (const auto& cmd : it->second.GetCommandLines()) {
 			file << "\t" << cmd.cmdLine_ << "\n";
 		}
-		file << "}\n" << std::endl;
+		file << "}\n";
 	}
 
-	for (const auto& cmd : defaultProc_.GetCommandLines()) {
-		file << cmd.cmdLine_ << std::endl;
+	if (!defaultProc_.GetCommandLines().empty()) {
+		file << "\n";
+		for (const auto& cmd : defaultProc_.GetCommandLines()) {
+			file << cmd.cmdLine_ << "\n";
+		}
 	}
 
 	file.close();
