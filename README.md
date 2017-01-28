@@ -36,3 +36,7 @@ A framework for SEQuencing data analysis PIPElines.
     Check log files:
 
         $ ls -lR .seqpipe/last/
+
+## See Also
+
+For more information, see [UserGuide.md](UserGuide.md).
