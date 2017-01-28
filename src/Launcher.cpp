@@ -56,7 +56,7 @@ int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, Log
 
 	WriteFile(logDir + "/" + name + ".pipeline", procName);
 
-	int retVal = RunBlock(pipeline, pipeline.GetCommandLines(procName), logFile, logDir, indent + "  ", verbose);
+	int retVal = RunBlock(pipeline, pipeline.GetBlock(procName), logFile, logDir, indent + "  ", verbose);
 
 	timer.Stop();
 	logFile.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
@@ -97,14 +97,14 @@ int Launcher::RunShell(const CommandItem& item, LogFile& logFile, const std::str
 	return 0;
 }
 
-int Launcher::RunBlock(const Pipeline& pipeline, const std::vector<CommandItem>& cmdList, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
+int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, LogFile& logFile, const std::string& logDir, std::string indent, int verbose)
 {
-	for (size_t i = 0; i < cmdList.size() && !killed; ++i) {
+	for (size_t i = 0; i < block.items_.size() && !killed; ++i) {
 		int retVal;
-		if (pipeline.HasProcedure(cmdList[i].name_)) {
-			retVal = RunProc(pipeline, cmdList[i].name_, logFile, logDir, indent, verbose);
+		if (pipeline.HasProcedure(block.items_[i].name_)) {
+			retVal = RunProc(pipeline, block.items_[i].name_, logFile, logDir, indent, verbose);
 		} else {
-			retVal = RunShell(cmdList[i], logFile, logDir, indent, verbose);
+			retVal = RunShell(block.items_[i], logFile, logDir, indent, verbose);
 		}
 		if (retVal != 0) {
 			return retVal;
@@ -143,7 +143,7 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 
 	int retVal;
 	if (procName.empty()) {
-		retVal = RunBlock(pipeline, pipeline.GetCommandLines(""), logFile, logDir, "", verbose);
+		retVal = RunBlock(pipeline, pipeline.GetBlock(""), logFile, logDir, "", verbose);
 	} else {
 		retVal = RunProc(pipeline, procName, logFile, logDir, "", verbose);
 	}

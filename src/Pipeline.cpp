@@ -131,7 +131,7 @@ bool Procedure::AppendCommand(const std::string& cmd, const std::vector<std::str
 	CommandItem item;
 	item.name_ = cmd;
 	item.cmdLine_ = JoinCommandLine(cmd, arguments);
-	commandLines_.push_back(item);
+	block_.items_.push_back(item);
 	return true;
 }
 
@@ -211,15 +211,15 @@ bool Pipeline::Save(const std::string& filename) const
 		}
 
 		file << it->first << "() {\n";
-		for (const auto& cmd : it->second.GetCommandLines()) {
+		for (const auto& cmd : it->second.GetBlock().items_) {
 			file << "\t" << cmd.cmdLine_ << "\n";
 		}
 		file << "}\n";
 	}
 
-	if (!defaultProc_.GetCommandLines().empty()) {
+	if (!defaultProc_.GetBlock().items_.empty()) {
 		file << "\n";
-		for (const auto& cmd : defaultProc_.GetCommandLines()) {
+		for (const auto& cmd : defaultProc_.GetBlock().items_) {
 			file << cmd.cmdLine_ << "\n";
 		}
 	}
@@ -230,7 +230,7 @@ bool Pipeline::Save(const std::string& filename) const
 
 bool Pipeline::SetDefaultProc(const std::vector<std::string>& cmdList, bool parallel)
 {
-	assert(defaultProc_.GetCommandLines().empty());
+	assert(defaultProc_.GetBlock().items_.empty());
 
 	for (const auto& cmd : cmdList) {
 		defaultProc_.AppendCommand(cmd, {});
@@ -247,23 +247,23 @@ bool Pipeline::HasProcedure(const std::string& name) const
 	return procList_.find(name) != procList_.end();
 }
 
-std::vector<CommandItem> Pipeline::GetCommandLines(const std::string& procName) const
+Block Pipeline::GetBlock(const std::string& procName) const
 {
 	if (procName.empty()) {
-		return defaultProc_.GetCommandLines();
+		return defaultProc_.GetBlock();
 	} else {
 		auto it = procList_.find(procName);
 		if (it == procList_.end()) {
 			throw std::runtime_error("Invalid procName");
 		}
-		return it->second.GetCommandLines();
+		return it->second.GetBlock();
 	}
 }
 
 const Procedure* Pipeline::GetProc(const std::string& name) const
 {
 	if (name.empty()) {
-		if (defaultProc_.GetCommandLines().empty()) {
+		if (defaultProc_.GetBlock().items_.empty()) {
 			std::cerr << "ERROR: The procedure name should be provided, since no any global command found.\n"
 				"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
 			return NULL;

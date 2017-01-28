@@ -13,19 +13,25 @@ public:
 	std::string cmdLine_;
 };
 
+class Block
+{
+public:
+	std::vector<CommandItem> items_;
+};
+
 class Procedure
 {
 public:
 	std::string Name() const { return name_; }
 	std::string Pos() const { return pos_; }
-	std::vector<CommandItem> GetCommandLines() const { return commandLines_; }
+	Block GetBlock() const { return block_; }
 
 	void SetName(const std::string& name) { name_ = name; }
 	bool AppendCommand(const std::string& line);
 	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
 private:
 	std::string name_;
-	std::vector<CommandItem> commandLines_;
+	Block block_;
 	std::string pos_; // format as "filename(line-no)"
 };
 
@@ -41,9 +47,8 @@ public:
 	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
 	bool HasProcedure(const std::string& name) const;
 
-	std::vector<CommandItem> GetCommandLines(const std::string& procName) const;
+	Block GetBlock(const std::string& procName) const;
 	std::vector<std::string> GetProcNameList() const;
-	const Procedure& GetDefaultProc() const { return defaultProc_; }
 
 	const Procedure* GetProc(const std::string& name) const;
 private:
