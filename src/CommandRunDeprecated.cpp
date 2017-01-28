@@ -90,9 +90,7 @@ bool CommandRunDeprecated::ParseArgs(const std::list<std::string>& args)
 	}
 
 	if (!cmdList.empty()) {
-		for (const auto& cmd : cmdList) {
-			pipeline_.AppendCommand(cmd, {});
-		}
+		pipeline_.SetDefaultProc(cmdList, parallel);
 	}
 	return true;
 }

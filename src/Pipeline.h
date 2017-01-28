@@ -37,8 +37,8 @@ public:
 	bool Load(const std::string& filename);
 	bool Save(const std::string& filename) const;
 
+	bool SetDefaultProc(const std::vector<std::string>& cmdList, bool parallel);
 	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
-	std::string JoinCommandLine(const std::string& cmd, const std::vector<std::string>& arguments);
 
 	std::vector<CommandItem> GetCommandLines() const { return defaultProc_.GetCommandLines(); }
 	std::vector<std::string> GetProcNameList() const;

@@ -305,6 +305,15 @@ bool Pipeline::Save(const std::string& filename) const
 	return true;
 }
 
+bool Pipeline::SetDefaultProc(const std::vector<std::string>& cmdList, bool parallel)
+{
+	assert(defaultProc_.GetCommandLines().empty());
+
+	for (const auto& cmd : cmdList) {
+		defaultProc_.AppendCommand(cmd, {});
+	}
+}
+
 bool Pipeline::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
 {
 	return defaultProc_.AppendCommand(cmd, arguments);

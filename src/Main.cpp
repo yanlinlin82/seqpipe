@@ -2,6 +2,7 @@
 #include <string>
 #include <list>
 #include "CommandRun.h"
+#include "CommandRunParallel.h"
 #include "CommandLog.h"
 #include "CommandRunDeprecated.h"
 #include "SeqPipe.h"
@@ -15,9 +16,10 @@ static void PrintUsage()
 		"Website: https://github.com/yanlinlin82/seqpipe/tree/cpp-v0.5\n"
 		"\n"
 		"Usage:\n"
-		"   seqpipe run [options] <workflow.pipe> [NAME=VALUE ...]\n"
-		"   seqpipe run [options] <command> [arguments ...]\n"
-		"   seqpipe log [options]\n"
+		"   seqpipe run  [options] <command> [arguments ...]\n"
+		"   seqpipe run  [options] <workflow.pipe> [NAME=VALUE ...]\n"
+		"   seqpipe prun [options] <commands.txt> [NAME=VALUE ...]\n"
+		"   seqpipe log  [options]\n"
 		"   seqpipe version\n"
 		"\n"
 		"Deprecated Usage (Compatible to v0.4.x):\n"
@@ -43,6 +45,11 @@ int main(int argc, const char** argv)
 	if (name == "run") {
 		args.pop_front();
 		CommandRun cmd;
+		return cmd.Run(args);
+
+	} else if (name == "prun" || name == "parallel") {
+		args.pop_front();
+		CommandRunParallel cmd;
 		return cmd.Run(args);
 
 	} else if (name == "log") {
