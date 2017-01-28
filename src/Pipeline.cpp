@@ -76,6 +76,8 @@ bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string lef
 			procList_[name].AppendCommand(file.CurrentLine());
 		}
 	}
+	bool parallel = (leftBracket == "{{");
+	procList_[name].SetParallel(parallel);
 
 	return true;
 }
@@ -235,6 +237,7 @@ bool Pipeline::SetDefaultProc(const std::vector<std::string>& cmdList, bool para
 	for (const auto& cmd : cmdList) {
 		defaultProc_.AppendCommand(cmd, {});
 	}
+	defaultProc_.SetParallel(parallel);
 }
 
 bool Pipeline::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)

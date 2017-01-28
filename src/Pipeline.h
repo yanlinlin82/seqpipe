@@ -17,6 +17,7 @@ class Block
 {
 public:
 	std::vector<CommandItem> items_;
+	bool parallel_ = false;
 };
 
 class Procedure
@@ -27,6 +28,7 @@ public:
 	Block GetBlock() const { return block_; }
 
 	void SetName(const std::string& name) { name_ = name; }
+	void SetParallel(bool parallel) { block_.parallel_ = parallel; }
 	bool AppendCommand(const std::string& line);
 	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
 private:
@@ -57,6 +59,7 @@ private:
 private:
 	std::map<std::string, Procedure> procList_;
 	Procedure defaultProc_;
+	std::vector<Block> blockList_;
 };
 
 #endif
