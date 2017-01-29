@@ -10,10 +10,10 @@
 class Launcher
 {
 public:
-	int Run(const Pipeline& pipeline, int verbose);
+	int Run(const Pipeline& pipeline, const ProcArgs& procArgs, int verbose);
 private:
 	int RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent, const ProcArgs& procArgs);
-	int RunBlock(const Pipeline& pipeline, const Block& block, std::string indent);
+	int RunBlock(const Pipeline& pipeline, const Block& block, std::string indent, const ProcArgs& procArgs);
 	int RunShell(const CommandItem& item, std::string indent);
 
 	bool WriteToHistoryLog();

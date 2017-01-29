@@ -44,7 +44,6 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 	bool isShellCmd = false;
 	std::vector<std::string> shellArgs;
 	std::string procName;
-	ProcArgs procArgs;
 
 	for (auto it = args.begin(); it != args.end(); ++it) {
 		const auto& arg = *it;
@@ -98,7 +97,7 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 				shellArgs = std::vector<std::string>(++it, args.end());
 				break;
 			}
-		} else if (procName.empty() && procArgs.IsEmpty() && std::regex_match(arg, std::regex("\\w+"))) {
+		} else if (procName.empty() && procArgs_.IsEmpty() && std::regex_match(arg, std::regex("\\w+"))) {
 			procName = arg;
 		} else {
 			std::smatch sm;
@@ -108,11 +107,11 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 			}
 			const auto& key = sm[1];
 			const auto& value = sm[2];
-			if (procArgs.Has(key)) {
+			if (procArgs_.Has(key)) {
 				std::cerr << "Error: Duplicated option '" << key << "'!" << std::endl;
 				return false;
 			}
-			procArgs.Add(key, value);
+			procArgs_.Add(key, value);
 		}
 	}
 
@@ -146,7 +145,8 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 			std::cerr << "Error: Can not find procedure '" << procName << "'!" << std::endl;
 			return 1;
 		}
-		pipeline_.SetDefaultBlock(procName, procArgs);
+		pipeline_.SetDefaultBlock(procName, procArgs_);
+		procArgs_.Clear();
 	}
 
 	pipeline_.FinalCheckAfterLoad();
@@ -189,5 +189,5 @@ int CommandRun::Run(const std::vector<std::string>& args)
 	}
 
 	Launcher launcher;
-	return launcher.Run(pipeline_, verbose_);
+	return launcher.Run(pipeline_, procArgs_, verbose_);
 }

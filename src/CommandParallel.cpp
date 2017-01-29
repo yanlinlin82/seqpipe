@@ -1,4 +1,5 @@
 #include <iostream>
+#include <regex>
 #include <unistd.h>
 #include "CommandParallel.h"
 #include "Launcher.h"
@@ -16,15 +17,17 @@ void CommandParallel::PrintUsage()
 		<< std::endl;
 }
 
-bool CommandParallel::LoadCommandList(const std::string& filename)
+bool CommandParallel::LoadCmdList(const std::string& filename, std::vector<std::string>& cmdList)
 {
-	std::ifstream file(filename);
+	const auto path = (filename == "-" ? "/dev/stdin" : filename);
+	std::ifstream file(path);
 	if (!file.is_open()) {
+		std::cerr << "Error: Can not load commands from file '" << path << "'!" << std::endl;
 		return false;
 	}
 	std::string line;
 	while (std::getline(file, line)) {
-		commandList_.push_back(line);
+		cmdList.push_back(line);
 	}
 	file.close();
 	return true;
@@ -32,11 +35,11 @@ bool CommandParallel::LoadCommandList(const std::string& filename)
 
 bool CommandParallel::ParseArgs(const std::vector<std::string>& args)
 {
-	bool loaded = false;
+	std::string cmdListFilename;
 
 	for (auto it = args.begin(); it != args.end(); ++it) {
 		const auto& arg = *it;
-		if (arg[0] == '-') {
+		if (arg[0] == '-' && arg != "-") {
 			if (arg == "-h") {
 				PrintUsage();
 				return false;
@@ -49,42 +52,34 @@ bool CommandParallel::ParseArgs(const std::vector<std::string>& args)
 					std::cerr << "Error: Invalid number '" << parameter << "' for option '-t'!" << std::endl;
 					return false;
 				}
-			} else if (arg == "-") {
-				if (commandFilename_.empty()) {
-					if (isatty(fileno(stdin))) {
-						std::cerr << "Error: Failed to load command list from stdin!" << std::endl;
-						return false;
-					}
-					commandFilename_ = "/dev/stdin";
-					if (!LoadCommandList(commandFilename_)) {
-						std::cerr << "Error: Failed to load command list from stdin!" << std::endl;
-						return false;
-					}
-					loaded = true;
-				} else {
-					std::cerr << "Error: Unexpected option '" << arg << "'!" << std::endl;
-					return false;
-				}
 			} else {
 				std::cerr << "Error: Unknown option '" << arg << "'!" << std::endl;
 				return false;
 			}
+		} else if (cmdListFilename.empty()) {
+			cmdListFilename = arg;
+		} else {
+			std::smatch sm;
+			if (!std::regex_match(arg, sm, std::regex("(\\w+)=(.*)"))) {
+				std::cerr << "Error: Invalid option '" << arg << "'! Expecting format 'KEY=VALUE'" << std::endl;
+				return false;
+			}
+			const auto& key = sm[1];
+			const auto& value = sm[2];
+			if (procArgs_.Has(key)) {
+				std::cerr << "Error: Duplicated option '" << key << "'!" << std::endl;
+				return false;
+			}
+			procArgs_.Add(key, value);
 		}
 	}
 
-	if (isatty(fileno(stdin))) {
-		if (commandFilename_.empty()) {
-			PrintUsage();
-			return false;
-		}
-	} else if (!loaded) {
-		if (!LoadCommandList("/dev/stdin")) {
-			std::cerr << "Error: Failed to load pipe from stdin!" << std::endl;
-			return false;
-		}
+	std::vector<std::string> cmdList;
+	if (!LoadCmdList(cmdListFilename, cmdList)) {
+		return false;
 	}
 
-	pipeline_.SetDefaultBlock(commandList_, true);
+	pipeline_.SetDefaultBlock(cmdList, true);
 	return true;
 }
 
@@ -95,5 +90,5 @@ int CommandParallel::Run(const std::vector<std::string>& args)
 	}
 
 	Launcher launcher;
-	return launcher.Run(pipeline_, verbose_);
+	return launcher.Run(pipeline_, procArgs_, verbose_);
 }

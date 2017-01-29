@@ -21,6 +21,7 @@ private:
 	bool forceRun_ = false;
 	bool keepTemp_ = false;
 
+	ProcArgs procArgs_;
 	Pipeline pipeline_;
 	std::string pattern_; // for '-l' or '-L'
 };

@@ -26,6 +26,12 @@ std::string ProcArgs::ToString() const
 	return s;
 }
 
+void ProcArgs::Clear()
+{
+	args_.clear();
+	order_.clear();
+}
+
 const std::string& CommandItem::CmdLine() const
 {
 	assert(type_ == TYPE_SHELL);

@@ -43,7 +43,7 @@ int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, std
 
 	WriteStringToFile(logDir_ + "/" + name + ".pipeline", procName);
 
-	int retVal = RunBlock(pipeline, pipeline.GetBlock(procName), indent + "  ");
+	int retVal = RunBlock(pipeline, pipeline.GetBlock(procName), indent + "  ", procArgs);
 
 	timer.Stop();
 	logFile_.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
@@ -84,7 +84,7 @@ int Launcher::RunShell(const CommandItem& item, std::string indent)
 	return 0;
 }
 
-int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, std::string indent)
+int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, std::string indent, const ProcArgs& procArgs)
 {
 	for (size_t i = 0; i < block.items_.size() && !killed; ++i) {
 		const auto item = block.items_[i];
@@ -113,7 +113,7 @@ std::string Launcher::GetUniqueId()
 	return (text + System::GetHostname());
 }
 
-int Launcher::Run(const Pipeline& pipeline, int verbose)
+int Launcher::Run(const Pipeline& pipeline, const ProcArgs& procArgs, int verbose)
 {
 	verbose_ = verbose;
 	uniqueId_ = GetUniqueId();
@@ -137,7 +137,7 @@ int Launcher::Run(const Pipeline& pipeline, int verbose)
 
 	LauncherTimer timer;
 
-	int retVal = RunBlock(pipeline, pipeline.GetDefaultBlock(), "");
+	int retVal = RunBlock(pipeline, pipeline.GetDefaultBlock(), "", procArgs);
 	timer.Stop();
 	if (retVal != 0) {
 		logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");

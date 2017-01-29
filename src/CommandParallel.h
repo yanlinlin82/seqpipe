@@ -11,14 +11,14 @@ public:
 	int Run(const std::vector<std::string>& args);
 private:
 	void PrintUsage();
-	bool LoadCommandList(const std::string& filename);
 	bool ParseArgs(const std::vector<std::string>& args);
+
+	static bool LoadCmdList(const std::string& filename, std::vector<std::string>& cmdList);
 private:
 	int verbose_ = 0;
 	int maxJobNumber_ = 0;
 
-	std::string commandFilename_;
-	std::vector<std::string> commandList_;
+	ProcArgs procArgs_;
 	Pipeline pipeline_;
 };
 
