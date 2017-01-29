@@ -21,19 +21,30 @@ private:
 class CommandItem
 {
 public:
+	enum CommandType { TYPE_SHELL, TYPE_PROC };
+
 	CommandItem() { }
 	CommandItem(const std::string& cmd, const std::vector<std::string>& arguments);
 	CommandItem(const std::string& procName, const ProcArgs& procArgs);
 
-	std::string ToString() const;
-public:
-	enum Type { TYPE_SHELL, TYPE_PROC };
+	bool ConvertShellToProc();
 
-	Type type_ = TYPE_SHELL;
+	CommandType Type() const { return type_; }
+	const std::string& Name() const { return name_; }
+
+	const std::string& CmdLine() const;
+	const std::string& ShellCmd() const;
+
+	const std::string& ProcName() const;
+	const ProcArgs& GetProcArgs() const;
+
+	std::string ToString() const;
+private:
+	CommandType type_ = TYPE_SHELL;
 	std::string name_;
 
 	// members for 'shell command'
-	std::string cmdLine_;
+	std::string fullCmdLine_;
 	std::string shellCmd_;
 	std::vector<std::string> shellArgs_;
 

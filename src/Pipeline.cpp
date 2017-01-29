@@ -26,24 +26,50 @@ std::string ProcArgs::ToString() const
 	return s;
 }
 
+const std::string& CommandItem::CmdLine() const
+{
+	assert(type_ == TYPE_SHELL);
+	return fullCmdLine_;
+}
+
+const std::string& CommandItem::ShellCmd() const
+{
+	assert(type_ == TYPE_SHELL);
+	return shellCmd_;
+}
+
+const std::string& CommandItem::ProcName() const
+{
+	assert(type_ == TYPE_PROC);
+	return procName_;
+}
+
+const ProcArgs& CommandItem::GetProcArgs() const
+{
+	assert(type_ == TYPE_PROC);
+	return procArgs_;
+}
+
 CommandItem::CommandItem(const std::string& cmd, const std::vector<std::string>& arguments):
 	type_(TYPE_SHELL), shellCmd_(cmd), shellArgs_(arguments)
 {
-	cmdLine_ = cmd;
+	name_ = StringUtils::RemoveSpecialCharacters(cmd);
+	fullCmdLine_ = cmd;
 	for (const auto arg : arguments) {
-		cmdLine_ += ' ' + System::EncodeShell(arg);
+		fullCmdLine_ += ' ' + System::EncodeShell(arg);
 	}
 }
 
 CommandItem::CommandItem(const std::string& procName, const ProcArgs& procArgs):
 	type_(TYPE_PROC), procName_(procName), procArgs_(procArgs)
 {
+	name_ = procName;
 }
 
 std::string CommandItem::ToString() const
 {
 	if (type_ == TYPE_SHELL) {
-		return cmdLine_;
+		return fullCmdLine_;
 	} else {
 		return procName_ + procArgs_.ToString();
 	}
@@ -277,8 +303,8 @@ bool Pipeline::Save(const std::string& filename) const
 		}
 
 		file << it->first << "() {\n";
-		for (const auto& cmd : blockList_[it->second.BlockIndex()].items_) {
-			file << "\t" << cmd.cmdLine_ << "\n";
+		for (const auto& item : blockList_[it->second.BlockIndex()].items_) {
+			file << "\t" << item.ToString() << "\n";
 		}
 		file << "}\n";
 	}
@@ -344,33 +370,36 @@ bool Pipeline::HasAnyDefaultCommand() const
 	return blockList_[0].HasAnyCommand();
 }
 
+bool CommandItem::ConvertShellToProc()
+{
+	ProcArgs procArgs;
+	for (const auto& arg : shellArgs_) {
+		std::smatch sm;
+		if (!std::regex_match(arg, sm, std::regex("(\\w+)=(.*)"))) {
+			std::cerr << "Error: Invalid option '" << arg << "' for calling '" << shellCmd_ << "'!" << std::endl;
+			return false;
+		}
+		const auto& key = sm[1];
+		const auto& value = sm[2];
+		if (!procArgs.Has(key)) {
+			std::cerr << "Error: Duplicated option '" << key << "'!" << std::endl;
+			return false;
+		}
+		procArgs.Add(key, value);
+	}
+	type_ = CommandItem::TYPE_PROC;
+	procName_ = shellCmd_;
+	procArgs_ = procArgs;
+	return true;
+}
+
 bool Pipeline::FinalCheckAfterLoad()
 {
 	for (auto& block : blockList_) {
 		for (auto& item : block.items_) {
-			if (item.type_ == CommandItem::TYPE_SHELL) {
-				if (HasProcedure(item.shellCmd_)) {
-					bool failed = false;
-					ProcArgs procArgs;
-					for (const auto& arg : item.shellArgs_) {
-						std::smatch sm;
-						if (!std::regex_match(arg, sm, std::regex("(\\w+)=(.*)"))) {
-							failed = true;
-							break;
-						}
-						const auto& key = sm[1];
-						const auto& value = sm[2];
-						if (!procArgs.Has(key)) {
-							std::cerr << "Error: Duplicated option '" << key << "'!" << std::endl;
-							return false;
-						}
-						procArgs.Add(key, value);
-					}
-					if (!failed) {
-						item.type_ = CommandItem::TYPE_PROC;
-						item.procName_ = item.shellCmd_;
-						item.procArgs_ = procArgs;
-					}
+			if (item.Type() == CommandItem::TYPE_SHELL && HasProcedure(item.ShellCmd())) {
+				if (!item.ConvertShellToProc()) {
+					return false;
 				}
 			}
 		}

@@ -55,8 +55,8 @@ int Launcher::RunShell(const CommandItem& item, std::string indent)
 {
 	unsigned int id = counter_.FetchId();
 
-	const std::string name = std::to_string(id) + "." + StringUtils::RemoveSpecialCharacters(item.name_);
-	const auto& cmdLine = item.cmdLine_;
+	const std::string name = std::to_string(id) + "." + item.Name();
+	const auto& cmdLine = item.CmdLine();
 
 	logFile_.WriteLine(Msg() << indent << "(" << id << ") [shell] " << cmdLine);
 	LauncherTimer timer;
@@ -89,9 +89,9 @@ int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, std::string
 	for (size_t i = 0; i < block.items_.size() && !killed; ++i) {
 		const auto item = block.items_[i];
 		int retVal;
-		if (item.type_ == CommandItem::TYPE_PROC) {
-			retVal = RunProc(pipeline, item.procName_, indent, item.procArgs_);
-		} else if (item.type_ == CommandItem::TYPE_SHELL) {
+		if (item.Type() == CommandItem::TYPE_PROC) {
+			retVal = RunProc(pipeline, item.ProcName(), indent, item.GetProcArgs());
+		} else if (item.Type() == CommandItem::TYPE_SHELL) {
 			retVal = RunShell(item, indent);
 		}
 		if (retVal != 0) {
