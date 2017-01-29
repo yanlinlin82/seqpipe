@@ -60,13 +60,13 @@ There are different ways to install SeqPipe. Choose any one you like:
 
     The pipeline file can be passed by pipe like:
 
-        $ seqpipe run < hello.pipe
-        $ cat hello.pipe | seqpipe run
+        $ seqpipe run - < hello.pipe
+        $ seqpipe run <(cat hello.pipe)
         $ cat hello.pipe | seqpipe run -  # all these three commands are the same as above
 
 ## Usage Examples
 
-1. Try old mode:
+1. Write workflow pipeline as bash function:
 
         $ cat <<EOF> foo.pipe
         hello() {
@@ -76,24 +76,25 @@ There are different ways to install SeqPipe. Choose any one you like:
         }
         EOF
 
-        $ seqpipe -m foo.pipe hello  # specify 'hello', the name of procedure to run
+        $ seqpipe foo.pipe hello     # specify 'hello', the name of procedure to run
 
     Or:
 
-        $ cat <<EOF>> foo.pipe
-        hello
-        EOF
+        $ echo hello >> foo.pipe
+        $ seqpipe foo.pipe           # now no need to specify the procedure name
 
-        $ seqpipe -m foo.pipe  # now no need to specify the procedure name
-
-2. Try inline mode:
+2. Try inline mode (run in shell command line, with two commands):
 
         $ seqpipe -e date -e pwd
-        $ head .seqpipe/last/*.log  # check outputs
+        $ head .seqpipe/last/*.log   # check outputs
 
 3. Use `seqpipe` to record commands:
 
-        $ seq 1 3 | awk '{print "echo Hello - "$1}' | seqpipe run
+        $ seq 1 3 | awk '{print "echo Hello - "$1}' | seqpipe run -
+
+    Or simply:
+
+        $ seq 1 3 | awk '{print "echo Hello - "$1}' | seqpipe -
 
 ## Reference
 
