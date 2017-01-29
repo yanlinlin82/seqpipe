@@ -10,10 +10,12 @@
 class Launcher
 {
 public:
-	int Run(const Pipeline& pipeline, const ProcArgs& procArgs, int verbose);
+	Launcher(const Pipeline& pipeline, int verbose);
+
+	int Run(const ProcArgs& procArgs);
 private:
-	int RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent, const ProcArgs& procArgs);
-	int RunBlock(const Pipeline& pipeline, const Block& block, std::string indent, const ProcArgs& procArgs);
+	int RunProc(const std::string& procName, std::string indent, const ProcArgs& procArgs);
+	int RunBlock(const Block& block, std::string indent, const ProcArgs& procArgs);
 	int RunShell(const CommandItem& item, std::string indent);
 
 	bool WriteToHistoryLog();
@@ -23,11 +25,13 @@ private:
 
 	static std::string GetUniqueId();
 private:
+	const Pipeline& pipeline_;
+
 	std::string uniqueId_;
 	LauncherCounter counter_;
 	LogFile logFile_;
 	std::string logDir_;
-	int verbose_ = 0;
+	int verbose_;
 };
 
 #endif
