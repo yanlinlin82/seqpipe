@@ -1,11 +1,11 @@
-#ifndef COMMAND_RUN_PARALLEL_H__
-#define COMMAND_RUN_PARALLEL_H__
+#ifndef COMMAND_PARALLEL_H__
+#define COMMAND_PARALLEL_H__
 
 #include <string>
 #include <vector>
 #include "Pipeline.h"
 
-class CommandRunParallel
+class CommandParallel
 {
 public:
 	int Run(const std::vector<std::string>& args);

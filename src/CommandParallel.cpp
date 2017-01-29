@@ -1,24 +1,22 @@
 #include <iostream>
 #include <unistd.h>
-#include "CommandRunParallel.h"
+#include "CommandParallel.h"
 #include "Launcher.h"
 
-void CommandRunParallel::PrintUsage()
+void CommandParallel::PrintUsage()
 {
 	std::cout << "\n"
 		"Usage:\n"
-		"   seqpipe prun [options] <commands.txt> [NAME=VALUE ...]\n"
+		"   seqpipe parallel [options] <commands.txt> [KEY=VALUE ...]\n"
 		"\n"
 		"Options:\n"
 		"   -h         Show help messages.\n"
 		"   -v         Show verbose messages.\n"
 		"   -t <int>   Max job number in parallel. default as current processor number.\n"
-		"\n"
-		"Note: 'seqpipe parallel' is the synonym of 'seqpipe prun'.\n"
 		<< std::endl;
 }
 
-bool CommandRunParallel::LoadCommandList(const std::string& filename)
+bool CommandParallel::LoadCommandList(const std::string& filename)
 {
 	std::ifstream file(filename);
 	if (!file.is_open()) {
@@ -32,7 +30,7 @@ bool CommandRunParallel::LoadCommandList(const std::string& filename)
 	return true;
 }
 
-bool CommandRunParallel::ParseArgs(const std::vector<std::string>& args)
+bool CommandParallel::ParseArgs(const std::vector<std::string>& args)
 {
 	bool loaded = false;
 
@@ -90,7 +88,7 @@ bool CommandRunParallel::ParseArgs(const std::vector<std::string>& args)
 	return true;
 }
 
-int CommandRunParallel::Run(const std::vector<std::string>& args)
+int CommandParallel::Run(const std::vector<std::string>& args)
 {
 	if (!ParseArgs(args)) {
 		return 1;
