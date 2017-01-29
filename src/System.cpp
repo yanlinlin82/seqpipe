@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "System.h"
+#include "StringUtils.h"
 
 std::string System::GetHostname()
 {
@@ -110,6 +111,12 @@ std::string System::DirName(const std::string& path)
 {
 	std::string buffer = path;
 	return dirname(&buffer[0]);
+}
+
+bool System::IsShellCmd(const std::string& path)
+{
+	auto fullpath = StringUtils::Trim(RunShell("/usr/bin/which " + path + " 2>/dev/null"));
+	return !fullpath.empty() && HasExecutiveAttribute(fullpath);
 }
 
 std::string System::EncodeShell(const std::string& s)

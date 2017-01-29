@@ -20,6 +20,7 @@ public:
 
 	static std::string DirName(const std::string& path);
 
+	static bool IsShellCmd(const std::string& path);
 	static std::string EncodeShell(const std::string& s);
 
 	static int Execute(const std::string& cmdLine);

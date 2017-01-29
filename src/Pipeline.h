@@ -46,7 +46,8 @@ public:
 	bool Load(const std::string& filename);
 	bool Save(const std::string& filename) const;
 
-	bool SetDefaultProc(const std::vector<std::string>& cmdList, bool parallel);
+	bool SetDefaultBlock(const std::vector<std::string>& cmdList, bool parallel);
+	bool SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments);
 	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
 
 	bool HasProcedure(const std::string& name) const;

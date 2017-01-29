@@ -10,7 +10,7 @@ void CommandRunParallel::PrintUsage()
 		"   seqpipe prun [options] <commands.txt> [NAME=VALUE ...]\n"
 		"\n"
 		"Options:\n"
-		"   -h         Show this help messages.\n"
+		"   -h         Show help messages.\n"
 		"   -v         Show verbose messages.\n"
 		"   -t <int>   Max job number in parallel. default as current processor number.\n"
 		"\n"
@@ -86,7 +86,7 @@ bool CommandRunParallel::ParseArgs(const std::list<std::string>& args)
 		}
 	}
 
-	pipeline_.SetDefaultProc(commandList_, true);
+	pipeline_.SetDefaultBlock(commandList_, true);
 	return true;
 }
 

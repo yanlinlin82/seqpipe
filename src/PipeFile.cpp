@@ -7,11 +7,12 @@ bool PipeFile::Open(const std::string& filename)
 {
 	assert(!file_.is_open());
 
-	file_.open(filename);
+	auto path = (filename == "-" ? "/dev/stdin" : filename);
+	file_.open(path);
 	if (!file_.is_open()) {
 		return false;
 	}
-	filename_ = filename;
+	filename_ = path;
 	return true;
 }
 

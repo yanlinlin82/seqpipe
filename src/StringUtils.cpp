@@ -2,6 +2,23 @@
 #include <deque>
 #include "StringUtils.h"
 
+std::string StringUtils::TrimLeft(const std::string& s)
+{
+	std::string::size_type pos = s.find_first_not_of(" \t\r\n");
+	return (pos == std::string::npos ? s : s.substr(pos));
+}
+
+std::string StringUtils::TrimRight(const std::string& s)
+{
+	std::string::size_type pos = s.find_last_not_of(" \t\r\n");
+	return (pos == std::string::npos ? s : s.substr(0, pos + 1));
+}
+
+std::string StringUtils::Trim(const std::string& s)
+{
+	return TrimLeft(TrimRight(s));
+}
+
 static int ParseHex(int c)
 {
 	if (c >= '0' && c <= '9') {

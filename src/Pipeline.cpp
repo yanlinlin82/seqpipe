@@ -250,14 +250,22 @@ bool Pipeline::Save(const std::string& filename) const
 	return true;
 }
 
-bool Pipeline::SetDefaultProc(const std::vector<std::string>& cmdList, bool parallel)
+bool Pipeline::SetDefaultBlock(const std::vector<std::string>& cmdList, bool parallel)
 {
 	assert(defaultBlock_.items_.empty());
-
 	for (const auto& cmd : cmdList) {
-		defaultBlock_.AppendCommand(cmd, {});
+		if (!defaultBlock_.AppendCommand(cmd)) {
+			return false;
+		}
 	}
 	defaultBlock_.SetParallel(parallel);
+	return true;
+}
+
+bool Pipeline::SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments)
+{
+	assert(defaultBlock_.items_.empty());
+	return defaultBlock_.AppendCommand(cmd, arguments);
 }
 
 bool Pipeline::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)

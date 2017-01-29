@@ -4,7 +4,7 @@
 #include "CommandRun.h"
 #include "CommandRunParallel.h"
 #include "CommandLog.h"
-#include "CommandRunDeprecated.h"
+#include "CommandHelp.h"
 #include "SeqPipe.h"
 
 static void PrintUsage()
@@ -16,18 +16,11 @@ static void PrintUsage()
 		"Website: https://github.com/yanlinlin82/seqpipe/tree/cpp-v0.5\n"
 		"\n"
 		"Usage:\n"
-		"   seqpipe run  [options] <command> [arguments ...]\n"
-		"   seqpipe run  [options] <workflow.pipe> [NAME=VALUE ...]\n"
-		"   seqpipe prun [options] <commands.txt> [NAME=VALUE ...]\n"
-		"   seqpipe log  [options]\n"
-		"   seqpipe version\n"
+		"   seqpipe run   [options] <cmd> [args ...]\n"
+		"   seqpipe [run] [options] <workflow.pipe> [procedure] [KEY=VALUE ...]\n"
+		"   seqpipe log   [options]\n"
 		"\n"
-		"Deprecated Usage (Compatible to v0.4.x):\n"
-		"   seqpipe [options] <procedure> [NAME=VALUE ...]\n"
-		"   seqpipe [options] -e <cmd> [-e <cmd> ...] [NAME=VALUE ...]\n"
-		"   seqpipe [options] -E <cmd> [-E <cmd> ...] [NAME=VALUE ...]\n"
-		"\n"
-		"Type 'seqpipe -h' to see help messages for deprecated usage.\n"
+		"Try 'seqpipe help' to list all available subcommands.\n"
 		<< std::endl;
 }
 
@@ -61,8 +54,13 @@ int main(int argc, const char** argv)
 		args.pop_front();
 		std::cout << VERSION << std::endl;
 		return 0;
+
+	} else if (name == "help") {
+		args.pop_front();
+		CommandHelp cmd;
+		return cmd.Run(args);
 	}
 
-	CommandRunDeprecated cmd;
+	CommandRun cmd; // Try as optional 'run' command
 	return cmd.Run(args);
 }

@@ -15,7 +15,7 @@ void CommandLog::PrintUsage()
 		"   seqpipe log remove [id_or_order]\n"
 		"\n"
 		"Options:\n"
-		"   -h   Show this help messages.\n"
+		"   -h   Show help messages.\n"
 		"   -v   Show verbose messages.\n"
 		"\n"
 		"Note: 'seqpipe history' is the synonym of 'seqpipe log'.\n"
