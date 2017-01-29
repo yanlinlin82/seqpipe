@@ -315,13 +315,16 @@ bool Pipeline::Save(const std::string& filename) const
 		file << "}\n";
 	}
 
-	if (!blockList_[0].items_.empty()) {
+	const Block& block = blockList_[0];
+	if (block.HasAnyCommand()) {
 		if (!procList_.empty()) {
 			file << "\n";
 		}
+		file << (block.parallel_ ? "{{\n" : "{\n");
 		for (const auto& item : blockList_[0].items_) {
-			file << item.ToString() << "\n";
+			file << "\t" << item.ToString() << "\n";
 		}
+		file << (block.parallel_ ? "}}\n" : "}\n");
 	}
 
 	file.close();
