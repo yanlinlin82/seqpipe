@@ -102,6 +102,7 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 			std::smatch sm;
 			if (!std::regex_match(arg, sm, std::regex("(\\w+)=(.*)"))) {
 				std::cerr << "Error: Invalid option '" << arg << "'! Expecting format 'KEY=VALUE'" << std::endl;
+				return false;
 			}
 			const auto& name = sm[1];
 			const auto& value = sm[2];
@@ -109,7 +110,7 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 		}
 	}
 
-	if (cmd.empty() && cmdList.empty()) {
+	if (cmd.empty() && cmdList.empty() && moduleFilenames.empty()) {
 		PrintUsage();
 		return false;
 	}
