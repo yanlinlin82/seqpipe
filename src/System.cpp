@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <regex>
 #include <libgen.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -28,7 +29,14 @@ std::string System::GetFullCommandLine()
 			if (!cmdLine.empty()) {
 				cmdLine += ' ';
 			}
-			cmdLine += EncodeShell(word);
+			std::smatch sm;
+			if (std::regex_match(word, sm, std::regex("(\\w+)=(.*)"))) {
+				std::string key = sm[1];
+				std::string value = sm[2];
+				cmdLine += key + "=" + EncodeShell(value);
+			} else {
+				cmdLine += EncodeShell(word);
+			}
 		}
 	}
 	return cmdLine;
