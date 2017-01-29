@@ -50,7 +50,7 @@ public:
 	Block GetBlock(const std::string& procName) const;
 	std::vector<std::string> GetProcNameList() const;
 
-	const Procedure* GetProc(const std::string& name) const;
+	bool HasAnyDefaultCommand() const;
 private:
 	bool LoadConf(const std::string& filename, std::map<std::string, std::string>& confMap);
 	bool LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc);

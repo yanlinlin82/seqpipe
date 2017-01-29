@@ -221,7 +221,9 @@ bool Pipeline::Save(const std::string& filename) const
 	}
 
 	if (!defaultProc_.GetBlock().items_.empty()) {
-		file << "\n";
+		if (!procList_.empty()) {
+			file << "\n";
+		}
 		for (const auto& cmd : defaultProc_.GetBlock().items_) {
 			file << cmd.cmdLine_ << "\n";
 		}
@@ -264,21 +266,7 @@ Block Pipeline::GetBlock(const std::string& procName) const
 	}
 }
 
-const Procedure* Pipeline::GetProc(const std::string& name) const
+bool Pipeline::HasAnyDefaultCommand() const
 {
-	if (name.empty()) {
-		if (defaultProc_.GetBlock().items_.empty()) {
-			std::cerr << "Error: The procedure name should be provided, since no any global command found.\n"
-				"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
-			return NULL;
-		}
-		return &defaultProc_;
-	} else {
-		auto it = procList_.find(name);
-		if (it == procList_.end()) {
-			std::cerr << "Error: Can not find procedure '" << name << "'!" << std::endl;
-			return NULL;
-		}
-		return &it->second;
-	}
+	return !defaultProc_.GetBlock().items_.empty();
 }

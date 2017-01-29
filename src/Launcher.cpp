@@ -114,17 +114,23 @@ std::string Launcher::GetUniqueId()
 
 int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose_)
 {
-	LauncherTimer timer;
-
-	const Procedure* proc = pipeline.GetProc(procName);
-	if (!proc) {
-		return 1;
+	if (procName.empty()) {
+		if (!pipeline.HasAnyDefaultCommand()) {
+			std::cerr << "Error: The procedure name should be provided, since no any global command found.\n"
+				"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
+			return 1;
+		}
+	} else {
+		if (!pipeline.HasProcedure(procName)) {
+			std::cerr << "Error: Can not find procedure '" << procName << "'!" << std::endl;
+			return 1;
+		}
 	}
 
-	const auto uniqueId = GetUniqueId();
-	const auto logDir_ = LOG_ROOT + "/" + uniqueId;
+	uniqueId_ = GetUniqueId();
+	logDir_ = LOG_ROOT + "/" + uniqueId_;
 
-	if (!PrepareToRun(logDir_, uniqueId)) {
+	if (!PrepareToRun()) {
 		return 1;
 	}
 	if (!RecordSysInfo(logDir_ + "/sysinfo")) {
@@ -136,9 +142,11 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 	}
 
 	logFile_.Initialize(logDir_ + "/log");
-	logFile_.WriteLine(Msg() << "[" << uniqueId << "] " << System::GetFullCommandLine());
+	logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] " << System::GetFullCommandLine());
 
 	SetSigAction();
+
+	LauncherTimer timer;
 
 	int retVal;
 	if (procName.empty()) {
@@ -148,14 +156,14 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 	}
 	timer.Stop();
 	if (retVal != 0) {
-		logFile_.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");
+		logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");
 	} else {
-		logFile_.WriteLine(Msg() << "[" << uniqueId << "] Pipeline finished successfully! (elapsed: " << timer.Elapse() << ")");
+		logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] Pipeline finished successfully! (elapsed: " << timer.Elapse() << ")");
 	}
 	return retVal;
 }
 
-bool Launcher::PrepareToRun(const std::string& logDir_, const std::string& uniqueId)
+bool Launcher::PrepareToRun()
 {
 	Semaphore sem("/seqpipe");
 	std::lock_guard<Semaphore> lock(sem);
@@ -167,11 +175,11 @@ bool Launcher::PrepareToRun(const std::string& logDir_, const std::string& uniqu
 		return false;
 	}
 
-	if (!WriteToHistoryLog(uniqueId)) {
+	if (!WriteToHistoryLog()) {
 		return false;
 	}
 
-	if (!CreateLastSymbolicLink(uniqueId)) {
+	if (!CreateLastSymbolicLink()) {
 		return false;
 	}
 	return true;
@@ -204,7 +212,7 @@ bool Launcher::RecordSysInfo(const std::string& filename)
 	return true;
 }
 
-bool Launcher::WriteToHistoryLog(const std::string& uniqueId)
+bool Launcher::WriteToHistoryLog()
 {
 	const auto historyLog = LOG_ROOT + "/history." + System::GetHostname() + ".log";
 
@@ -214,20 +222,20 @@ bool Launcher::WriteToHistoryLog(const std::string& uniqueId)
 		return false;
 	}
 
-	file << uniqueId << '\t' << System::GetFullCommandLine() << std::endl;
+	file << uniqueId_ << '\t' << System::GetFullCommandLine() << std::endl;
 	file.close();
 
 	return true;
 }
 
-bool Launcher::CreateLastSymbolicLink(const std::string& uniqueId)
+bool Launcher::CreateLastSymbolicLink()
 {
 	if (System::CheckFileExists(LOG_LAST)) {
 		unlink(LOG_LAST.c_str());
 	}
-	int retVal = symlink(uniqueId.c_str(), LOG_LAST.c_str());
+	int retVal = symlink(uniqueId_.c_str(), LOG_LAST.c_str());
 	if (retVal != 0) {
-		std::cerr << "Warning: Can not create symbolic link '.seqpipe/last' to '" << uniqueId << "'! err: " << retVal << std::endl;
+		std::cerr << "Warning: Can not create symbolic link '.seqpipe/last' to '" << uniqueId_ << "'! err: " << retVal << std::endl;
 	}
 
 	return true;

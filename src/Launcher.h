@@ -16,13 +16,14 @@ private:
 	int RunBlock(const Pipeline& pipeline, const Block& block, std::string indent);
 	int RunShell(const CommandItem& item, std::string indent);
 
-	bool WriteToHistoryLog(const std::string& uniqueId);
-	bool CreateLastSymbolicLink(const std::string& uniqueId);
-	bool PrepareToRun(const std::string& logDir, const std::string& uniqueId);
+	bool WriteToHistoryLog();
+	bool CreateLastSymbolicLink();
+	bool PrepareToRun();
 	bool RecordSysInfo(const std::string& filename);
 
 	static std::string GetUniqueId();
 private:
+	std::string uniqueId_;
 	LauncherCounter counter_;
 	LogFile logFile_;
 	std::string logDir_;
