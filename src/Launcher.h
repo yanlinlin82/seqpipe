@@ -12,9 +12,7 @@ class Launcher
 public:
 	int Run(const Pipeline& pipeline, int verbose);
 private:
-	int RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent,
-			const std::map<std::string, std::string>& procArgs,
-			const std::vector<std::string>& procArgsOrder);
+	int RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent, const ProcArgs& procArgs);
 	int RunBlock(const Pipeline& pipeline, const Block& block, std::string indent);
 	int RunShell(const CommandItem& item, std::string indent);
 

@@ -31,15 +31,13 @@ static void SetSigAction()
 	sigaction(SIGTERM, &sa, NULL);
 }
 
-int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent,
-		const std::map<std::string, std::string>& procArgs,
-		const std::vector<std::string>& procArgsOrder)
+int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent, const ProcArgs& procArgs)
 {
 	unsigned int id = counter_.FetchId();
 
 	const std::string name = std::to_string(id) + "." + procName;
 
-	logFile_.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << FormatProcCalling(procName, procArgs, procArgsOrder));
+	logFile_.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << procName << procArgs.ToString());
 	LauncherTimer timer;
 	logFile_.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
@@ -92,7 +90,7 @@ int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, std::string
 		const auto item = block.items_[i];
 		int retVal;
 		if (item.type_ == CommandItem::TYPE_PROC) {
-			retVal = RunProc(pipeline, item.procName_, indent, item.procArgs_, item.procArgsOrder_);
+			retVal = RunProc(pipeline, item.procName_, indent, item.procArgs_);
 		} else if (item.type_ == CommandItem::TYPE_SHELL) {
 			retVal = RunShell(item, indent);
 		}

@@ -43,9 +43,8 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 	std::string cmd;
 	bool isShellCmd = false;
 	std::vector<std::string> shellArgs;
-	std::map<std::string, std::string> procArgs;
-	std::vector<std::string> procArgsOrder;
 	std::string procName;
+	ProcArgs procArgs;
 
 	for (auto it = args.begin(); it != args.end(); ++it) {
 		const auto& arg = *it;
@@ -99,7 +98,7 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 				shellArgs = std::vector<std::string>(++it, args.end());
 				break;
 			}
-		} else if (procName.empty() && procArgs.empty() && std::regex_match(arg, std::regex("\\w+"))) {
+		} else if (procName.empty() && procArgs.IsEmpty() && std::regex_match(arg, std::regex("\\w+"))) {
 			procName = arg;
 		} else {
 			std::smatch sm;
@@ -107,14 +106,13 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 				std::cerr << "Error: Invalid option '" << arg << "'! Expecting format 'KEY=VALUE'" << std::endl;
 				return false;
 			}
-			const auto& name = sm[1];
+			const auto& key = sm[1];
 			const auto& value = sm[2];
-			if (procArgs.find(name) != procArgs.end()) {
-				std::cerr << "Error: Duplicated option '" << name << "'!" << std::endl;
+			if (procArgs.Has(key)) {
+				std::cerr << "Error: Duplicated option '" << key << "'!" << std::endl;
 				return false;
 			}
-			procArgs[name] = value;
-			procArgsOrder.push_back(name);
+			procArgs.Add(key, value);
 		}
 	}
 
@@ -148,7 +146,7 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 			std::cerr << "Error: Can not find procedure '" << procName << "'!" << std::endl;
 			return 1;
 		}
-		pipeline_.SetDefaultBlock(procName, procArgs, procArgsOrder);
+		pipeline_.SetDefaultBlock(procName, procArgs);
 	}
 
 	pipeline_.FinalCheckAfterLoad();
