@@ -53,6 +53,7 @@ public:
 	bool HasProcedure(const std::string& name) const;
 	bool HasAnyDefaultCommand() const;
 
+	const Block& GetDefaultBlock() const;
 	const Block& GetBlock(const std::string& procName) const;
 	std::vector<std::string> GetProcNameList(const std::string& pattern) const;
 private:

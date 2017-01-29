@@ -150,7 +150,7 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 
 	int retVal;
 	if (procName.empty()) {
-		retVal = RunBlock(pipeline, pipeline.GetBlock(""), "");
+		retVal = RunBlock(pipeline, pipeline.GetDefaultBlock(), "");
 	} else {
 		retVal = RunProc(pipeline, procName, "");
 	}

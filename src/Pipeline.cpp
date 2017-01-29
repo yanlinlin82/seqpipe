@@ -281,17 +281,18 @@ bool Pipeline::HasProcedure(const std::string& name) const
 	return procList_.find(name) != procList_.end();
 }
 
+const Block& Pipeline::GetDefaultBlock() const
+{
+	return blockList_[0];
+}
+
 const Block& Pipeline::GetBlock(const std::string& procName) const
 {
-	if (procName.empty()) {
-		return blockList_[0];
-	} else {
-		auto it = procList_.find(procName);
-		if (it == procList_.end()) {
-			throw std::runtime_error("Invalid procName");
-		}
-		return blockList_[it->second.BlockIndex()];
+	auto it = procList_.find(procName);
+	if (it == procList_.end()) {
+		throw std::runtime_error("Invalid procName");
 	}
+	return blockList_[it->second.BlockIndex()];
 }
 
 bool Pipeline::HasAnyDefaultCommand() const
