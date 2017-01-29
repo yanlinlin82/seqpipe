@@ -74,6 +74,11 @@ bool CommandParallel::ParseArgs(const std::vector<std::string>& args)
 		}
 	}
 
+	if (cmdListFilename.empty()) {
+		PrintUsage();
+		return false;
+	}
+
 	std::vector<std::string> cmdList;
 	if (!LoadCmdList(cmdListFilename, cmdList)) {
 		return false;
