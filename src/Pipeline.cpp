@@ -49,11 +49,14 @@ bool Pipeline::CheckIfPipeFile(const std::string& command)
 	return true;
 }
 
-std::vector<std::string> Pipeline::GetProcNameList() const
+std::vector<std::string> Pipeline::GetProcNameList(const std::string& pattern) const
 {
 	std::vector<std::string> nameList;
 	for (auto it = procList_.begin(); it != procList_.end(); ++it) {
-		nameList.push_back(it->first);
+		const auto& name = it->first;
+		if (std::regex_search(name, std::regex(pattern))) {
+			nameList.push_back(it->first);
+		}
 	}
 	return nameList;
 }
@@ -201,7 +204,7 @@ bool Pipeline::Load(const std::string& filename)
 			continue;
 		}
 
-		if (!defaultBlock_.AppendCommand(file.CurrentLine())) {
+		if (!blockList_[0].AppendCommand(file.CurrentLine())) {
 			return false;
 		}
 	}
@@ -237,11 +240,11 @@ bool Pipeline::Save(const std::string& filename) const
 		file << "}\n";
 	}
 
-	if (!defaultBlock_.items_.empty()) {
+	if (!blockList_[0].items_.empty()) {
 		if (!procList_.empty()) {
 			file << "\n";
 		}
-		for (const auto& cmd : defaultBlock_.items_) {
+		for (const auto& cmd : blockList_[0].items_) {
 			file << cmd.cmdLine_ << "\n";
 		}
 	}
@@ -252,25 +255,25 @@ bool Pipeline::Save(const std::string& filename) const
 
 bool Pipeline::SetDefaultBlock(const std::vector<std::string>& cmdList, bool parallel)
 {
-	assert(defaultBlock_.items_.empty());
+	assert(blockList_[0].items_.empty());
 	for (const auto& cmd : cmdList) {
-		if (!defaultBlock_.AppendCommand(cmd)) {
+		if (!blockList_[0].AppendCommand(cmd)) {
 			return false;
 		}
 	}
-	defaultBlock_.SetParallel(parallel);
+	blockList_[0].SetParallel(parallel);
 	return true;
 }
 
 bool Pipeline::SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments)
 {
-	assert(defaultBlock_.items_.empty());
-	return defaultBlock_.AppendCommand(cmd, arguments);
+	assert(blockList_[0].items_.empty());
+	return blockList_[0].AppendCommand(cmd, arguments);
 }
 
 bool Pipeline::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
 {
-	return defaultBlock_.AppendCommand(cmd, arguments);
+	return blockList_[0].AppendCommand(cmd, arguments);
 }
 
 bool Pipeline::HasProcedure(const std::string& name) const
@@ -281,7 +284,7 @@ bool Pipeline::HasProcedure(const std::string& name) const
 const Block& Pipeline::GetBlock(const std::string& procName) const
 {
 	if (procName.empty()) {
-		return defaultBlock_;
+		return blockList_[0];
 	} else {
 		auto it = procList_.find(procName);
 		if (it == procList_.end()) {
@@ -293,5 +296,5 @@ const Block& Pipeline::GetBlock(const std::string& procName) const
 
 bool Pipeline::HasAnyDefaultCommand() const
 {
-	return defaultBlock_.HasAnyCommand();
+	return blockList_[0].HasAnyCommand();
 }

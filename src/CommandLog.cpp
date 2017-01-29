@@ -22,7 +22,7 @@ void CommandLog::PrintUsage()
 		<< std::endl;
 }
 
-bool CommandLog::ParseArgs(const std::list<std::string>& args)
+bool CommandLog::ParseArgs(const std::vector<std::string>& args)
 {
 	for (auto it = args.begin(); it != args.end(); ++it) {
 		const auto& arg = *it;
@@ -60,7 +60,7 @@ bool CommandLog::ParseArgs(const std::list<std::string>& args)
 	return true;
 }
 
-int CommandLog::Run(const std::list<std::string>& args)
+int CommandLog::Run(const std::vector<std::string>& args)
 {
 	if (!ParseArgs(args)) {
 		return 1;

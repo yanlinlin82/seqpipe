@@ -32,7 +32,7 @@ bool CommandRunParallel::LoadCommandList(const std::string& filename)
 	return true;
 }
 
-bool CommandRunParallel::ParseArgs(const std::list<std::string>& args)
+bool CommandRunParallel::ParseArgs(const std::vector<std::string>& args)
 {
 	bool loaded = false;
 
@@ -90,7 +90,7 @@ bool CommandRunParallel::ParseArgs(const std::list<std::string>& args)
 	return true;
 }
 
-int CommandRunParallel::Run(const std::list<std::string>& args)
+int CommandRunParallel::Run(const std::vector<std::string>& args)
 {
 	if (!ParseArgs(args)) {
 		return 1;

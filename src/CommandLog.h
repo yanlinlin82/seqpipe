@@ -1,15 +1,15 @@
 #ifndef COMMAND_LOG_H__
 #define COMMAND_LOG_H__
 
-#include <list>
+#include <vector>
 #include <string>
 
 class CommandLog
 {
 public:
-	int Run(const std::list<std::string>& args);
+	int Run(const std::vector<std::string>& args);
 private:
-	bool ParseArgs(const std::list<std::string>& args);
+	bool ParseArgs(const std::vector<std::string>& args);
 	void PrintUsage();
 	int ListHistory();
 	int ShowHistory();

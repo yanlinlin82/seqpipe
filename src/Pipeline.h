@@ -54,7 +54,7 @@ public:
 	bool HasAnyDefaultCommand() const;
 
 	const Block& GetBlock(const std::string& procName) const;
-	std::vector<std::string> GetProcNameList() const;
+	std::vector<std::string> GetProcNameList(const std::string& pattern) const;
 private:
 	bool LoadConf(const std::string& filename, std::map<std::string, std::string>& confMap);
 	bool LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc);
@@ -63,8 +63,7 @@ private:
 	bool ReadLeftBracket(PipeFile& file, std::string& leftBracket);
 private:
 	std::map<std::string, Procedure> procList_;
-	Block defaultBlock_;
-	std::vector<Block> blockList_;
+	std::vector<Block> blockList_{1}; // the first 'Block' is the default one.
 };
 
 #endif

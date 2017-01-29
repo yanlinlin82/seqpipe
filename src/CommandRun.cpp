@@ -17,8 +17,8 @@ void CommandRun::PrintUsage()
 {
 	std::cout << "\n"
 		"Usage:\n"
-		"   seqpipe run   [options] <cmd> [args ...]\n"
 		"   seqpipe [run] [options] <workflow.pipe> [procedure] [KEY=VALUE ...]\n"
+		"   seqpipe [run] [options] <cmd> [args ...]\n"
 		"   seqpipe [run] [options] -e \"<cmd>\" [-e \"<cmd>\" ...] [KEY=VALUE ...]\n"
 		"   seqpipe [run] [options] -E \"<cmd>\" [-E \"<cmd>\" ...] [KEY=VALUE ...]\n"
 		"\n"
@@ -35,7 +35,7 @@ void CommandRun::PrintUsage()
 		<< std::endl;
 }
 
-bool CommandRun::ParseArgs(const std::list<std::string>& args)
+bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 {
 	std::vector<std::string> cmdList; // for '-e' or '-E'
 	bool parallel = false;
@@ -67,10 +67,11 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 				}
 				const auto& cmd = *(++it);
 				cmdList.push_back(cmd);
-			} else if (arg == "-l") {
-				listMode_ = 1;
-			} else if (arg == "-L") {
-				listMode_ = 2;
+			} else if (arg == "-l" || arg == "-L") {
+				listMode_ = (arg == "-l" ? 1 : 2);
+				if (it + 1 != args.end() && (*(it + 1))[0] != '-') {
+					pattern_ = *(++it);
+				}
 			} else if (arg == "-m") {
 				const auto& filename = *(++it);
 				moduleFilenames.push_back(filename);
@@ -110,7 +111,7 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 		}
 	}
 
-	if (cmd.empty() && cmdList.empty() && moduleFilenames.empty()) {
+	if (cmd.empty() && cmdList.empty() && moduleFilenames.empty() && !listMode_) {
 		PrintUsage();
 		return false;
 	}
@@ -139,14 +140,19 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 
 void CommandRun::ListModules()
 {
-	std::cout << "\nCurrent available user-defined procedures:\n";
-	for (const auto& name : pipeline_.GetProcNameList()) {
+	std::cout << "\nCurrent available procedures";
+	if (!pattern_.empty()) {
+		std::cout << " (search for '" << pattern_ << "')";
+	}
+	std::cout << ":\n";
+
+	for (const auto& name : pipeline_.GetProcNameList(pattern_)) {
 		std::cout << "   " << name << "\n";
 	}
 	std::cout << std::endl;
 }
 
-int CommandRun::Run(const std::list<std::string>& args)
+int CommandRun::Run(const std::vector<std::string>& args)
 {
 	if (!ParseArgs(args)) {
 		return 1;

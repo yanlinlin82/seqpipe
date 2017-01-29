@@ -17,7 +17,7 @@ void CommandHelp::PrintUsage()
 		<< std::endl;
 }
 
-int CommandHelp::Run(const std::list<std::string>& args)
+int CommandHelp::Run(const std::vector<std::string>& args)
 {
 	PrintUsage();
 	return 0;

@@ -1,6 +1,6 @@
 #include <iostream>
 #include <string>
-#include <list>
+#include <vector>
 #include "CommandRun.h"
 #include "CommandRunParallel.h"
 #include "CommandLog.h"
@@ -16,8 +16,8 @@ static void PrintUsage()
 		"Website: https://github.com/yanlinlin82/seqpipe/tree/cpp-v0.5\n"
 		"\n"
 		"Usage:\n"
-		"   seqpipe run   [options] <cmd> [args ...]\n"
 		"   seqpipe [run] [options] <workflow.pipe> [procedure] [KEY=VALUE ...]\n"
+		"   seqpipe [run] [options] <cmd> [args ...]\n"
 		"   seqpipe log   [options]\n"
 		"\n"
 		"Try 'seqpipe help' to list all available subcommands.\n"
@@ -26,41 +26,35 @@ static void PrintUsage()
 
 int main(int argc, const char** argv)
 {
-	std::list<std::string> args(argv + 1, argv + argc);
-
-	if (args.empty()) {
+	if (argc < 2) {
 		PrintUsage();
 		return 1;
 	}
-
-	const auto name = args.front();
+	const std::string name = argv[1];
+	std::vector<std::string> args(argv + 2, argv + argc);
 
 	if (name == "run") {
-		args.pop_front();
 		CommandRun cmd;
 		return cmd.Run(args);
 
 	} else if (name == "prun" || name == "parallel") {
-		args.pop_front();
 		CommandRunParallel cmd;
 		return cmd.Run(args);
 
 	} else if (name == "log" || name == "history") {
-		args.pop_front();
 		CommandLog cmd;
 		return cmd.Run(args);
 
 	} else if (name == "version") {
-		args.pop_front();
 		std::cout << VERSION << std::endl;
 		return 0;
 
 	} else if (name == "help") {
-		args.pop_front();
 		CommandHelp cmd;
 		return cmd.Run(args);
 	}
 
 	CommandRun cmd; // Try as optional 'run' command
+	args.insert(args.begin(), name);
 	return cmd.Run(args);
 }

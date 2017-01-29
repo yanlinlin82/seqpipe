@@ -2,17 +2,17 @@
 #define COMMAND_RUN_PARALLEL_H__
 
 #include <string>
-#include <list>
+#include <vector>
 #include "Pipeline.h"
 
 class CommandRunParallel
 {
 public:
-	int Run(const std::list<std::string>& args);
+	int Run(const std::vector<std::string>& args);
 private:
 	void PrintUsage();
 	bool LoadCommandList(const std::string& filename);
-	bool ParseArgs(const std::list<std::string>& args);
+	bool ParseArgs(const std::vector<std::string>& args);
 private:
 	int verbose_ = 0;
 	int maxJobNumber_ = 0;
