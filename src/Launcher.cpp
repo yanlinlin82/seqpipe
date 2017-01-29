@@ -112,7 +112,7 @@ std::string Launcher::GetUniqueId()
 	return (text + System::GetHostname());
 }
 
-int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose_)
+int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose)
 {
 	if (procName.empty()) {
 		if (!pipeline.HasAnyDefaultCommand()) {
@@ -127,6 +127,7 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 		}
 	}
 
+	verbose_ = verbose;
 	uniqueId_ = GetUniqueId();
 	logDir_ = LOG_ROOT + "/" + uniqueId_;
 
