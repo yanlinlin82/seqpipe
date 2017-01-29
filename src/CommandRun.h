@@ -22,8 +22,7 @@ private:
 	bool keepTemp_ = false;
 
 	Pipeline pipeline_;
-	std::string procedureName_;
-	std::string pattern_;
+	std::string pattern_; // for '-l' or '-L'
 };
 
 #endif

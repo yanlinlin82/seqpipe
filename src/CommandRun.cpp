@@ -44,6 +44,8 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 	bool isShellCmd = false;
 	std::vector<std::string> shellArgs;
 	std::map<std::string, std::string> procArgs;
+	std::vector<std::string> procArgsOrder;
+	std::string procName;
 
 	for (auto it = args.begin(); it != args.end(); ++it) {
 		const auto& arg = *it;
@@ -97,8 +99,8 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 				shellArgs = std::vector<std::string>(++it, args.end());
 				break;
 			}
-		} else if (procedureName_.empty() && procArgs.empty() && std::regex_match(arg, std::regex("\\w+"))) {
-			procedureName_ = arg;
+		} else if (procName.empty() && procArgs.empty() && std::regex_match(arg, std::regex("\\w+"))) {
+			procName = arg;
 		} else {
 			std::smatch sm;
 			if (!std::regex_match(arg, sm, std::regex("(\\w+)=(.*)"))) {
@@ -107,7 +109,12 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 			}
 			const auto& name = sm[1];
 			const auto& value = sm[2];
+			if (procArgs.find(name) != procArgs.end()) {
+				std::cerr << "Error: Duplicated option '" << name << "'!" << std::endl;
+				return false;
+			}
 			procArgs[name] = value;
+			procArgsOrder.push_back(name);
 		}
 	}
 
@@ -135,6 +142,16 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 			}
 		}
 	}
+
+	if (!procName.empty()) {
+		if (!pipeline_.HasProcedure(procName)) {
+			std::cerr << "Error: Can not find procedure '" << procName << "'!" << std::endl;
+			return 1;
+		}
+		pipeline_.SetDefaultBlock(procName, procArgs, procArgsOrder);
+	}
+
+	pipeline_.FinalCheckAfterLoad();
 	return true;
 }
 
@@ -167,6 +184,12 @@ int CommandRun::Run(const std::vector<std::string>& args)
 		return 1;
 	}
 
+	if (!pipeline_.HasAnyDefaultCommand()) {
+		std::cerr << "Error: Procedure name should be provided, since no any default command found in pipeline script.\n"
+			"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
+		return 1;
+	}
+
 	Launcher launcher;
-	return launcher.Run(pipeline_, procedureName_, verbose_);
+	return launcher.Run(pipeline_, verbose_);
 }

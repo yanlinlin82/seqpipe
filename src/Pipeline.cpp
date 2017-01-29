@@ -7,21 +7,53 @@
 #include "StringUtils.h"
 #include "System.h"
 
-static std::string JoinCommandLine(const std::string& cmd, const std::vector<std::string>& arguments)
+std::string FormatProcCalling(const std::string& procName,
+		const std::map<std::string, std::string>& procArgs,
+		const std::vector<std::string>& procArgsOrder)
 {
-	std::string cmdLine = cmd;
-	for (const auto arg : arguments) {
-		cmdLine += ' ' + System::EncodeShell(arg);
+	std::string s = procName;
+	for (auto name : procArgsOrder) {
+		auto it = procArgs.find(name);
+		s += " " + name + "=" + System::EncodeShell(it->second);
 	}
-	return cmdLine;
+	return s;
+}
+
+CommandItem::CommandItem(const std::string& cmd, const std::vector<std::string>& arguments, const std::string& cmdLine):
+	type_(TYPE_SHELL), cmdLine_(cmdLine), shellCmd_(cmd), shellArgs_(arguments)
+{
+	if (cmdLine_.empty()) {
+		cmdLine_ = cmd;
+		for (const auto arg : arguments) {
+			cmdLine_ += ' ' + System::EncodeShell(arg);
+		}
+	}
+}
+
+CommandItem::CommandItem(const std::string& procName, const std::map<std::string, std::string>& procArgs,
+		const std::vector<std::string>& procArgsOrder):
+	type_(TYPE_PROC), procName_(procName), procArgs_(procArgs), procArgsOrder_(procArgsOrder)
+{
+}
+
+std::string CommandItem::ToString() const
+{
+	if (type_ == TYPE_SHELL) {
+		return cmdLine_;
+	} else {
+		return FormatProcCalling(procName_, procArgs_, procArgsOrder_);
+	}
+}
+
+void Block::Clear()
+{
+	items_.clear();
+	parallel_ = false;
 }
 
 bool Block::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
 {
-	CommandItem item;
-	item.name_ = cmd;
-	item.cmdLine_ = JoinCommandLine(cmd, arguments);
-	items_.push_back(item);
+	items_.push_back(CommandItem(cmd, arguments));
 	return true;
 }
 
@@ -32,7 +64,15 @@ bool Block::AppendCommand(const std::string& line)
 	if (!StringUtils::ParseCommandLine(line, cmd, arguments)) {
 		return false;
 	}
-	return AppendCommand(cmd, arguments);
+	items_.push_back(CommandItem(cmd, arguments));
+	return true;
+}
+
+bool Block::AppendCommand(const std::string& procName, const std::map<std::string, std::string>& procArgs,
+		const std::vector<std::string>& procArgsOrder)
+{
+	items_.push_back(CommandItem(procName, procArgs, procArgsOrder));
+	return true;
 }
 
 bool Pipeline::CheckIfPipeFile(const std::string& command)
@@ -244,8 +284,8 @@ bool Pipeline::Save(const std::string& filename) const
 		if (!procList_.empty()) {
 			file << "\n";
 		}
-		for (const auto& cmd : blockList_[0].items_) {
-			file << cmd.cmdLine_ << "\n";
+		for (const auto& item : blockList_[0].items_) {
+			file << item.ToString() << "\n";
 		}
 	}
 
@@ -255,7 +295,7 @@ bool Pipeline::Save(const std::string& filename) const
 
 bool Pipeline::SetDefaultBlock(const std::vector<std::string>& cmdList, bool parallel)
 {
-	assert(blockList_[0].items_.empty());
+	blockList_[0].Clear();
 	for (const auto& cmd : cmdList) {
 		if (!blockList_[0].AppendCommand(cmd)) {
 			return false;
@@ -267,13 +307,15 @@ bool Pipeline::SetDefaultBlock(const std::vector<std::string>& cmdList, bool par
 
 bool Pipeline::SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments)
 {
-	assert(blockList_[0].items_.empty());
+	blockList_[0].Clear();
 	return blockList_[0].AppendCommand(cmd, arguments);
 }
 
-bool Pipeline::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
+bool Pipeline::SetDefaultBlock(const std::string& procName, const std::map<std::string, std::string>& procArgs,
+		const std::vector<std::string>& procArgsOrder)
 {
-	return blockList_[0].AppendCommand(cmd, arguments);
+	blockList_[0].Clear();
+	return blockList_[0].AppendCommand(procName, procArgs, procArgsOrder);
 }
 
 bool Pipeline::HasProcedure(const std::string& name) const
@@ -298,4 +340,36 @@ const Block& Pipeline::GetBlock(const std::string& procName) const
 bool Pipeline::HasAnyDefaultCommand() const
 {
 	return blockList_[0].HasAnyCommand();
+}
+
+void Pipeline::FinalCheckAfterLoad()
+{
+	for (auto& block : blockList_) {
+		for (auto& item : block.items_) {
+			if (item.type_ == CommandItem::TYPE_SHELL) {
+				if (HasProcedure(item.shellCmd_)) {
+					bool failed = false;
+					std::map<std::string, std::string> procArgs;
+					std::vector<std::string> procArgsOrder;
+					for (const auto& arg : item.shellArgs_) {
+						std::smatch sm;
+						if (!std::regex_match(arg, sm, std::regex("(\\w+)=(.*)"))) {
+							failed = true;
+							break;
+						}
+						const auto& key = sm[1];
+						const auto& value = sm[2];
+						procArgs[key] = value;
+						procArgsOrder.push_back(key);
+					}
+					if (!failed) {
+						item.type_ = CommandItem::TYPE_PROC;
+						item.procName_ = item.shellCmd_;
+						item.procArgs_ = procArgs;
+						item.procArgsOrder_ = procArgsOrder;
+					}
+				}
+			}
+		}
+	}
 }

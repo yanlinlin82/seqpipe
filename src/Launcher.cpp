@@ -31,13 +31,15 @@ static void SetSigAction()
 	sigaction(SIGTERM, &sa, NULL);
 }
 
-int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent)
+int Launcher::RunProc(const Pipeline& pipeline, const std::string& procName, std::string indent,
+		const std::map<std::string, std::string>& procArgs,
+		const std::vector<std::string>& procArgsOrder)
 {
 	unsigned int id = counter_.FetchId();
 
 	const std::string name = std::to_string(id) + "." + procName;
 
-	logFile_.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << procName);
+	logFile_.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << FormatProcCalling(procName, procArgs, procArgsOrder));
 	LauncherTimer timer;
 	logFile_.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
@@ -87,11 +89,12 @@ int Launcher::RunShell(const CommandItem& item, std::string indent)
 int Launcher::RunBlock(const Pipeline& pipeline, const Block& block, std::string indent)
 {
 	for (size_t i = 0; i < block.items_.size() && !killed; ++i) {
+		const auto item = block.items_[i];
 		int retVal;
-		if (pipeline.HasProcedure(block.items_[i].name_)) {
-			retVal = RunProc(pipeline, block.items_[i].name_, indent);
-		} else {
-			retVal = RunShell(block.items_[i], indent);
+		if (item.type_ == CommandItem::TYPE_PROC) {
+			retVal = RunProc(pipeline, item.procName_, indent, item.procArgs_, item.procArgsOrder_);
+		} else if (item.type_ == CommandItem::TYPE_SHELL) {
+			retVal = RunShell(item, indent);
 		}
 		if (retVal != 0) {
 			return retVal;
@@ -112,21 +115,8 @@ std::string Launcher::GetUniqueId()
 	return (text + System::GetHostname());
 }
 
-int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int verbose)
+int Launcher::Run(const Pipeline& pipeline, int verbose)
 {
-	if (procName.empty()) {
-		if (!pipeline.HasAnyDefaultCommand()) {
-			std::cerr << "Error: Procedure name should be provided, since no any default command found in pipeline script.\n"
-				"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
-			return 1;
-		}
-	} else {
-		if (!pipeline.HasProcedure(procName)) {
-			std::cerr << "Error: Can not find procedure '" << procName << "'!" << std::endl;
-			return 1;
-		}
-	}
-
 	verbose_ = verbose;
 	uniqueId_ = GetUniqueId();
 	logDir_ = LOG_ROOT + "/" + uniqueId_;
@@ -149,12 +139,7 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 
 	LauncherTimer timer;
 
-	int retVal;
-	if (procName.empty()) {
-		retVal = RunBlock(pipeline, pipeline.GetDefaultBlock(), "");
-	} else {
-		retVal = RunProc(pipeline, procName, "");
-	}
+	int retVal = RunBlock(pipeline, pipeline.GetDefaultBlock(), "");
 	timer.Stop();
 	if (retVal != 0) {
 		logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");

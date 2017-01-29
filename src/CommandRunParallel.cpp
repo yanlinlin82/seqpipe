@@ -97,5 +97,5 @@ int CommandRunParallel::Run(const std::vector<std::string>& args)
 	}
 
 	Launcher launcher;
-	return launcher.Run(pipeline_, "", verbose_);
+	return launcher.Run(pipeline_, verbose_);
 }
