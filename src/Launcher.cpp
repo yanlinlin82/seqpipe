@@ -116,7 +116,7 @@ int Launcher::Run(const Pipeline& pipeline, const std::string& procName, int ver
 {
 	if (procName.empty()) {
 		if (!pipeline.HasAnyDefaultCommand()) {
-			std::cerr << "Error: The procedure name should be provided, since no any global command found.\n"
+			std::cerr << "Error: Procedure name should be provided, since no any default command found in pipeline script.\n"
 				"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
 			return 1;
 		}

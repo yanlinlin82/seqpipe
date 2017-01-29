@@ -27,7 +27,7 @@ private:
 	LauncherCounter counter_;
 	LogFile logFile_;
 	std::string logDir_;
-	int verbose_;
+	int verbose_ = 0;
 };
 
 #endif

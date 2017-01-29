@@ -7,6 +7,34 @@
 #include "StringUtils.h"
 #include "System.h"
 
+static std::string JoinCommandLine(const std::string& cmd, const std::vector<std::string>& arguments)
+{
+	std::string cmdLine = cmd;
+	for (const auto arg : arguments) {
+		cmdLine += ' ' + System::EncodeShell(arg);
+	}
+	return cmdLine;
+}
+
+bool Block::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
+{
+	CommandItem item;
+	item.name_ = cmd;
+	item.cmdLine_ = JoinCommandLine(cmd, arguments);
+	items_.push_back(item);
+	return true;
+}
+
+bool Block::AppendCommand(const std::string& line)
+{
+	std::string cmd;
+	std::vector<std::string> arguments;
+	if (!StringUtils::ParseCommandLine(line, cmd, arguments)) {
+		return false;
+	}
+	return AppendCommand(cmd, arguments);
+}
+
 bool Pipeline::CheckIfPipeFile(const std::string& command)
 {
 	if (!System::CheckFileExists(command)) {
@@ -30,48 +58,65 @@ std::vector<std::string> Pipeline::GetProcNameList() const
 	return nameList;
 }
 
-bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc)
+bool Pipeline::ReadLeftBracket(PipeFile& file, std::string& leftBracket)
 {
-	if (leftBracket.empty()) {
-		while (file.ReadLine()) {
-			if (PipeFile::IsEmptyLine(file.CurrentLine())) {
-				continue;
-			} else if (PipeFile::IsCommentLine(file.CurrentLine())) {
-				if (PipeFile::IsDescLine(file.CurrentLine())) {
-					std::cerr << "Error: Unexpected attribute line at " << file.Pos() << std::endl;
-					return false;
-				}
-				continue;
-			} else if (!PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
-				std::cerr << "Error: Unexpected line at " << file.Pos() << "\n"
-					"   Only '{' or '{{' was expected here." << std::endl;
+	while (file.ReadLine()) {
+		if (PipeFile::IsEmptyLine(file.CurrentLine())) {
+			continue;
+		} else if (PipeFile::IsCommentLine(file.CurrentLine())) {
+			if (PipeFile::IsDescLine(file.CurrentLine())) {
+				std::cerr << "Error: Unexpected attribute line at " << file.Pos() << std::endl;
 				return false;
 			}
-			break;
+			continue;
+		} else if (!PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
+			std::cerr << "Error: Unexpected line at " << file.Pos() << "\n"
+				"   Only '{' or '{{' was expected here." << std::endl;
+			return false;
 		}
+		break;
 	}
+	return true;
+}
 
-	procList_[name].SetName(name);
+bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
+{
 	while (file.ReadLine()) {
 		std::string rightBracket;
 		if (PipeFile::IsRightBracket(file.CurrentLine(), rightBracket)) {
-			if (leftBracket == "{" && rightBracket == "}}") {
+			if (!parallel && rightBracket == "}}") {
 				std::cerr << "Error: Unexpected right bracket at " << file.Pos() << "\n"
 					"   Right bracket '}' was expected here." << std::endl;
 				return false;
-			} else if (leftBracket == "{{" && rightBracket == "}") {
+			} else if (parallel && rightBracket == "}") {
 				std::cerr << "Error: Unexpected right bracket at " << file.Pos() << "\n"
 					"   Right bracket '}}' was expected here." << std::endl;
 				return false;
 			}
 			break;
 		} else {
-			procList_[name].AppendCommand(file.CurrentLine());
+			block.AppendCommand(file.CurrentLine());
 		}
 	}
-	bool parallel = (leftBracket == "{{");
-	procList_[name].SetParallel(parallel);
+	return true;
+}
 
+bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc)
+{
+	if (leftBracket.empty()) {
+		if (!ReadLeftBracket(file, leftBracket)) {
+			return false;
+		}
+	}
+
+	Block block;
+	if (!LoadBlock(file, block, (leftBracket == "{{"))) {
+		return false;
+	}
+	size_t blockIndex = blockList_.size();
+	blockList_.push_back(block);
+
+	procList_[name].Initialize(name, blockIndex);
 	return true;
 }
 
@@ -99,34 +144,6 @@ bool Pipeline::LoadConf(const std::string& filename, std::map<std::string, std::
 		}
 	}
 	file.close();
-	return true;
-}
-
-bool Procedure::AppendCommand(const std::string& line)
-{
-	std::string cmd;
-	std::vector<std::string> arguments;
-	if (!StringUtils::ParseCommandLine(line, cmd, arguments)) {
-		return false;
-	}
-	return AppendCommand(cmd, arguments);
-}
-
-static std::string JoinCommandLine(const std::string& cmd, const std::vector<std::string>& arguments)
-{
-	std::string cmdLine = cmd;
-	for (const auto arg : arguments) {
-		cmdLine += ' ' + System::EncodeShell(arg);
-	}
-	return cmdLine;
-}
-
-bool Procedure::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
-{
-	CommandItem item;
-	item.name_ = cmd;
-	item.cmdLine_ = JoinCommandLine(cmd, arguments);
-	block_.items_.push_back(item);
 	return true;
 }
 
@@ -184,7 +201,7 @@ bool Pipeline::Load(const std::string& filename)
 			continue;
 		}
 
-		if (!defaultProc_.AppendCommand(file.CurrentLine())) {
+		if (!defaultBlock_.AppendCommand(file.CurrentLine())) {
 			return false;
 		}
 	}
@@ -214,17 +231,17 @@ bool Pipeline::Save(const std::string& filename) const
 		}
 
 		file << it->first << "() {\n";
-		for (const auto& cmd : it->second.GetBlock().items_) {
+		for (const auto& cmd : blockList_[it->second.BlockIndex()].items_) {
 			file << "\t" << cmd.cmdLine_ << "\n";
 		}
 		file << "}\n";
 	}
 
-	if (!defaultProc_.GetBlock().items_.empty()) {
+	if (!defaultBlock_.items_.empty()) {
 		if (!procList_.empty()) {
 			file << "\n";
 		}
-		for (const auto& cmd : defaultProc_.GetBlock().items_) {
+		for (const auto& cmd : defaultBlock_.items_) {
 			file << cmd.cmdLine_ << "\n";
 		}
 	}
@@ -235,17 +252,17 @@ bool Pipeline::Save(const std::string& filename) const
 
 bool Pipeline::SetDefaultProc(const std::vector<std::string>& cmdList, bool parallel)
 {
-	assert(defaultProc_.GetBlock().items_.empty());
+	assert(defaultBlock_.items_.empty());
 
 	for (const auto& cmd : cmdList) {
-		defaultProc_.AppendCommand(cmd, {});
+		defaultBlock_.AppendCommand(cmd, {});
 	}
-	defaultProc_.SetParallel(parallel);
+	defaultBlock_.SetParallel(parallel);
 }
 
 bool Pipeline::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
 {
-	return defaultProc_.AppendCommand(cmd, arguments);
+	return defaultBlock_.AppendCommand(cmd, arguments);
 }
 
 bool Pipeline::HasProcedure(const std::string& name) const
@@ -253,20 +270,20 @@ bool Pipeline::HasProcedure(const std::string& name) const
 	return procList_.find(name) != procList_.end();
 }
 
-Block Pipeline::GetBlock(const std::string& procName) const
+const Block& Pipeline::GetBlock(const std::string& procName) const
 {
 	if (procName.empty()) {
-		return defaultProc_.GetBlock();
+		return defaultBlock_;
 	} else {
 		auto it = procList_.find(procName);
 		if (it == procList_.end()) {
 			throw std::runtime_error("Invalid procName");
 		}
-		return it->second.GetBlock();
+		return blockList_[it->second.BlockIndex()];
 	}
 }
 
 bool Pipeline::HasAnyDefaultCommand() const
 {
-	return !defaultProc_.GetBlock().items_.empty();
+	return defaultBlock_.HasAnyCommand();
 }

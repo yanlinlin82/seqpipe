@@ -16,15 +16,16 @@ void CommandRun::PrintUsage()
 {
 	std::cout << "\n"
 		"Usage:\n"
-		"   seqpipe run [options] <workflow.pipe> [NAME=VALUE ...]\n"
+		"   seqpipe run [options] <workflow.pipe> [procedure] [NAME=VALUE ...]\n"
 		"   seqpipe run [options] <command> [arguments ...]\n"
 		"\n"
 		"Options:\n"
-		"   -h         Show this help messages.\n"
-		"   -v         Show verbose messages.\n"
-		"   -t <int>   Max job number in parallel. default as current processor number.\n"
-		"   -f         Force to re-run when output files are already latest.\n"
-		"   -k         Keep temporary files.\n"
+		"   -h                 Show this help messages.\n"
+		"   -v                 Show verbose messages.\n"
+		"   -t <int>           Max job number in parallel. default as current processor number.\n"
+		"   -f                 Force to re-run when output files are already latest.\n"
+		"   -k                 Keep temporary files.\n"
+		"   -l / -L [pattern]  List current available procedures.\n"
 		<< std::endl;
 }
 
@@ -50,6 +51,10 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 					std::cerr << "Error: Invalid number '" << parameter << "' for option '-t'!" << std::endl;
 					return false;
 				}
+			} else if (arg == "-l") {
+				listMode_ = 1;
+			} else if (arg == "-L") {
+				listMode_ = 2;
 			} else if (arg == "-f") {
 				forceRun_ = true;
 			} else if (arg == "-k") {
@@ -86,6 +91,8 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 				cmdIsPipeFile = true;
 				loaded = true;
 			}
+		} else if (cmdIsPipeFile && procedureName_.empty()) {
+			procedureName_ = arg;
 		} else {
 			arguments.push_back(arg);
 		}
@@ -107,12 +114,26 @@ bool CommandRun::ParseArgs(const std::list<std::string>& args)
 	return true;
 }
 
+void CommandRun::ListModules()
+{
+	std::cout << "\nCurrent available user-defined procedures:\n";
+	for (const auto& name : pipeline_.GetProcNameList()) {
+		std::cout << "   " << name << "\n";
+	}
+	std::cout << std::endl;
+}
+
 int CommandRun::Run(const std::list<std::string>& args)
 {
 	if (!ParseArgs(args)) {
 		return 1;
 	}
 
+	if (listMode_ > 0) {
+		ListModules();
+		return 0;
+	}
+
 	Launcher launcher;
-	return launcher.Run(pipeline_, "", verbose_);
+	return launcher.Run(pipeline_, procedureName_, verbose_);
 }

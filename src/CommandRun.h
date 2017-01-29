@@ -13,11 +13,16 @@ public:
 private:
 	bool ParseArgs(const std::list<std::string>& args);
 	void PrintUsage();
+	void ListModules();
 private:
 	int verbose_ = 0;
 	int maxJobNumber_ = 0;
+	int listMode_ = 0;
 	bool forceRun_ = false;
 	bool keepTemp_ = false;
+
+	std::string workflowFilename_;
+	std::string procedureName_;
 
 	Pipeline pipeline_;
 };
