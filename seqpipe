@@ -588,8 +588,8 @@ sub eval_text
 	my @order = sort_vars(\%vars, \%deps);
 
 	foreach my $name (@order) {
-		if ($text =~ /\${$name}/) {
-			$text =~ s/\${$name}/$vars{$name}/g;
+		if ($text =~ /\$\{$name\}/) {
+			$text =~ s/\$\{$name\}/$vars{$name}/g;
 		}
 	}
 	return $text;
@@ -1548,9 +1548,9 @@ sub eval_text_in_shell
 	while (1) {
 		# Following patterns require shell to eval
 		last if $result =~ /\$\(\(.*\)\)/;
-		last if $result =~ /{[0-9]+\.\.[0-9]+}/;
-		last if $result =~ /{\S\.\.\S}/;
-		last if $result =~ /{.*,.*}/;
+		last if $result =~ /\{[0-9]+\.\.[0-9]+\}/;
+		last if $result =~ /\{\S\.\.\S\}/;
+		last if $result =~ /\{.*,.*\}/;
 		last if $result =~ /\$\(.*\)/;
 		last if $result =~ /\*/;
 		last if $result =~ /\?/;
