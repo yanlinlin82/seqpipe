@@ -109,6 +109,10 @@ There are different ways to install SeqPipe. Choose any one you like:
 
         $ cat foo.pipe | seqpipe parallel -
 
+5. With variable:
+
+        $ seqpipe -e 'echo "Hello, ${NAME}!"' NAME=world
+
 ## Reference
 
     <<TODO>>: To be completed.

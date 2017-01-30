@@ -53,7 +53,7 @@ private:
 
 	int RunProc(const std::string& procName, const ProcArgs& procArgs, std::string indent);
 	int RunBlock(const Block& block, const ProcArgs& procArgs, std::string indent);
-	int RunShell(const CommandItem& item, std::string indent);
+	int RunShell(const CommandItem& item, std::string indent, const ProcArgs& procArgs);
 
 	bool WriteToHistoryLog();
 	bool CreateLastSymbolicLink();

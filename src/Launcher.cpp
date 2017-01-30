@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <regex>
 #include <atomic>
 #include <thread>
 #include <csignal>
@@ -68,12 +69,29 @@ int Launcher::RunProc(const std::string& procName, const ProcArgs& procArgs, std
 	return retVal;
 }
 
-int Launcher::RunShell(const CommandItem& item, std::string indent)
+static std::string ExpandArgs(const std::string& s, const ProcArgs& procArgs)
+{
+	std::string text = s;
+	std::smatch m;
+	std::regex e("\\$\\{(\\w+)\\}");
+	std::string res;
+	while (std::regex_search(text, m, e)) {
+		res += m.prefix();
+		res += procArgs.Get(m[1]);
+		text = m.suffix();
+	}
+	res += text;
+	return res;
+}
+
+int Launcher::RunShell(const CommandItem& item, std::string indent, const ProcArgs& procArgs)
 {
 	unsigned int id = counter_.FetchId();
 
 	const std::string name = std::to_string(id) + "." + item.Name();
-	const auto& cmdLine = item.CmdLine();
+	auto cmdLine = item.CmdLine();
+
+	cmdLine = ExpandArgs(cmdLine, procArgs);
 
 	logFile_.WriteLine(Msg() << indent << "(" << id << ") [shell] " << cmdLine);
 	LauncherTimer timer;
@@ -110,7 +128,7 @@ int Launcher::RunBlock(const Block& block, const ProcArgs& procArgs, std::string
 		if (item.Type() == CommandItem::TYPE_PROC) {
 			retVal = RunProc(item.ProcName(), item.GetProcArgs(), indent);
 		} else if (item.Type() == CommandItem::TYPE_SHELL) {
-			retVal = RunShell(item, indent);
+			retVal = RunShell(item, indent, procArgs);
 		} else if (item.Type() == CommandItem::TYPE_BLOCK) {
 			retVal = RunBlock(pipeline_.GetBlock(item.GetBlockIndex()), procArgs, indent);
 		}
@@ -290,7 +308,7 @@ void Launcher::Worker()
 			if (item.Type() == CommandItem::TYPE_PROC) {
 				retVal = RunProc(item.ProcName(), item.GetProcArgs(), task.indent_);
 			} else if (item.Type() == CommandItem::TYPE_SHELL) {
-				retVal = RunShell(item, task.indent_);
+				retVal = RunShell(item, task.indent_, task.procArgs_);
 			} else if (item.Type() == CommandItem::TYPE_BLOCK) {
 				assert(false); // should not reach here
 			}

@@ -7,6 +7,12 @@
 #include "StringUtils.h"
 #include "System.h"
 
+std::string ProcArgs::Get(const std::string& key) const
+{
+	auto it = args_.find(key);
+	return (it == args_.end() ? "" : it->second);
+}
+
 void ProcArgs::Add(const std::string& key, const std::string& value)
 {
 	assert(!Has(key));

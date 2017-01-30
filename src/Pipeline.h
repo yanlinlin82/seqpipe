@@ -13,6 +13,7 @@ public:
 	bool IsEmpty() const { return args_.empty(); }
 	bool Has(const std::string& key) const { return (args_.find(key) != args_.end()); }
 	void Add(const std::string& key, const std::string& value);
+	std::string Get(const std::string& key) const;
 	void Clear();
 private:
 	std::map<std::string, std::string> args_;
