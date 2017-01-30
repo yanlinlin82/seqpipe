@@ -96,6 +96,19 @@ There are different ways to install SeqPipe. Choose any one you like:
 
         $ seq 1 3 | awk '{print "echo Hello - "$1}' | seqpipe -
 
+4. Parallel running:
+
+        $ cat <<EOF> foo.pipe
+        sleep 2
+        sleep 1
+        EOF
+
+        $ seqpipe parallel foo.pipe
+
+    Or using pipe:
+
+        $ cat foo.pipe | seqpipe parallel -
+
 ## Reference
 
     <<TODO>>: To be completed.
