@@ -57,7 +57,9 @@ my $SP_WHILE        = '^\s*SP_while\s+(|!)\s*\((.*)\)\s*$';
 
 my %VAR_TYPES = ( 'req_vars' => 1, 'opt_vars' => 2, 'dyn_vars' => 3 );
 my @DEP_NAMES = ( 'require', 'input', 'output', 'temp', 'final' );
-my %FILE_ATTRS = ( 'require' => 'require', 'input' => 'input', 'output' => 'output',
+my %FILE_ATTRS = (
+	'R' => 'require', 'I' => 'input', 'O' => 'output', 'OT' => 'temp', 'OS' => 'final', 'OF' => 'final',
+	'require' => 'require', 'input' => 'input', 'output' => 'output',
 	'output.temp' => 'temp', 'output.save' => 'final', 'output.final' => 'final' );
 
 ############################################################
