@@ -30,6 +30,7 @@ public:
 	CommandItem() { }
 	CommandItem(const std::string& cmd, const std::vector<std::string>& arguments);
 	CommandItem(const std::string& procName, const ProcArgs& procArgs);
+	explicit CommandItem(const std::string& cmdLine);
 	explicit CommandItem(size_t blockIndex);
 
 	bool ConvertShellToProc();

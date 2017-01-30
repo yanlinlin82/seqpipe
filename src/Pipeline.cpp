@@ -6,6 +6,7 @@
 #include "Pipeline.h"
 #include "StringUtils.h"
 #include "System.h"
+#include "CommandLineParser.h"
 
 std::string ProcArgs::Get(const std::string& key) const
 {
@@ -38,6 +39,32 @@ void ProcArgs::Clear()
 	order_.clear();
 }
 
+CommandItem::CommandItem(const std::string& cmd, const std::vector<std::string>& arguments):
+	type_(TYPE_SHELL), shellCmd_(cmd), shellArgs_(arguments)
+{
+	name_ = StringUtils::RemoveSpecialCharacters(cmd);
+	fullCmdLine_ = cmd;
+	for (const auto arg : arguments) {
+		fullCmdLine_ += ' ' + System::EncodeShell(arg);
+	}
+}
+
+CommandItem::CommandItem(const std::string& procName, const ProcArgs& procArgs):
+	type_(TYPE_PROC), procName_(procName), procArgs_(procArgs)
+{
+	name_ = procName;
+}
+
+CommandItem::CommandItem(size_t blockIndex):
+	type_(TYPE_BLOCK), blockIndex_(blockIndex)
+{
+}
+
+CommandItem::CommandItem(const std::string& cmdLine):
+	type_(TYPE_SHELL), fullCmdLine_(cmdLine)
+{
+}
+
 const std::string& CommandItem::CmdLine() const
 {
 	assert(type_ == TYPE_SHELL);
@@ -68,27 +95,6 @@ size_t CommandItem::GetBlockIndex() const
 	return blockIndex_;
 }
 
-CommandItem::CommandItem(const std::string& cmd, const std::vector<std::string>& arguments):
-	type_(TYPE_SHELL), shellCmd_(cmd), shellArgs_(arguments)
-{
-	name_ = StringUtils::RemoveSpecialCharacters(cmd);
-	fullCmdLine_ = cmd;
-	for (const auto arg : arguments) {
-		fullCmdLine_ += ' ' + System::EncodeShell(arg);
-	}
-}
-
-CommandItem::CommandItem(const std::string& procName, const ProcArgs& procArgs):
-	type_(TYPE_PROC), procName_(procName), procArgs_(procArgs)
-{
-	name_ = procName;
-}
-
-CommandItem::CommandItem(size_t blockIndex):
-	type_(TYPE_BLOCK), blockIndex_(blockIndex)
-{
-}
-
 std::string CommandItem::ToString() const
 {
 	if (type_ == TYPE_SHELL) {
@@ -112,12 +118,12 @@ bool Block::AppendCommand(const std::string& cmd, const std::vector<std::string>
 
 bool Block::AppendCommand(const std::string& line)
 {
-	std::string cmd;
-	std::vector<std::string> arguments;
-	if (!StringUtils::ParseCommandLine(line, cmd, arguments)) {
+	CommandLineParser parser;
+	if (!parser.Parse(line)) {
 		return false;
 	}
-	items_.push_back(CommandItem(cmd, arguments));
+
+	items_.push_back(CommandItem(parser.ToFullCmdLine()));
 	return true;
 }
 
