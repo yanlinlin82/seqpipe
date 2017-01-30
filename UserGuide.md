@@ -109,7 +109,28 @@ There are different ways to install SeqPipe. Choose any one you like:
 
         $ cat foo.pipe | seqpipe parallel -
 
-5. With variable:
+5. More complex example for nested blocks:
+
+        $ cat <<EOF> foo.pipe
+        {{
+            {
+                echo A
+                sleep 3
+                echo B
+            }
+            {
+                {{
+                    echo C; sleep 2; echo D
+                    echo E; sleep 1; echo F
+                }}
+                echo G
+            }
+        }}
+        EOF
+
+        $ seqpipe foo.pipe
+
+6. With variable:
 
         $ seqpipe -e 'echo "Hello, ${NAME}!"' NAME=world
 
