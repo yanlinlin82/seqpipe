@@ -10,7 +10,7 @@ Since v0.5, I am rewriting SeqPipe in C++, rather than Perl (in which I wrote Se
 
 In near future, **more concise syntax**, **colorful messages**, and **interactive UI** may become true. Check [Ideas.md](Ideas.md) to see more details.
 
-Any suggestions are welcome to yanlinlin[AT]gmail.com
+Any suggestions are welcome to yanlinlin82[AT]gmail.com
 
 ## Installation
 

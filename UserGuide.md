@@ -138,6 +138,8 @@ There are different ways to install SeqPipe. Choose any one you like:
 
     <<TODO>>: To be completed.
 
-## FAQ
+## Questions & Answers
 
-    <<TODO>>: To be completed.
+1. Why give up Perl?
+
+    Package 'thread' (both 'native' and 'fork' implementation) in Perl is suck. It is desperate for me to struggle the thread related problems in Perl. In contrast, C++(11) excites me to change brilliant ideas to reality.
