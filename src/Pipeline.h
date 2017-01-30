@@ -98,6 +98,7 @@ public:
 	bool HasAnyDefaultCommand() const;
 
 	const Block& GetDefaultBlock() const;
+	const Block& GetBlock(size_t index) const;
 	const Block& GetBlock(const std::string& procName) const;
 	std::vector<std::string> GetProcNameList(const std::string& pattern) const;
 private:

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <atomic>
+#include <thread>
 #include <csignal>
 #include <unistd.h>
 #include "Launcher.h"
@@ -9,6 +10,16 @@
 #include "SeqPipe.h"
 #include "Semaphore.h"
 #include "LauncherTimer.h"
+
+WorkflowTask::WorkflowTask(size_t blockIndex, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
+	blockIndex_(blockIndex), itemIndex_(itemIndex), indent_(indent), procArgs_(procArgs), taskId_(taskId)
+{
+}
+
+WorkflowThread::WorkflowThread(size_t blockIndex, size_t itemIndex, std::string indent, ProcArgs procArgs):
+	blockIndex_(blockIndex), itemIndex_(itemIndex), indent_(indent), procArgs_(procArgs)
+{
+}
 
 Launcher::Launcher(const Pipeline& pipeline, int verbose):
 	pipeline_(pipeline), verbose_(verbose)
@@ -36,7 +47,7 @@ static void SetSigAction()
 	sigaction(SIGTERM, &sa, NULL);
 }
 
-int Launcher::RunProc(const std::string& procName, std::string indent, const ProcArgs& procArgs)
+int Launcher::RunProc(const std::string& procName, const ProcArgs& procArgs, std::string indent)
 {
 	unsigned int id = counter_.FetchId();
 
@@ -48,7 +59,7 @@ int Launcher::RunProc(const std::string& procName, std::string indent, const Pro
 
 	WriteStringToFile(logDir_ + "/" + name + ".pipeline", procName);
 
-	int retVal = RunBlock(pipeline_.GetBlock(procName), indent + "  ", procArgs);
+	int retVal = RunBlock(pipeline_.GetBlock(procName), procArgs, indent + "  ");
 
 	timer.Stop();
 	logFile_.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
@@ -89,13 +100,13 @@ int Launcher::RunShell(const CommandItem& item, std::string indent)
 	return 0;
 }
 
-int Launcher::RunBlock(const Block& block, std::string indent, const ProcArgs& procArgs)
+int Launcher::RunBlock(const Block& block, const ProcArgs& procArgs, std::string indent)
 {
 	for (size_t i = 0; i < block.items_.size() && !killed; ++i) {
 		const auto item = block.items_[i];
 		int retVal;
 		if (item.Type() == CommandItem::TYPE_PROC) {
-			retVal = RunProc(item.ProcName(), indent, item.GetProcArgs());
+			retVal = RunProc(item.ProcName(), item.GetProcArgs(), indent);
 		} else if (item.Type() == CommandItem::TYPE_SHELL) {
 			retVal = RunShell(item, indent);
 		}
@@ -118,8 +129,126 @@ std::string Launcher::GetUniqueId()
 	return (text + System::GetHostname());
 }
 
+Launcher::Status Launcher::CheckStatus()
+{
+	std::lock_guard<std::mutex> lock(mutex_);
+
+	CheckFinishedTasks();
+	PostNextTasks();
+	EraseFinishedThreads();
+
+	return (workflowThreads_.empty() ? STATUS_EXITED : STATUS_RUNNING);
+}
+
+void Launcher::Wait()
+{
+	usleep(100);
+}
+
+void Launcher::CheckFinishedTasks()
+{
+	for (auto& info : workflowThreads_) {
+		if (info.waitingFor_ > 0) {
+			auto it = finishedTasks_.find(info.waitingFor_);
+			if (it != finishedTasks_.end()) {
+				finishedTasks_.erase(info.waitingFor_);
+				info.waitingFor_ = 0;
+				info.retVal_ = it->second;
+				++info.itemIndex_;
+			}
+		}
+	}
+}
+
+void Launcher::PostNextTasks()
+{
+	for (auto& info : workflowThreads_) {
+		const auto& block = pipeline_.GetBlock(info.blockIndex_);
+		if (info.waitingFor_ == 0 && info.retVal_ == 0 && info.itemIndex_ < block.items_.size()) {
+			++taskIdCounter_;
+			taskQueue_.push_back(WorkflowTask(info.blockIndex_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
+			info.waitingFor_ = taskIdCounter_;
+		}
+	}
+}
+
+void Launcher::EraseFinishedThreads()
+{
+	for (auto it = workflowThreads_.begin(); it != workflowThreads_.end(); ) {
+		const auto& info = *it;
+		const auto& block = pipeline_.GetBlock(info.blockIndex_);
+		if (info.retVal_ != 0) {
+			failedRetVal_.push_back(info.retVal_);
+			it = workflowThreads_.erase(it);
+		} else if (info.itemIndex_ >= block.items_.size()) {
+			it = workflowThreads_.erase(it);
+		} else {
+			++it;
+		}
+	}
+}
+
+bool Launcher::GetTaskFromQueue(WorkflowTask& task)
+{
+	std::lock_guard<std::mutex> lock(mutex_);
+	if (taskQueue_.empty()) {
+		return false;
+	}
+	task = taskQueue_.front();
+	taskQueue_.pop_front();
+	return true;
+}
+
+void Launcher::SetTaskFinished(unsigned int taskId, int retVal)
+{
+	std::lock_guard<std::mutex> lock(mutex_);
+	finishedTasks_[taskId] = retVal;
+}
+
+void Launcher::Worker()
+{
+	while (!exiting_) {
+		WorkflowTask task;
+		if (GetTaskFromQueue(task)) {
+			const auto& block = pipeline_.GetBlock(task.blockIndex_);
+			const auto& item = block.items_[task.itemIndex_];
+			int retVal;
+			if (item.Type() == CommandItem::TYPE_PROC) {
+				retVal = RunProc(item.ProcName(), item.GetProcArgs(), task.indent_);
+			} else if (item.Type() == CommandItem::TYPE_SHELL) {
+				retVal = RunShell(item, task.indent_);
+			}
+			SetTaskFinished(task.taskId_, retVal);
+		} else {
+			usleep(100);
+		}
+	}
+}
+
+int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
+{
+	std::thread thread(&Launcher::Worker, std::ref(*this));
+
+	while (CheckStatus() != STATUS_EXITED) {
+		Wait();
+	}
+
+	exiting_ = true;
+	thread.join();
+
+	if (failedRetVal_.size() > 1) {
+		return 1;
+	} else if (failedRetVal_.size() == 1) {
+		return failedRetVal_[0];
+	} else {
+		return 0;
+	}
+}
+
 int Launcher::Run(const ProcArgs& procArgs)
 {
+	workflowThreads_.push_back(WorkflowThread(0, 0, "", procArgs)); // first command (itemIndex = 0) of default block (blockIndex = 0)
+
 	uniqueId_ = GetUniqueId();
 	logDir_ = LOG_ROOT + "/" + uniqueId_;
 
@@ -137,11 +266,12 @@ int Launcher::Run(const ProcArgs& procArgs)
 	logFile_.Initialize(logDir_ + "/log");
 	logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] " << System::GetFullCommandLine());
 
-	SetSigAction();
+	//SetSigAction();
 
 	LauncherTimer timer;
 
-	int retVal = RunBlock(pipeline_.GetDefaultBlock(), "", procArgs);
+	int retVal = ProcessWorkflowThreads(procArgs);
+
 	timer.Stop();
 	if (retVal != 0) {
 		logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");

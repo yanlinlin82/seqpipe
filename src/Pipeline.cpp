@@ -362,7 +362,12 @@ bool Pipeline::HasProcedure(const std::string& name) const
 
 const Block& Pipeline::GetDefaultBlock() const
 {
-	return blockList_[0];
+	return blockList_.at(0);
+}
+
+const Block& Pipeline::GetBlock(size_t index) const
+{
+	return blockList_.at(index);
 }
 
 const Block& Pipeline::GetBlock(const std::string& procName) const
