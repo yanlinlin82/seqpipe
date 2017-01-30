@@ -21,8 +21,8 @@ WorkflowThread::WorkflowThread(size_t blockIndex, size_t itemIndex, std::string 
 {
 }
 
-Launcher::Launcher(const Pipeline& pipeline, int verbose):
-	pipeline_(pipeline), verbose_(verbose)
+Launcher::Launcher(const Pipeline& pipeline, int maxJobNumber, int verbose):
+	pipeline_(pipeline), maxJobNumber_(maxJobNumber), verbose_(verbose)
 {
 }
 
@@ -227,14 +227,22 @@ void Launcher::Worker()
 
 int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
 {
-	std::thread thread(&Launcher::Worker, std::ref(*this));
+	if (maxJobNumber_ == 0) {
+		maxJobNumber_ = std::thread::hardware_concurrency();
+	}
+	std::thread threads[maxJobNumber_];
+	for (int i = 0; i < maxJobNumber_; ++i) {
+		threads[i] = std::thread(&Launcher::Worker, std::ref(*this));
+	}
 
 	while (CheckStatus() != STATUS_EXITED) {
 		Wait();
 	}
 
 	exiting_ = true;
-	thread.join();
+	for (auto& thread : threads) {
+		thread.join();
+	}
 
 	if (failedRetVal_.size() > 1) {
 		return 1;
@@ -266,7 +274,7 @@ int Launcher::Run(const ProcArgs& procArgs)
 	logFile_.Initialize(logDir_ + "/log");
 	logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] " << System::GetFullCommandLine());
 
-	//SetSigAction();
+	SetSigAction();
 
 	LauncherTimer timer;
 

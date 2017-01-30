@@ -42,7 +42,7 @@ public:
 class Launcher
 {
 public:
-	Launcher(const Pipeline& pipeline, int verbose);
+	Launcher(const Pipeline& pipeline, int maxJobNumber, int verbose);
 
 	int Run(const ProcArgs& procArgs);
 private:
@@ -80,6 +80,7 @@ private:
 	bool GetTaskFromQueue(WorkflowTask& task);
 	void SetTaskFinished(unsigned int taskId, int retVal);
 private:
+	int maxJobNumber_ = 0;
 	std::mutex mutex_;
 	std::list<WorkflowThread> workflowThreads_;
 	unsigned int taskIdCounter_ = 0;

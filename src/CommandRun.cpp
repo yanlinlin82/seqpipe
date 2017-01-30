@@ -188,6 +188,6 @@ int CommandRun::Run(const std::vector<std::string>& args)
 		return 1;
 	}
 
-	Launcher launcher(pipeline_, verbose_);
+	Launcher launcher(pipeline_, maxJobNumber_, verbose_);
 	return launcher.Run(procArgs_);
 }
