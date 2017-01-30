@@ -149,12 +149,17 @@ void Launcher::CheckFinishedTasks()
 {
 	for (auto& info : workflowThreads_) {
 		if (info.waitingFor_ > 0) {
+			const auto& block = pipeline_.GetBlock(info.blockIndex_);
 			auto it = finishedTasks_.find(info.waitingFor_);
 			if (it != finishedTasks_.end()) {
 				finishedTasks_.erase(info.waitingFor_);
 				info.waitingFor_ = 0;
 				info.retVal_ = it->second;
-				++info.itemIndex_;
+				if (block.parallel_) {
+					info.itemIndex_ = block.items_.size();
+				} else {
+					++info.itemIndex_;
+				}
 			}
 		}
 	}
@@ -255,7 +260,13 @@ int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
 
 int Launcher::Run(const ProcArgs& procArgs)
 {
-	workflowThreads_.push_back(WorkflowThread(0, 0, "", procArgs)); // first command (itemIndex = 0) of default block (blockIndex = 0)
+	if (pipeline_.GetDefaultBlock().parallel_) {
+		for (size_t i = 0; i < pipeline_.GetDefaultBlock().items_.size(); ++i) {
+			workflowThreads_.push_back(WorkflowThread(0, i, "", procArgs)); // add every command of default block (blockIndex = 0)
+		}
+	} else {
+		workflowThreads_.push_back(WorkflowThread(0, 0, "", procArgs)); // first command (itemIndex = 0) of default block (blockIndex = 0)
+	}
 
 	uniqueId_ = GetUniqueId();
 	logDir_ = LOG_ROOT + "/" + uniqueId_;
