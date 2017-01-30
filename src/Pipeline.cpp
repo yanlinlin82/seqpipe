@@ -452,13 +452,9 @@ bool Pipeline::Save(const std::string& filename) const
 			file << "\n";
 		}
 		if (block.items_.size() == 1) {
-			file << block.items_[0].ToString() << "\n";
+			file << block.items_[0].ToString("", *this);
 		} else {
-			file << (block.parallel_ ? "{{\n" : "{\n");
-			for (const auto& item : blockList_[0].items_) {
-				file << "\t" << item.ToString() << "\n";
-			}
-			file << (block.parallel_ ? "}}\n" : "}\n");
+			file << block.ToString("", *this);
 		}
 	}
 
@@ -572,20 +568,32 @@ void Pipeline::Dump() const
 #endif
 }
 
+std::string Block::ToString(const std::string& indent, const Pipeline& pipeline) const
+{
+	std::string s;
+	s += indent + (parallel_ ? "{{" : "{") + "\n";
+	for (const auto& item : items_) {
+		s += item.ToString(indent + "\t", pipeline);
+	}
+	s += indent + (parallel_ ? "}}" : "}") + "\n";
+	return s;
+}
+
 void Block::Dump(const std::string& indent, const Pipeline& pipeline) const
 {
-	std::cout << indent << (parallel_ ? "{{" : "{") << "\n";
-	for (const auto& item : items_) {
-		item.Dump(indent + "\t", pipeline);
+	std::cout << ToString(indent, pipeline);
+}
+
+std::string CommandItem::ToString(const std::string& indent, const Pipeline& pipeline) const
+{
+	if (Type() == TYPE_BLOCK) {
+		return pipeline.GetBlock(blockIndex_).ToString(indent, pipeline);
+	} else {
+		return indent + ToString() + "\n";
 	}
-	std::cout << indent << (parallel_ ? "}}" : "}") << "\n";
 }
 
 void CommandItem::Dump(const std::string& indent, const Pipeline& pipeline) const
 {
-	if (Type() == TYPE_BLOCK) {
-		pipeline.GetBlock(blockIndex_).Dump(indent, pipeline);
-	} else {
-		std::cout << indent << ToString() << "\n";
-	}
+	std::cout << ToString(indent, pipeline);
 }

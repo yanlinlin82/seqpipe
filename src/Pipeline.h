@@ -51,6 +51,7 @@ public:
 	size_t GetBlockIndex() const;
 
 	std::string ToString() const;
+	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
 	void Dump(const std::string& indent, const Pipeline& pipeline) const;
 private:
 	CommandType type_ = TYPE_SHELL;
@@ -84,6 +85,7 @@ public:
 	std::vector<CommandItem> items_;
 	bool parallel_ = false;
 
+	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
 	void Dump(const std::string& indent, const Pipeline& pipeline) const;
 };
 
