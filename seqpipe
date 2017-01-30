@@ -2062,9 +2062,9 @@ sub print_usage
 
 	print "
 SeqPipe: a SEQuencing data analysis PIPEline framework
-Version: 0.4.16$version_suffix
+Version: 0.4.17$version_suffix
 Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
-Copyright: 2012-2015, Centre for Bioinformatics, Peking University, China
+Copyright: 2012-2017, Centre for Bioinformatics, Peking University, China
 Websites: http://github.com/yanlinlin82/seqpipe
           http://www.cbi.pku.edu.cn
 
@@ -2087,6 +2087,8 @@ Options:
    -k                   Keep temporary files.
    -R                   Show the raw procedure declaration.
    -T                   Test mode, show commands rather than execute them.
+
+Visit 'https://github.com/yanlinlin82/seqpipe/tree/cpp-v0.5' for new unpublished version.
 
 ";
 }
