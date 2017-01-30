@@ -92,7 +92,7 @@ bool PipeFile::IsFuncLine(const std::string& s, std::string& name, std::string& 
 bool PipeFile::IsLeftBracket(const std::string& s, std::string& leftBracket)
 {
 	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("\\s*({|{{)\\s*"))) {
+	if (!std::regex_match(s, sm, std::regex("\\s*(\\{|\\{\\{)\\s*"))) {
 		return false;
 	}
 	leftBracket = sm[1];
@@ -102,7 +102,7 @@ bool PipeFile::IsLeftBracket(const std::string& s, std::string& leftBracket)
 bool PipeFile::IsRightBracket(const std::string& s, std::string& rightBracket)
 {
 	std::smatch sm;
-	if (!std::regex_match(s, sm, std::regex("\\s*(}|}})\\s*"))) {
+	if (!std::regex_match(s, sm, std::regex("\\s*(\\}|\\}\\})\\s*"))) {
 		return false;
 	}
 	rightBracket = sm[1];

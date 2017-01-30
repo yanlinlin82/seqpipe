@@ -19,30 +19,41 @@ private:
 	std::vector<std::string> order_;
 };
 
+class Pipeline;
+
 class CommandItem
 {
 public:
-	enum CommandType { TYPE_SHELL, TYPE_PROC };
+	enum CommandType { TYPE_SHELL, TYPE_PROC, TYPE_BLOCK };
 
 	CommandItem() { }
 	CommandItem(const std::string& cmd, const std::vector<std::string>& arguments);
 	CommandItem(const std::string& procName, const ProcArgs& procArgs);
+	explicit CommandItem(size_t blockIndex);
 
 	bool ConvertShellToProc();
 
+	// common attributes
 	CommandType Type() const { return type_; }
 	const std::string& Name() const { return name_; }
 
+	// 'shell command' attributes
 	const std::string& CmdLine() const;
 	const std::string& ShellCmd() const;
 
+	// 'procedure' attributes
 	const std::string& ProcName() const;
 	const ProcArgs& GetProcArgs() const;
 
+	// 'block' attributes
+	size_t GetBlockIndex() const;
+
 	std::string ToString() const;
+	void Dump(const std::string& indent, const Pipeline& pipeline) const;
 private:
 	CommandType type_ = TYPE_SHELL;
 	std::string name_;
+	ProcArgs procArgs_;
 
 	// members for 'shell command'
 	std::string fullCmdLine_;
@@ -51,7 +62,9 @@ private:
 
 	// members for 'procedure'
 	std::string procName_;
-	ProcArgs procArgs_;
+
+	// members for 'block'
+	size_t blockIndex_ = 0;
 };
 
 class Block
@@ -61,12 +74,15 @@ public:
 	bool AppendCommand(const std::string& line);
 	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
 	bool AppendCommand(const std::string& procName, const ProcArgs& procArgs);
+	bool AppendBlock(size_t blockIndex);
 	void SetParallel(bool parallel) { parallel_ = parallel; }
 
 	bool HasAnyCommand() const { return !items_.empty(); }
 
 	std::vector<CommandItem> items_;
 	bool parallel_ = false;
+
+	void Dump(const std::string& indent, const Pipeline& pipeline) const;
 };
 
 class Procedure
@@ -101,6 +117,8 @@ public:
 	const Block& GetBlock(size_t index) const;
 	const Block& GetBlock(const std::string& procName) const;
 	std::vector<std::string> GetProcNameList(const std::string& pattern) const;
+
+	void Dump() const;
 private:
 	bool LoadConf(const std::string& filename, std::map<std::string, std::string>& confMap);
 	bool LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc);
@@ -109,6 +127,7 @@ private:
 	bool ReadLeftBracket(PipeFile& file, std::string& leftBracket);
 private:
 	std::map<std::string, Procedure> procList_;
+	std::map<std::string, std::string> procAtLineNo_;
 	std::vector<Block> blockList_{1}; // the first 'Block' is the default one.
 };
 

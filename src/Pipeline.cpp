@@ -56,6 +56,12 @@ const ProcArgs& CommandItem::GetProcArgs() const
 	return procArgs_;
 }
 
+size_t CommandItem::GetBlockIndex() const
+{
+	assert(type_ == TYPE_BLOCK);
+	return blockIndex_;
+}
+
 CommandItem::CommandItem(const std::string& cmd, const std::vector<std::string>& arguments):
 	type_(TYPE_SHELL), shellCmd_(cmd), shellArgs_(arguments)
 {
@@ -70,6 +76,11 @@ CommandItem::CommandItem(const std::string& procName, const ProcArgs& procArgs):
 	type_(TYPE_PROC), procName_(procName), procArgs_(procArgs)
 {
 	name_ = procName;
+}
+
+CommandItem::CommandItem(size_t blockIndex):
+	type_(TYPE_BLOCK), blockIndex_(blockIndex)
+{
 }
 
 std::string CommandItem::ToString() const
@@ -110,6 +121,12 @@ bool Block::AppendCommand(const std::string& procName, const ProcArgs& procArgs)
 	return true;
 }
 
+bool Block::AppendBlock(size_t blockIndex)
+{
+	items_.push_back(CommandItem(blockIndex));
+	return true;
+}
+
 bool Pipeline::CheckIfPipeFile(const std::string& command)
 {
 	if (!System::CheckFileExists(command)) {
@@ -138,28 +155,36 @@ std::vector<std::string> Pipeline::GetProcNameList(const std::string& pattern) c
 
 bool Pipeline::ReadLeftBracket(PipeFile& file, std::string& leftBracket)
 {
-	while (file.ReadLine()) {
+	for (;;) {
 		if (PipeFile::IsEmptyLine(file.CurrentLine())) {
-			continue;
+			; // to read next line
 		} else if (PipeFile::IsCommentLine(file.CurrentLine())) {
 			if (PipeFile::IsDescLine(file.CurrentLine())) {
 				std::cerr << "Error: Unexpected attribute line at " << file.Pos() << std::endl;
 				return false;
 			}
-			continue;
+			; // to read next line
 		} else if (!PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
 			std::cerr << "Error: Unexpected line at " << file.Pos() << "\n"
 				"   Only '{' or '{{' was expected here." << std::endl;
 			return false;
+		} else {
+			return true;
 		}
-		break;
+
+		if (!file.ReadLine()) {
+			std::cerr << "Error: Missing left bracket for procedure declare at" << file.Pos() << std::endl;
+			return false;
+		}
 	}
-	return true;
 }
 
 bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 {
-	while (file.ReadLine()) {
+	//std::cerr << "LoadBlock(" << file.Pos() << ") => " << parallel << std::endl;
+	for (;;) {
+		//std::cerr << "Got line: " << file.CurrentLine() << std::endl;
+
 		std::string rightBracket;
 		if (PipeFile::IsRightBracket(file.CurrentLine(), rightBracket)) {
 			if (!parallel && rightBracket == "}}") {
@@ -172,16 +197,48 @@ bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 				return false;
 			}
 			break;
-		} else {
-			block.AppendCommand(file.CurrentLine());
+		}
+
+		std::string leftBracket;
+		if (PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
+			//std::cerr << "Found left bracket at " << file.Pos() << ": " << leftBracket << std::endl;
+			if (!file.ReadLine()) {
+				return false;
+			}
+			Block subBlock;
+			if (!LoadBlock(file, subBlock, (leftBracket == "{{"))) {
+				return false;
+			}
+			size_t blockIndex = blockList_.size();
+			blockList_.push_back(subBlock);
+			if (!block.AppendBlock(blockIndex)) {
+				return false;
+			}
+			if (!file.ReadLine()) {
+				std::cerr << "Missing right bracket '" << (parallel ? "}}" : "}") << "' at " << file.Pos() << std::endl;
+				return false;
+			}
+			continue;
+		}
+
+		if (!block.AppendCommand(file.CurrentLine())) {
+			return false;
+		}
+		if (!file.ReadLine()) {
+			std::cerr << "Missing right bracket '" << (parallel ? "}}" : "}") << "' at " << file.Pos() << std::endl;
+			return false;
 		}
 	}
+	block.parallel_ = parallel;
 	return true;
 }
 
 bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc)
 {
 	if (leftBracket.empty()) {
+		if (!file.ReadLine()) {
+			return false;
+		}
 		if (!ReadLeftBracket(file, leftBracket)) {
 			return false;
 		}
@@ -228,59 +285,121 @@ bool Pipeline::LoadConf(const std::string& filename, std::map<std::string, std::
 bool Pipeline::Load(const std::string& filename)
 {
 	std::map<std::string, std::string> confMap;
-	std::map<std::string, std::string> procAtLineNo;
 
 	PipeFile file;
 	if (!file.Open(filename)) {
 		return false;
 	}
-	while (file.ReadLine()) {
-
-		if (PipeFile::IsEmptyLine(file.CurrentLine())) {
-			continue;
-		}
-		if (PipeFile::IsCommentLine(file.CurrentLine())) {
-			if (PipeFile::IsDescLine(file.CurrentLine())) {
-				if (!PipeFile::ParseAttrLine(file.CurrentLine())) {
-					std::cerr << "Warning: Invalid format of attribute at " << file.Pos() << "!" << std::endl;
+	if (file.ReadLine()) {
+		for (;;) {
+			{ // try include line
+				std::string includeFilename;
+				if (PipeFile::IsIncLine(file.CurrentLine(), includeFilename)) {
+					std::cerr << "Loading module '" << includeFilename << "'" << std::endl;
+					if (!LoadConf(System::DirName(file.Filename()) + "/" + includeFilename, confMap)) {
+						return false;
+					}
+					if (!file.ReadLine()) {
+						break;
+					}
+					continue;
 				}
 			}
-			continue;
-		}
 
-		std::string includeFilename;
-		if (PipeFile::IsIncLine(file.CurrentLine(), includeFilename)) {
-			std::cerr << "Loading module '" << includeFilename << "'" << std::endl;
-			if (!LoadConf(System::DirName(file.Filename()) + "/" + includeFilename, confMap)) {
-				return false;
+			{ // try function line
+				std::string procName;
+				std::string leftBracket;
+				if (PipeFile::IsFuncLine(file.CurrentLine(), procName, leftBracket)) {
+					if (procAtLineNo_.find(procName) != procAtLineNo_.end()) {
+						std::cerr << "Error: Duplicated procedure '" << procName << "' at " << file.Pos() << "\n"
+							"   Previous definition of '" << procName << "' was in " << procAtLineNo_[procName] << std::endl;
+						return false;
+					}
+					procAtLineNo_[procName] = file.Pos();
+
+					Procedure proc;
+					if (!LoadProc(file, procName, leftBracket, proc)) {
+						return false;
+					}
+
+					if (!file.ReadLine()) {
+						break;
+					}
+					continue;
+				}
 			}
-			continue;
-		}
 
-		std::string name;
-		std::string value;
-		if (PipeFile::IsVarLine(file.CurrentLine(), name, value)) {
-			confMap[name] = value;
-		}
+			{ // try block line
+				std::string leftBracket;
+				if (PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
+					//std::cerr << "Found (global) left bracket at " << file.Pos() << ": " << leftBracket << std::endl;
+					if (!file.ReadLine()) {
+						return false;
+					}
+					Block block;
+					if (!LoadBlock(file, block, (leftBracket == "{{"))) {
+						return false;
+					}
+					size_t blockIndex = blockList_.size();
+					blockList_.push_back(block);
+					if (!blockList_[0].AppendBlock(blockIndex)) {
+						return false;
+					}
 
-		std::string leftBracket;
-		if (PipeFile::IsFuncLine(file.CurrentLine(), name, leftBracket)) {
-			if (procAtLineNo.find(name) != procAtLineNo.end()) {
-				std::cerr << "Error: Duplicated procedure '" << name << "' at " << file.Pos() << "\n"
-					"   Previous definition of '" << name << "' was in " << procAtLineNo[name] << std::endl;
-				return false;
+					//std::cerr << "After load (global) block: " << file.Pos() << std::endl;
+					//block.Dump("", *this);
+					//std::cout << "--------" << std::endl;
+
+					if (!file.ReadLine()) {
+						break;
+					}
+					continue;
+				}
 			}
-			procAtLineNo[name] = file.Pos();
 
-			Procedure proc;
-			if (!LoadProc(file, name, leftBracket, proc)) {
-				return false;
+			{ // try empty line
+				if (PipeFile::IsEmptyLine(file.CurrentLine())) {
+					if (!file.ReadLine()) {
+						break;
+					}
+					continue;
+				}
 			}
-			continue;
-		}
 
-		if (!blockList_[0].AppendCommand(file.CurrentLine())) {
-			return false;
+			{ // try comment line
+				if (PipeFile::IsCommentLine(file.CurrentLine())) {
+					if (PipeFile::IsDescLine(file.CurrentLine())) {
+						if (!PipeFile::ParseAttrLine(file.CurrentLine())) {
+							std::cerr << "Warning: Invalid format of attribute at " << file.Pos() << "!" << std::endl;
+						}
+					}
+					if (!file.ReadLine()) {
+						break;
+					}
+					continue;
+				}
+			}
+
+			{ // try var line
+				std::string name;
+				std::string value;
+				if (PipeFile::IsVarLine(file.CurrentLine(), name, value)) {
+					confMap[name] = value;
+					if (!file.ReadLine()) {
+						break;
+					}
+					continue;
+				}
+			}
+
+			{ // try shell command line
+				if (!blockList_[0].AppendCommand(file.CurrentLine())) {
+					return false;
+				}
+				if (!file.ReadLine()) {
+					break;
+				}
+			}
 		}
 	}
 
@@ -320,11 +439,15 @@ bool Pipeline::Save(const std::string& filename) const
 		if (!procList_.empty()) {
 			file << "\n";
 		}
-		file << (block.parallel_ ? "{{\n" : "{\n");
-		for (const auto& item : blockList_[0].items_) {
-			file << "\t" << item.ToString() << "\n";
+		if (block.items_.size() == 1) {
+			file << block.items_[0].ToString() << "\n";
+		} else {
+			file << (block.parallel_ ? "{{\n" : "{\n");
+			for (const auto& item : blockList_[0].items_) {
+				file << "\t" << item.ToString() << "\n";
+			}
+			file << (block.parallel_ ? "}}\n" : "}\n");
 		}
-		file << (block.parallel_ ? "}}\n" : "}\n");
 	}
 
 	file.close();
@@ -419,4 +542,38 @@ bool Pipeline::FinalCheckAfterLoad()
 		}
 	}
 	return true;
+}
+
+void Pipeline::Dump() const
+{
+#if 0
+	blockList_[0].Dump("", *this);
+	std::cout << std::flush;
+#else
+	for (size_t i = 0; i < blockList_.size(); ++i) {
+		std::cout << "Block[" << i << "]:\n";
+		for (size_t j = 0; j < blockList_[i].items_.size(); ++j) {
+			const auto& item = blockList_[i].items_[j];
+			std::cout << "  item[" << j << "] = " << item.Type() << ", " << item.ToString() << std::endl;
+		}
+	}
+#endif
+}
+
+void Block::Dump(const std::string& indent, const Pipeline& pipeline) const
+{
+	std::cout << indent << (parallel_ ? "{{" : "{") << "\n";
+	for (const auto& item : items_) {
+		item.Dump(indent + "\t", pipeline);
+	}
+	std::cout << indent << (parallel_ ? "}}" : "}") << "\n";
+}
+
+void CommandItem::Dump(const std::string& indent, const Pipeline& pipeline) const
+{
+	if (Type() == TYPE_BLOCK) {
+		pipeline.GetBlock(blockIndex_).Dump(indent, pipeline);
+	} else {
+		std::cout << indent << ToString() << "\n";
+	}
 }
