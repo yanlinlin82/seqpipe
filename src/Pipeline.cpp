@@ -159,25 +159,21 @@ void Block::Clear()
 	parallel_ = false;
 }
 
-bool Block::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
+void Block::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
 {
 	items_.push_back(CommandItem(cmd, arguments));
-	return true;
 }
 
-bool Block::AppendCommand(const std::vector<std::vector<std::string>>& argLists, Pipeline& pipeline)
+void Block::AppendCommand(const std::vector<std::vector<std::string>>& argLists, Pipeline& pipeline)
 {
-	if (argLists.empty()) {
-		return true;
-	} else if (argLists.size() == 1 || !parallel_) {
+	if (argLists.size() == 1 || !parallel_) {
 		for (const auto& argList : argLists) {
 			assert(!argList.empty());
 			const auto& cmd = argList[0];
 			const auto args = std::vector<std::string>(argList.begin() + 1, argList.end());
 			AppendCommand(cmd, args);
 		}
-		return true;
-	} else {
+	} else if (!argLists.empty()) {
 		Block block;
 		for (const auto& argList : argLists) {
 			assert(!argList.empty());
@@ -187,14 +183,12 @@ bool Block::AppendCommand(const std::vector<std::vector<std::string>>& argLists,
 		}
 		size_t blockIndex = pipeline.AppendBlock(block);
 		AppendBlock(blockIndex);
-		return true;
 	}
 }
 
-bool Block::AppendCommand(const std::string& procName, const ProcArgs& procArgs)
+void Block::AppendCommand(const std::string& procName, const ProcArgs& procArgs)
 {
 	items_.push_back(CommandItem(procName, procArgs));
-	return true;
 }
 
 bool Block::AppendBlock(size_t blockIndex)
@@ -606,13 +600,15 @@ bool Pipeline::SetDefaultBlock(const std::vector<std::string>& cmdList, bool par
 bool Pipeline::SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments)
 {
 	blockList_[0].Clear();
-	return blockList_[0].AppendCommand(cmd, arguments);
+	blockList_[0].AppendCommand(cmd, arguments);
+	return true;
 }
 
 bool Pipeline::SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs)
 {
 	blockList_[0].Clear();
-	return blockList_[0].AppendCommand(procName, procArgs);
+	blockList_[0].AppendCommand(procName, procArgs);
+	return true;
 }
 
 bool Pipeline::HasProcedure(const std::string& name) const

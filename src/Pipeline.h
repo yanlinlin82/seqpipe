@@ -79,11 +79,13 @@ class Block
 {
 public:
 	void Clear();
-	bool AppendCommand(const std::vector<std::vector<std::string>>& argLists, Pipeline& pipeline);
-	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
-	bool AppendCommand(const std::string& procName, const ProcArgs& procArgs);
-	bool AppendBlock(size_t blockIndex);
+
 	void SetParallel(bool parallel) { parallel_ = parallel; }
+	void AppendCommand(const std::vector<std::vector<std::string>>& argLists, Pipeline& pipeline);
+	void AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
+	void AppendCommand(const std::string& procName, const ProcArgs& procArgs);
+
+	bool AppendBlock(size_t blockIndex);
 	bool UpdateCommandToProcCalling(const std::set<std::string>& procNameSet);
 
 	bool HasAnyCommand() const { return !items_.empty(); }
