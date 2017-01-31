@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include "PipeFile.h"
 
 class ProcArgs
@@ -79,14 +80,18 @@ public:
 	bool AppendCommand(const std::string& procName, const ProcArgs& procArgs);
 	bool AppendBlock(size_t blockIndex);
 	void SetParallel(bool parallel) { parallel_ = parallel; }
+	bool UpdateCommandToProcCalling(const std::set<std::string>& procNameSet);
 
 	bool HasAnyCommand() const { return !items_.empty(); }
 
-	std::vector<CommandItem> items_;
-	bool parallel_ = false;
-
 	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
 	void Dump(const std::string& indent, const Pipeline& pipeline) const;
+
+	const std::vector<CommandItem> GetItems() const { return items_; }
+	bool IsParallel() const { return parallel_; }
+private:
+	std::vector<CommandItem> items_;
+	bool parallel_ = false;
 };
 
 class Procedure

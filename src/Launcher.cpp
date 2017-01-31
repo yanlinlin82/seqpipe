@@ -121,9 +121,8 @@ int Launcher::RunShell(const CommandItem& item, std::string indent, const ProcAr
 
 int Launcher::RunBlock(const Block& block, const ProcArgs& procArgs, std::string indent)
 {
-	//std::cerr << "RunBlock (parallel: " << block.parallel_ << ")" << std::endl;
-	for (size_t i = 0; i < block.items_.size() && !killed; ++i) {
-		const auto item = block.items_[i];
+	for (size_t i = 0; i < block.GetItems().size() && !killed; ++i) {
+		const auto item = block.GetItems()[i];
 		int retVal = 0;
 		if (item.Type() == CommandItem::TYPE_PROC) {
 			retVal = RunProc(item.ProcName(), item.GetProcArgs(), indent);
@@ -159,8 +158,6 @@ Launcher::Status Launcher::CheckStatus()
 	PostNextTasks();
 	EraseFinishedThreads();
 
-	//DumpWorkflowThreads();
-
 	return (workflowThreads_.empty() ? STATUS_EXITED : STATUS_RUNNING);
 }
 
@@ -183,8 +180,8 @@ void Launcher::CheckFinishedTasks()
 			}
 			if (info.waitingFor_.empty()) {
 				info.retVal_ = retVal; // TODO: save multiple retVal
-				if (block.parallel_) {
-					info.itemIndex_ = block.items_.size();
+				if (block.IsParallel()) {
+					info.itemIndex_ = block.GetItems().size();
 				} else {
 					++info.itemIndex_;
 				}
@@ -219,18 +216,16 @@ void Launcher::DumpWorkflowThreads() const
 
 void Launcher::PostNextTasks()
 {
-	//std::cerr << "PostNextTasks" << std::endl;
-
 	std::list<WorkflowThread> newThreads;
 
 	for (auto& info : workflowThreads_) {
 		const auto& block = pipeline_.GetBlock(info.blockIndex_);
-		if (info.waitingFor_.empty() && info.retVal_ == 0 && info.itemIndex_ < block.items_.size()) {
-			const auto& item = block.items_[info.itemIndex_];
+		if (info.waitingFor_.empty() && info.retVal_ == 0 && info.itemIndex_ < block.GetItems().size()) {
+			const auto& item = block.GetItems()[info.itemIndex_];
 			if (item.Type() == CommandItem::TYPE_BLOCK) {
 				const auto& subBlock = pipeline_.GetBlock(item.GetBlockIndex());
-				if (subBlock.parallel_) {
-					for (size_t i = 0; i < subBlock.items_.size(); ++i) {
+				if (subBlock.IsParallel()) {
+					for (size_t i = 0; i < subBlock.GetItems().size(); ++i) {
 						++taskIdCounter_;
 						newThreads.push_back(WorkflowThread(item.GetBlockIndex(), i, info.indent_, info.procArgs_, taskIdCounter_)); // TODO: info.procArgs_
 						info.waitingFor_.insert(taskIdCounter_);
@@ -244,7 +239,6 @@ void Launcher::PostNextTasks()
 			} else {
 				//assert(item.Type() == CommandItem::TYPE_SHELL);
 				++taskIdCounter_;
-				//std::cerr << "Post task{" << taskIdCounter_ << "}: block = " << info.blockIndex_ << ", item = " << info.itemIndex_ << std::endl;
 				taskQueue_.push_back(WorkflowTask(info.blockIndex_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
 				info.waitingFor_.insert(taskIdCounter_);
 			}
@@ -263,12 +257,10 @@ void Launcher::EraseFinishedThreads()
 		const auto& block = pipeline_.GetBlock(info.blockIndex_);
 
 		if (info.retVal_ != 0) {
-			//std::cerr << "Finish thread: " << info.taskId_ << " (retVal:" << info.retVal_ << ")" << std::endl;
 			failedRetVal_.push_back(info.retVal_);
 			finishedTasks_[info.taskId_] = info.retVal_;
 			it = workflowThreads_.erase(it);
-		} else if (info.itemIndex_ >= block.items_.size()) {
-			//std::cerr << "Finish thread: " << info.taskId_ << " (retVal:" << info.retVal_ << ")" << std::endl;
+		} else if (info.itemIndex_ >= block.GetItems().size()) {
 			finishedTasks_[info.taskId_] = info.retVal_;
 			it = workflowThreads_.erase(it);
 		} else {
@@ -291,7 +283,6 @@ bool Launcher::GetTaskFromQueue(WorkflowTask& task)
 void Launcher::SetTaskFinished(unsigned int taskId, int retVal)
 {
 	std::lock_guard<std::mutex> lock(mutex_);
-	//std::cerr << "Finish task: " << taskId << " (retVal:" << retVal << ")" << std::endl;
 	finishedTasks_[taskId] = retVal;
 }
 
@@ -300,10 +291,8 @@ void Launcher::Worker()
 	while (!exiting_) {
 		WorkflowTask task;
 		if (GetTaskFromQueue(task)) {
-			//std::cerr << "Got task{" << task.taskId_ << "}: " << task.blockIndex_ << ", " << task.itemIndex_ << std::endl;
-
 			const auto& block = pipeline_.GetBlock(task.blockIndex_);
-			const auto& item = block.items_[task.itemIndex_];
+			const auto& item = block.GetItems()[task.itemIndex_];
 			int retVal;
 			if (item.Type() == CommandItem::TYPE_PROC) {
 				retVal = RunProc(item.ProcName(), item.GetProcArgs(), task.indent_);
@@ -332,7 +321,6 @@ int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
 	while (CheckStatus() != STATUS_EXITED) {
 		Wait();
 	}
-	//std::cout << "exited!!!" << std::endl;
 
 	exiting_ = true;
 	for (auto& thread : threads) {
@@ -350,10 +338,8 @@ int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
 
 int Launcher::Run(const ProcArgs& procArgs)
 {
-	//pipeline_.Dump();
-
-	if (pipeline_.GetDefaultBlock().parallel_) {
-		for (size_t i = 0; i < pipeline_.GetDefaultBlock().items_.size(); ++i) {
+	if (pipeline_.GetDefaultBlock().IsParallel()) {
+		for (size_t i = 0; i < pipeline_.GetDefaultBlock().GetItems().size(); ++i) {
 			workflowThreads_.push_back(WorkflowThread(0, i, "", procArgs, ++taskIdCounter_)); // add every command of default block (blockIndex = 0)
 		}
 	} else {

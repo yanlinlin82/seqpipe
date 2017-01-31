@@ -104,6 +104,20 @@ std::string CommandItem::ToString() const
 	}
 }
 
+std::string CommandItem::ToString(const std::string& indent, const Pipeline& pipeline) const
+{
+	if (Type() == TYPE_BLOCK) {
+		return pipeline.GetBlock(blockIndex_).ToString(indent, pipeline);
+	} else {
+		return indent + ToString() + "\n";
+	}
+}
+
+void CommandItem::Dump(const std::string& indent, const Pipeline& pipeline) const
+{
+	std::cout << ToString(indent, pipeline);
+}
+
 void Block::Clear()
 {
 	items_.clear();
@@ -152,6 +166,35 @@ bool Block::AppendBlock(size_t blockIndex)
 {
 	items_.push_back(CommandItem(blockIndex));
 	return true;
+}
+
+bool Block::UpdateCommandToProcCalling(const std::set<std::string>& procNameSet)
+{
+	for (auto& item : items_) {
+		if (item.Type() == CommandItem::TYPE_SHELL
+				&& procNameSet.find(item.ShellCmd()) != procNameSet.end()) {
+			if (!item.ConvertShellToProc()) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+std::string Block::ToString(const std::string& indent, const Pipeline& pipeline) const
+{
+	std::string s;
+	s += indent + (parallel_ ? "{{" : "{") + "\n";
+	for (const auto& item : items_) {
+		s += item.ToString(indent + "\t", pipeline);
+	}
+	s += indent + (parallel_ ? "}}" : "}") + "\n";
+	return s;
+}
+
+void Block::Dump(const std::string& indent, const Pipeline& pipeline) const
+{
+	std::cout << ToString(indent, pipeline);
 }
 
 bool Pipeline::CheckIfPipeFile(const std::string& command)
@@ -208,10 +251,7 @@ bool Pipeline::ReadLeftBracket(PipeFile& file, std::string& leftBracket)
 
 bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 {
-	//std::cerr << "LoadBlock(" << file.Pos() << ") => " << parallel << std::endl;
 	for (;;) {
-		//std::cerr << "Got line: " << file.CurrentLine() << std::endl;
-
 		std::string rightBracket;
 		if (PipeFile::IsRightBracket(file.CurrentLine(), rightBracket)) {
 			if (!parallel && rightBracket == "}}") {
@@ -228,7 +268,6 @@ bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 
 		std::string leftBracket;
 		if (PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
-			//std::cerr << "Found left bracket at " << file.Pos() << ": " << leftBracket << std::endl;
 			if (!file.ReadLine()) {
 				return false;
 			}
@@ -255,7 +294,7 @@ bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 			return false;
 		}
 	}
-	block.parallel_ = parallel;
+	block.SetParallel(parallel);
 	return true;
 }
 
@@ -384,7 +423,6 @@ bool Pipeline::Load(const std::string& filename)
 			{ // try block line
 				std::string leftBracket;
 				if (PipeFile::IsLeftBracket(file.CurrentLine(), leftBracket)) {
-					//std::cerr << "Found (global) left bracket at " << file.Pos() << ": " << leftBracket << std::endl;
 					if (!file.ReadLine()) {
 						return false;
 					}
@@ -397,10 +435,6 @@ bool Pipeline::Load(const std::string& filename)
 					if (!blockList_[0].AppendBlock(blockIndex)) {
 						return false;
 					}
-
-					//std::cerr << "After load (global) block: " << file.Pos() << std::endl;
-					//block.Dump("", *this);
-					//std::cout << "--------" << std::endl;
 
 					if (!file.ReadLine()) {
 						break;
@@ -480,7 +514,7 @@ bool Pipeline::Save(const std::string& filename) const
 		}
 
 		file << it->first << "() {\n";
-		for (const auto& item : blockList_[it->second.BlockIndex()].items_) {
+		for (const auto& item : blockList_[it->second.BlockIndex()].GetItems()) {
 			file << "\t" << item.ToString() << "\n";
 		}
 		file << "}\n";
@@ -491,8 +525,8 @@ bool Pipeline::Save(const std::string& filename) const
 		if (!procList_.empty()) {
 			file << "\n";
 		}
-		if (block.items_.size() == 1) {
-			file << block.items_[0].ToString("", *this);
+		if (block.GetItems().size() == 1) {
+			file << block.GetItems()[0].ToString("", *this);
 		} else {
 			file << block.ToString("", *this);
 		}
@@ -584,13 +618,11 @@ bool CommandItem::ConvertShellToProc()
 
 bool Pipeline::FinalCheckAfterLoad()
 {
+	auto procNameList = GetProcNameList("");
+	std::set<std::string> procNameSet(procNameList.begin(), procNameList.end());
 	for (auto& block : blockList_) {
-		for (auto& item : block.items_) {
-			if (item.Type() == CommandItem::TYPE_SHELL && HasProcedure(item.ShellCmd())) {
-				if (!item.ConvertShellToProc()) {
-					return false;
-				}
-			}
+		if (!block.UpdateCommandToProcCalling(procNameSet)) {
+			return false;
 		}
 	}
 	return true;
@@ -600,41 +632,11 @@ void Pipeline::Dump() const
 {
 	for (size_t i = 0; i < blockList_.size(); ++i) {
 		std::cout << "Block[" << i << "]:\n";
-		for (size_t j = 0; j < blockList_[i].items_.size(); ++j) {
-			const auto& item = blockList_[i].items_[j];
+		for (size_t j = 0; j < blockList_[i].GetItems().size(); ++j) {
+			const auto& item = blockList_[i].GetItems()[j];
 			std::cout << "  item[" << j << "] = " << item.Type() << ", " << item.ToString() << std::endl;
 		}
 	}
-}
-
-std::string Block::ToString(const std::string& indent, const Pipeline& pipeline) const
-{
-	std::string s;
-	s += indent + (parallel_ ? "{{" : "{") + "\n";
-	for (const auto& item : items_) {
-		s += item.ToString(indent + "\t", pipeline);
-	}
-	s += indent + (parallel_ ? "}}" : "}") + "\n";
-	return s;
-}
-
-void Block::Dump(const std::string& indent, const Pipeline& pipeline) const
-{
-	std::cout << ToString(indent, pipeline);
-}
-
-std::string CommandItem::ToString(const std::string& indent, const Pipeline& pipeline) const
-{
-	if (Type() == TYPE_BLOCK) {
-		return pipeline.GetBlock(blockIndex_).ToString(indent, pipeline);
-	} else {
-		return indent + ToString() + "\n";
-	}
-}
-
-void CommandItem::Dump(const std::string& indent, const Pipeline& pipeline) const
-{
-	std::cout << ToString(indent, pipeline);
 }
 
 size_t Pipeline::AppendBlock(const Block& block)

@@ -133,8 +133,6 @@ bool CommandLineParser::Parse(const std::string& s)
 	if (!word.empty()) {
 		argLists_.back().push_back(word);
 	}
-
-	//Dump();
 	return true;
 }
 
