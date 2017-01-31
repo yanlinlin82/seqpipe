@@ -6,6 +6,7 @@ SeqPipe is a command line-based pipeline framework for bioinformatics research. 
 
 More importantly, SeqPipe could record as many related information as possible to ensure the analysis procedure is reproducible, which is essential in scientific research.
 
+
 ## Features
 
 There are some features of SeqPipe, for which you may like to use it as your handy framework in your daily data analysis.
@@ -15,6 +16,7 @@ There are some features of SeqPipe, for which you may like to use it as your han
 - **Run in parallel easily** - It is very easy to define which steps in a pipeline should be run in parallel, without adding any complexity to the scripts.
 - **File dependency checking** - SeqPipe could check input/output file dependency for each step, therefore those already finished steps could be skipped automatically, especially when you restart a pipeline after it was somehow aborted.
 - **Predefined pipelines** - SeqPipe predefined many common pipelines for high throughput sequencing data analysis, including read mapping and variant calling. They are easy-to-use for experienced bioinformaticians and also useful for newbie to start learning the workflows.
+
 
 ## Installation
 
@@ -63,6 +65,7 @@ There are different ways to install SeqPipe. Choose any one you like:
         $ seqpipe run - < hello.pipe
         $ seqpipe run <(cat hello.pipe)
         $ cat hello.pipe | seqpipe run -  # all these three commands are the same as above
+
 
 ## Usage Examples
 
@@ -134,12 +137,26 @@ There are different ways to install SeqPipe. Choose any one you like:
 
         $ seqpipe -e 'echo "Hello, ${NAME}!"' NAME=world
 
+7. Variable in procedure, and mixture commands in single line:
+
+        $ cat <<EOF> foo.pipe
+        foo() {
+            echo ${A}
+            echo ${B}
+        }
+        echo 1; foo A=hello B=world; echo 2
+        echo 3
+
+        $ seqpipe foo.pipe
+
+
 ## Reference
 
     <<TODO>>: To be completed.
 
+
 ## Questions & Answers
 
-1. Why give up Perl?
+1. Why give up Perl? Why C++(11)?
 
     Package 'thread' (both 'native' and 'fork' implementation) in Perl is suck. It is desperate for me to struggle the thread related problems in Perl. In contrast, C++(11) excites me to change brilliant ideas to reality.
