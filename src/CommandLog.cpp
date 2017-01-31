@@ -115,7 +115,12 @@ int CommandLog::RemoveHistory()
 	}
 
 	char path[1024] = "";
-	readlink(LOG_LAST.c_str(), path, sizeof(path));
+	ssize_t n = readlink(LOG_LAST.c_str(), path, sizeof(path));
+	if (n < 0) {
+		std::cerr << "Error: Can not read link of '" << LOG_LAST << "'!" << std::endl;
+		return 1;
+	}
+
 	if (path == idOrOrder_) {
 		unlink(LOG_LAST.c_str());
 

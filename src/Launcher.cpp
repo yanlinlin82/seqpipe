@@ -24,7 +24,7 @@ WorkflowThread::WorkflowThread(size_t blockIndex, size_t itemIndex, std::string 
 }
 
 Launcher::Launcher(const Pipeline& pipeline, int maxJobNumber, int verbose):
-	pipeline_(pipeline), maxJobNumber_(maxJobNumber), verbose_(verbose)
+	pipeline_(pipeline), verbose_(verbose), maxJobNumber_(maxJobNumber)
 {
 }
 
@@ -122,13 +122,13 @@ int Launcher::RunShell(const CommandItem& item, std::string indent, const ProcAr
 int Launcher::RunBlock(const Block& block, const ProcArgs& procArgs, std::string indent)
 {
 	for (size_t i = 0; i < block.GetItems().size() && !killed; ++i) {
-		const auto item = block.GetItems()[i];
+		const auto& item = block.GetItems()[i];
 		int retVal = 0;
-		if (item.Type() == CommandItem::TYPE_PROC) {
+		if (item.Type() == CommandType::TYPE_PROC) {
 			retVal = RunProc(item.ProcName(), item.GetProcArgs(), indent);
-		} else if (item.Type() == CommandItem::TYPE_SHELL) {
+		} else if (item.Type() == CommandType::TYPE_SHELL) {
 			retVal = RunShell(item, indent, procArgs);
-		} else if (item.Type() == CommandItem::TYPE_BLOCK) {
+		} else if (item.Type() == CommandType::TYPE_BLOCK) {
 			retVal = RunBlock(pipeline_.GetBlock(item.GetBlockIndex()), procArgs, indent);
 		}
 		if (retVal != 0) {
@@ -222,7 +222,7 @@ void Launcher::PostNextTasks()
 		const auto& block = pipeline_.GetBlock(info.blockIndex_);
 		if (info.waitingFor_.empty() && info.retVal_ == 0 && info.itemIndex_ < block.GetItems().size()) {
 			const auto& item = block.GetItems()[info.itemIndex_];
-			if (item.Type() == CommandItem::TYPE_BLOCK) {
+			if (item.Type() == CommandType::TYPE_BLOCK) {
 				const auto& subBlock = pipeline_.GetBlock(item.GetBlockIndex());
 				if (subBlock.IsParallel()) {
 					for (size_t i = 0; i < subBlock.GetItems().size(); ++i) {
@@ -235,9 +235,9 @@ void Launcher::PostNextTasks()
 					newThreads.push_back(WorkflowThread(item.GetBlockIndex(), 0, info.indent_, info.procArgs_, taskIdCounter_)); // TODO: info.procArgs_
 					info.waitingFor_.insert(taskIdCounter_);
 				}
-			//} else if (item.Type() == CommandItem::TYPE_PROC) {
+			//} else if (item.Type() == CommandType::TYPE_PROC) {
 			} else {
-				//assert(item.Type() == CommandItem::TYPE_SHELL);
+				//assert(item.Type() == CommandType::TYPE_SHELL);
 				++taskIdCounter_;
 				taskQueue_.push_back(WorkflowTask(info.blockIndex_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
 				info.waitingFor_.insert(taskIdCounter_);
@@ -293,12 +293,13 @@ void Launcher::Worker()
 		if (GetTaskFromQueue(task)) {
 			const auto& block = pipeline_.GetBlock(task.blockIndex_);
 			const auto& item = block.GetItems()[task.itemIndex_];
-			int retVal;
-			if (item.Type() == CommandItem::TYPE_PROC) {
+			int retVal = 0;
+			if (item.Type() == CommandType::TYPE_PROC) {
 				retVal = RunProc(item.ProcName(), item.GetProcArgs(), task.indent_);
-			} else if (item.Type() == CommandItem::TYPE_SHELL) {
+			} else if (item.Type() == CommandType::TYPE_SHELL) {
 				retVal = RunShell(item, task.indent_, task.procArgs_);
-			} else if (item.Type() == CommandItem::TYPE_BLOCK) {
+			} else {
+				assert(item.Type() == CommandType::TYPE_BLOCK);
 				assert(false); // should not reach here
 			}
 			SetTaskFinished(task.taskId_, retVal);

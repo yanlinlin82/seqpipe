@@ -23,10 +23,13 @@ private:
 
 class Pipeline;
 
+enum class CommandType { TYPE_SHELL, TYPE_PROC, TYPE_BLOCK };
+
+std::ostream& operator << (std::ostream& os, CommandType type);
+
 class CommandItem
 {
 public:
-	enum CommandType { TYPE_SHELL, TYPE_PROC, TYPE_BLOCK };
 
 	CommandItem() { }
 	CommandItem(const std::string& cmd, const std::vector<std::string>& arguments);
@@ -54,8 +57,9 @@ public:
 	std::string ToString() const;
 	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
 	void Dump(const std::string& indent, const Pipeline& pipeline) const;
+	std::string DetailToString() const;
 private:
-	CommandType type_ = TYPE_SHELL;
+	CommandType type_ = CommandType::TYPE_SHELL;
 	std::string name_;
 	ProcArgs procArgs_;
 
@@ -86,8 +90,9 @@ public:
 
 	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
 	void Dump(const std::string& indent, const Pipeline& pipeline) const;
+	std::string DetailToString() const;
 
-	const std::vector<CommandItem> GetItems() const { return items_; }
+	const std::vector<CommandItem>& GetItems() const { return items_; }
 	bool IsParallel() const { return parallel_; }
 private:
 	std::vector<CommandItem> items_;
