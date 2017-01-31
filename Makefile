@@ -20,11 +20,15 @@ endif
 
 #----------------------------------------------------------#
 # build rules
+.PHONY: all clean test
 
 all: ${TARGET}
 
 clean:
 	@rm -fv ${TARGET} ${MODULES:%=%.o} ${MODULES:%=%.d}
+
+test:
+	@./tests/run.sh
 
 ${TARGET}: ${MODULES:%=%.o}
 	${CXX} ${LDFLAGS} -o $@ $^
