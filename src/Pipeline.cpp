@@ -116,15 +116,30 @@ bool Block::AppendCommand(const std::string& cmd, const std::vector<std::string>
 	return true;
 }
 
-bool Block::AppendCommand(const std::string& line)
+bool Block::AppendCommand(const std::vector<std::vector<std::string>>& argLists, Pipeline& pipeline)
 {
-	CommandLineParser parser;
-	if (!parser.Parse(line)) {
-		return false;
+	if (argLists.empty()) {
+		return true;
+	} else if (argLists.size() == 1 || !parallel_) {
+		for (const auto& argList : argLists) {
+			assert(!argList.empty());
+			const auto& cmd = argList[0];
+			const auto args = std::vector<std::string>(argList.begin() + 1, argList.end());
+			AppendCommand(cmd, args);
+		}
+		return true;
+	} else {
+		Block block;
+		for (const auto& argList : argLists) {
+			assert(!argList.empty());
+			const auto& cmd = argList[0];
+			const auto args = std::vector<std::string>(argList.begin() + 1, argList.end());
+			block.AppendCommand(cmd, args);
+		}
+		size_t blockIndex = pipeline.AppendBlock(block);
+		AppendBlock(blockIndex);
+		return true;
 	}
-
-	items_.push_back(CommandItem(parser.ToFullCmdLine()));
-	return true;
 }
 
 bool Block::AppendCommand(const std::string& procName, const ProcArgs& procArgs)
@@ -221,8 +236,7 @@ bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 			if (!LoadBlock(file, subBlock, (leftBracket == "{{"))) {
 				return false;
 			}
-			size_t blockIndex = blockList_.size();
-			blockList_.push_back(subBlock);
+			size_t blockIndex = AppendBlock(subBlock);
 			if (!block.AppendBlock(blockIndex)) {
 				return false;
 			}
@@ -233,7 +247,7 @@ bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 			continue;
 		}
 
-		if (!block.AppendCommand(file.CurrentLine())) {
+		if (!AppendCommandLineFromFile(file, block)) {
 			return false;
 		}
 		if (!file.ReadLine()) {
@@ -242,6 +256,29 @@ bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 		}
 	}
 	block.parallel_ = parallel;
+	return true;
+}
+
+bool Pipeline::AppendCommandLineFromFile(PipeFile& file, Block& block)
+{
+	std::string lines = file.CurrentLine();
+	CommandLineParser parser;
+	for (;;) {
+		if (!parser.Parse(lines)) {
+			if (parser.IsUnfinished()) {
+				if (!file.ReadLine()) {
+					std::cerr << "Unexpected EOF at " << file.Pos() << std::endl;
+					return false;
+				}
+				lines += "\n" + file.CurrentLine();
+				continue;
+			}
+			std::cerr << "Error when parsing shell command at " << file.Pos() << std::endl;
+			return false;
+		}
+		block.AppendCommand(parser.GetArgLists(), *this);
+		break;
+	}
 	return true;
 }
 
@@ -330,6 +367,9 @@ bool Pipeline::Load(const std::string& filename)
 					procAtLineNo_[procName] = file.Pos();
 
 					Procedure proc;
+					if (!file.ReadLine()) {
+						return false;
+					}
 					if (!LoadProc(file, procName, leftBracket, proc)) {
 						return false;
 					}
@@ -405,7 +445,7 @@ bool Pipeline::Load(const std::string& filename)
 			}
 
 			{ // try shell command line
-				if (!blockList_[0].AppendCommand(file.CurrentLine())) {
+				if (!AppendCommandLineFromFile(file, blockList_[0])) {
 					return false;
 				}
 				if (!file.ReadLine()) {
@@ -465,12 +505,16 @@ bool Pipeline::Save(const std::string& filename) const
 bool Pipeline::SetDefaultBlock(const std::vector<std::string>& cmdList, bool parallel)
 {
 	blockList_[0].Clear();
+	blockList_[0].SetParallel(parallel);
+
 	for (const auto& cmd : cmdList) {
-		if (!blockList_[0].AppendCommand(cmd)) {
+		CommandLineParser parser;
+		if (!parser.Parse(cmd)) {
+			std::cerr << "Error: Invalid or uncompleted command line!" << std::endl;
 			return false;
 		}
+		blockList_[0].AppendCommand(parser.GetArgLists(), *this);
 	}
-	blockList_[0].SetParallel(parallel);
 	return true;
 }
 
@@ -526,7 +570,7 @@ bool CommandItem::ConvertShellToProc()
 		}
 		const auto& key = sm[1];
 		const auto& value = sm[2];
-		if (!procArgs.Has(key)) {
+		if (procArgs.Has(key)) {
 			std::cerr << "Error: Duplicated option '" << key << "'!" << std::endl;
 			return false;
 		}
@@ -554,10 +598,6 @@ bool Pipeline::FinalCheckAfterLoad()
 
 void Pipeline::Dump() const
 {
-#if 0
-	blockList_[0].Dump("", *this);
-	std::cout << std::flush;
-#else
 	for (size_t i = 0; i < blockList_.size(); ++i) {
 		std::cout << "Block[" << i << "]:\n";
 		for (size_t j = 0; j < blockList_[i].items_.size(); ++j) {
@@ -565,7 +605,6 @@ void Pipeline::Dump() const
 			std::cout << "  item[" << j << "] = " << item.Type() << ", " << item.ToString() << std::endl;
 		}
 	}
-#endif
 }
 
 std::string Block::ToString(const std::string& indent, const Pipeline& pipeline) const
@@ -596,4 +635,11 @@ std::string CommandItem::ToString(const std::string& indent, const Pipeline& pip
 void CommandItem::Dump(const std::string& indent, const Pipeline& pipeline) const
 {
 	std::cout << ToString(indent, pipeline);
+}
+
+size_t Pipeline::AppendBlock(const Block& block)
+{
+	size_t index = blockList_.size();
+	blockList_.push_back(block);
+	return index;
 }

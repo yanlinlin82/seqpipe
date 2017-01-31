@@ -74,7 +74,7 @@ class Block
 {
 public:
 	void Clear();
-	bool AppendCommand(const std::string& line);
+	bool AppendCommand(const std::vector<std::vector<std::string>>& argLists, Pipeline& pipeline);
 	bool AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
 	bool AppendCommand(const std::string& procName, const ProcArgs& procArgs);
 	bool AppendBlock(size_t blockIndex);
@@ -114,6 +114,8 @@ public:
 	bool SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments);
 	bool SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs);
 
+	size_t AppendBlock(const Block& block);
+
 	bool HasProcedure(const std::string& name) const;
 	bool HasAnyDefaultCommand() const;
 
@@ -129,6 +131,8 @@ private:
 	bool LoadBlock(PipeFile& file, Block& block, bool parallel);
 
 	bool ReadLeftBracket(PipeFile& file, std::string& leftBracket);
+
+	bool AppendCommandLineFromFile(PipeFile& file, Block& block);
 private:
 	std::map<std::string, Procedure> procList_;
 	std::map<std::string, std::string> procAtLineNo_;

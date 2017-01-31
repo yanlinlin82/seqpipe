@@ -242,7 +242,7 @@ void Launcher::PostNextTasks()
 				}
 			//} else if (item.Type() == CommandItem::TYPE_PROC) {
 			} else {
-				assert(item.Type() == CommandItem::TYPE_SHELL);
+				//assert(item.Type() == CommandItem::TYPE_SHELL);
 				++taskIdCounter_;
 				//std::cerr << "Post task{" << taskIdCounter_ << "}: block = " << info.blockIndex_ << ", item = " << info.itemIndex_ << std::endl;
 				taskQueue_.push_back(WorkflowTask(info.blockIndex_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
