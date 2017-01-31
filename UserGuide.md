@@ -160,3 +160,7 @@ There are different ways to install SeqPipe. Choose any one you like:
 1. Why give up Perl? Why C++(11)?
 
     Package 'thread' (both 'native' and 'fork' implementation) in Perl is suck. It is desperate for me to struggle the thread related problems in Perl. In contrast, C++(11) excites me to change brilliant ideas to reality.
+
+2. What is the philosophy in UI design of SeqPipe?
+
+   **Write and run pipelines just as you think.** Therefore, it is worth breaking rules to improve usability and conciseness by syntactic sugars.
