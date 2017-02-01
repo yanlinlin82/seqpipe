@@ -18,18 +18,27 @@ There are some features of SeqPipe, for which you may like to use it as your han
 - **Predefined pipelines** - SeqPipe predefined many common pipelines for high throughput sequencing data analysis, including read mapping and variant calling. They are easy-to-use for experienced bioinformaticians and also useful for newbie to start learning the workflows.
 
 
+## Requirements
+
+The following lists software required in SeqPipe:
+
+* [GNU bash](https://www.gnu.org/software/bash/): including commands 'which', 'date' and 'pwd'.
+* [GNU core utilities](https://www.gnu.org/software/coreutils/coreutils.html): including commands 'tee' and 'uname'.
+* [procps](https://sourceforge.net/projects/procps-ng/): including command 'free'
+* [util-linux](https://www.kernel.org/pub/linux/utils/util-linux/): including command 'lscpu'
+
 ## Installation
 
 There are different ways to install SeqPipe. Choose any one you like:
 
-1. Install from GitHub source:
+* (Method 1): Install from GitHub source:
 
         $ git clone https://github.com/yanlinlin82/seqpipe -b cpp-v0.5 --single-branch
         $ make -C seqpipe/
         $ sudo cp -av seqpipe/seqpipe /usr/bin/   # or other directory set in PATH
         $ rm -rf seqpipe/                         # (optionally) clean up
 
-2. Install by pre-compiled executable files:
+* (Method 2): Install by pre-compiled executable files:
 
         <<TODO>>: To be completed.
 
@@ -58,7 +67,7 @@ There are different ways to install SeqPipe. Choose any one you like:
 
     Check log files:
 
-        $ ls -lR .seqpipe/last/
+        $ ls -l .seqpipe/last/
 
     The pipeline file can be passed by pipe like:
 

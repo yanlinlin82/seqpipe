@@ -43,7 +43,7 @@ Any suggestions are welcome to yanlinlin82[AT]gmail.com
 
     Check log files:
 
-        $ ls -lR .seqpipe/last/
+        $ ls -l .seqpipe/last/
 
 ## See Also
 
