@@ -2,6 +2,7 @@
 #define SYSTEM_H__
 
 #include <string>
+#include <vector>
 
 class System
 {
@@ -19,6 +20,7 @@ public:
 	static bool HasExecutiveAttribute(const std::string& path);
 
 	static std::string DirName(const std::string& path);
+	static std::vector<std::string> ListFiles(const std::string& dir, const std::string& pattern);
 
 	static bool IsShellCmd(const std::string& path);
 	static std::string EncodeShell(const std::string& s);

@@ -3,8 +3,11 @@
 #include <vector>
 #include <regex>
 #include <libgen.h>
+#include <fnmatch.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <dirent.h>
 #include <unistd.h>
 #include "System.h"
 #include "StringUtils.h"
@@ -119,6 +122,24 @@ std::string System::DirName(const std::string& path)
 {
 	std::string buffer = path;
 	return dirname(&buffer[0]);
+}
+
+std::vector<std::string> System::ListFiles(const std::string& dir, const std::string& pattern)
+{
+	std::vector<std::string> files;
+
+	struct dirent** namelist = NULL;
+	int n = scandir(dir.c_str(), &namelist, NULL, alphasort);
+	if (n >= 0) {
+		for (int i = 0; i < n; ++i) {
+			if (fnmatch(pattern.c_str(), namelist[i]->d_name, 0) == 0) {
+				files.push_back(namelist[i]->d_name);
+			}
+			free(namelist[i]);
+		}
+		free(namelist);
+	}
+	return files;
 }
 
 bool System::IsShellCmd(const std::string& path)
