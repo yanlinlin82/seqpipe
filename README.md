@@ -1,6 +1,8 @@
 # SeqPipe
 
-a SEQuencing data analysis PIPEline framework
+A framework for SEQuencing data analysis PIPElines.
+
+NOTE: [Click here to see v0.5](https://github.com/yanlinlin82/seqpipe/tree/cpp-v0.5), the new unpublished C++ reimplemented version.
 
 ## Introduction
 
