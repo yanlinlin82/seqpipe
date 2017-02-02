@@ -45,6 +45,12 @@ std::string System::GetFullCommandLine()
 	return cmdLine;
 }
 
+std::string System::GetCurrentDirectory()
+{
+	char buffer[256] = "";
+	return getcwd(buffer, sizeof(buffer));
+}
+
 std::string System::GetCurrentExe()
 {
 	char buffer[256] = "";

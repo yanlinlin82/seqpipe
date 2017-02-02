@@ -22,7 +22,7 @@ There are some features of SeqPipe, for which you may like to use it as your han
 
 The following lists software required in SeqPipe:
 
-* [GNU bash](https://www.gnu.org/software/bash/): including commands 'which', 'date' and 'pwd'.
+* [GNU bash](https://www.gnu.org/software/bash/): including commands 'which'.
 * [GNU core utilities](https://www.gnu.org/software/coreutils/coreutils.html): including commands 'tee' and 'uname'.
 * [procps](https://sourceforge.net/projects/procps-ng/): including command 'free'
 * [util-linux](https://www.kernel.org/pub/linux/utils/util-linux/): including command 'lscpu'

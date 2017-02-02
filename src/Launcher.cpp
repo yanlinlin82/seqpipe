@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include "Launcher.h"
 #include "System.h"
+#include "SysInfo.h"
 #include "StringUtils.h"
 #include "SeqPipe.h"
 #include "Semaphore.h"
@@ -353,9 +354,12 @@ int Launcher::Run(const ProcArgs& procArgs)
 	if (!PrepareToRun()) {
 		return 1;
 	}
-	if (!RecordSysInfo(logDir_ + "/sysinfo")) {
+
+	SysInfo sysInfo;
+	if (!sysInfo.WriteToFile(logDir_ + "/sysinfo")) {
 		return 1;
 	}
+
 	if (!pipeline_.Save(logDir_ + "/pipeline")) {
 		std::cerr << "Error: Can not write file '" << logDir_ << "/pipeline'!" << std::endl;
 		return 1;
@@ -398,33 +402,6 @@ bool Launcher::PrepareToRun()
 	if (!CreateLastSymbolicLink()) {
 		return false;
 	}
-	return true;
-}
-
-bool Launcher::RecordSysInfo(const std::string& filename)
-{
-	std::ofstream file(filename);
-	if (!file.is_open()) {
-		std::cerr << "Error: Can not write to file '" << filename << "'!" << std::endl;
-		return false;
-	}
-
-	file << "===== System Information =====\n"
-		"System: " + System::RunShell("uname -a") +
-		"\n"
-		"Date: " + System::RunShell("date '+%Y-%m-%d %H:%M:%S'") +
-		"Pwd : " + System::RunShell("pwd") +
-		"\n"
-		"CPU:\n" + System::RunShell("lscpu") +
-		"\n"
-		"Memory:\n" + System::RunShell("free -g") +
-		"\n"
-		"===== SeqPipe Version =====\n"
-		"SeqPipe: " + VERSION + "\n"
-		"SeqPipe Path: " + System::GetCurrentExe() + "\n"
-		<< std::endl;
-
-	file.close();
 	return true;
 }
 
