@@ -76,7 +76,7 @@ bool CommandLineParser::Parse(const std::string& s)
 				word += s[i];
 			}
 			if (i >= s.size()) {
-				return false;
+				goto incomplete_string;
 			}
 		} else if (s[i] == '"') {
 			for (++i; i < s.size(); ++i) {
@@ -84,25 +84,31 @@ bool CommandLineParser::Parse(const std::string& s)
 					break;
 				} else if (s[i] == '\\') {
 					if (i + 1 >= s.size()) {
-						return false;
+						goto incomplete_string;
 					}
 					++i;
 					if (s[i] == 'x') {
 						if (i + 2 >= s.size()) {
-							return false;
+							goto incomplete_string;
 						}
 						int value = ParseHex(s[i + 1], s[i + 2]);
 						if (value < 0) {
+							status_ = STATUS_ERROR;
+							errorPos_ = i;
+							errorMsg_ = "invalid character for '\\xXX'";
 							return false;
 						}
 						i += 2;
 						word += static_cast<char>(value);
 					} else if (s[i] == '0') {
 						if (i + 2 >= s.size()) {
-							return false;
+							goto incomplete_string;
 						}
 						int value = ParseOct(s[i + 1], s[i + 2]);
 						if (value < 0) {
+							status_ = STATUS_ERROR;
+							errorPos_ = i;
+							errorMsg_ = "invalid character for '\\0NN'";
 							return false;
 						}
 						i += 2;
@@ -111,6 +117,9 @@ bool CommandLineParser::Parse(const std::string& s)
 						word += '\\';
 						word += s[i];
 					} else {
+						status_ = STATUS_ERROR;
+						errorPos_ = i;
+						errorMsg_ = "invalid character after '\\'";
 						return false;
 					}
 				} else {
@@ -118,12 +127,12 @@ bool CommandLineParser::Parse(const std::string& s)
 				}
 			}
 			if (i >= s.size()) {
-				return false;
+				goto incomplete_string;
 			}
 		} else if (s[i] == '\\') {
 			word += s[i];
 			if (i + 1 >= s.size()) {
-				return false;
+				goto incomplete_string;
 			}
 			word += s[++i];
 		} else {
@@ -134,6 +143,12 @@ bool CommandLineParser::Parse(const std::string& s)
 		argLists_.back().push_back(word);
 	}
 	return true;
+
+incomplete_string:
+	status_ = STATUS_UNFINISHED;
+	errorPos_ = s.size();
+	errorMsg_ = "incomplete string";
+	return false;
 }
 
 std::string CommandLineParser::ToFullCmdLine() const
@@ -164,4 +179,9 @@ void CommandLineParser::Dump() const
 		std::cerr << "\n";
 	}
 	std::cerr << std::flush;
+}
+
+std::string CommandLineParser::ErrorWithLeadingSpaces() const
+{
+	return std::string(errorPos_, ' ') + "^ " + errorMsg_;
 }

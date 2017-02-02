@@ -566,7 +566,7 @@ bool Pipeline::Save(const std::string& filename) const
 	}
 
 	const Block& block = blockList_[0];
-	if (block.HasAnyCommand()) {
+	if (!block.IsEmpty()) {
 		if (!procList_.empty()) {
 			file << "\n";
 		}
@@ -581,34 +581,30 @@ bool Pipeline::Save(const std::string& filename) const
 	return true;
 }
 
-bool Pipeline::SetDefaultBlock(const std::vector<std::string>& cmdList, bool parallel)
+void Pipeline::ClearDefaultBlock()
 {
 	blockList_[0].Clear();
+}
+
+void Pipeline::SetDefaultBlock(const std::vector<CommandLineParser>& cmdLineList, bool parallel)
+{
+	assert(blockList_[0].IsEmpty());
 	blockList_[0].SetParallel(parallel);
-
-	for (const auto& cmd : cmdList) {
-		CommandLineParser parser;
-		if (!parser.Parse(cmd)) {
-			std::cerr << "Error: Invalid or uncompleted command line!" << std::endl;
-			return false;
-		}
-		blockList_[0].AppendCommand(parser.GetArgLists(), *this);
+	for (const auto& cmdLine : cmdLineList) {
+		blockList_[0].AppendCommand(cmdLine.GetArgLists(), *this);
 	}
-	return true;
 }
 
-bool Pipeline::SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments)
+void Pipeline::SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments)
 {
-	blockList_[0].Clear();
+	assert(blockList_[0].IsEmpty());
 	blockList_[0].AppendCommand(cmd, arguments);
-	return true;
 }
 
-bool Pipeline::SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs)
+void Pipeline::SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs)
 {
-	blockList_[0].Clear();
+	assert(blockList_[0].IsEmpty());
 	blockList_[0].AppendCommand(procName, procArgs);
-	return true;
 }
 
 bool Pipeline::HasProcedure(const std::string& name) const
@@ -637,7 +633,7 @@ const Block& Pipeline::GetBlock(const std::string& procName) const
 
 bool Pipeline::HasAnyDefaultCommand() const
 {
-	return blockList_[0].HasAnyCommand();
+	return !blockList_[0].IsEmpty();
 }
 
 bool CommandItem::ConvertShellToProc()

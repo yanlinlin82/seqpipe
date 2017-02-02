@@ -12,6 +12,7 @@
 #include "SeqPipe.h"
 #include "Launcher.h"
 #include "StringUtils.h"
+#include "CommandLineParser.h"
 
 void CommandRun::PrintUsage()
 {
@@ -37,7 +38,7 @@ void CommandRun::PrintUsage()
 
 bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 {
-	std::vector<std::string> cmdList; // for '-e' or '-E'
+	std::vector<CommandLineParser> cmdLineList; // for '-e' or '-E'
 	bool parallel = false;
 	std::vector<std::string> moduleFilenames; // for '-m'
 	std::string cmd;
@@ -59,14 +60,21 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 					std::cerr << "Error: Can not use '" << arg << "' after <workflow.pipe>!" << std::endl;
 					return false;
 				}
-				if (cmdList.empty()) {
+				if (cmdLineList.empty()) {
 					parallel = (arg == "-E");
 				} else if (parallel != (arg == "-E")) {
 					std::cerr << "Error: Can not use both '-e' and '-E'!" << std::endl;
 					return false;
 				}
 				const auto& cmd = *(++it);
-				cmdList.push_back(cmd);
+				CommandLineParser parser;
+				if (!parser.Parse(cmd)) {
+					std::cerr << "Error: Invalid bash command string after '" << arg << "':\n"
+						<< "   " << cmd << "\n"
+						<< "   " << parser.ErrorWithLeadingSpaces() << std::endl;
+					return false;
+				}
+				cmdLineList.push_back(parser);
 			} else if (arg == "-l" || arg == "-L") {
 				listMode_ = (arg == "-l" ? 1 : 2);
 				if (it + 1 != args.end() && (*(it + 1))[0] != '-') {
@@ -90,7 +98,7 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 				std::cerr << "Error: Unknown option '" << arg << "'!" << std::endl;
 				return false;
 			}
-		} else if (cmd.empty() && cmdList.empty() && moduleFilenames.empty()) {
+		} else if (cmd.empty() && cmdLineList.empty() && moduleFilenames.empty()) {
 			cmd = arg;
 			isShellCmd = System::IsShellCmd(cmd);
 			if (isShellCmd) {
@@ -115,19 +123,15 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 		}
 	}
 
-	if (cmd.empty() && cmdList.empty() && moduleFilenames.empty() && !listMode_) {
+	if (cmd.empty() && cmdLineList.empty() && moduleFilenames.empty() && !listMode_) {
 		PrintUsage();
 		return false;
 	}
 
-	if (!cmdList.empty()) {
-		if (!pipeline_.SetDefaultBlock(cmdList, parallel)) {
-			return false;
-		}
+	if (!cmdLineList.empty()) {
+		pipeline_.SetDefaultBlock(cmdLineList, parallel);
 	} else if (isShellCmd) {
-		if (!pipeline_.SetDefaultBlock(cmd, shellArgs)) {
-			return false;
-		}
+		pipeline_.SetDefaultBlock(cmd, shellArgs);
 	} else if (!cmd.empty()) {
 		if (!pipeline_.Load(cmd)) {
 			return false;
@@ -145,6 +149,7 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 			std::cerr << "Error: Can not find procedure '" << procName << "'!" << std::endl;
 			return 1;
 		}
+		pipeline_.ClearDefaultBlock();
 		pipeline_.SetDefaultBlock(procName, procArgs_);
 		procArgs_.Clear();
 	}

@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include "PipeFile.h"
+#include "CommandLineParser.h"
 
 class ProcArgs
 {
@@ -88,7 +89,7 @@ public:
 	bool AppendBlock(size_t blockIndex);
 	bool UpdateCommandToProcCalling(const std::set<std::string>& procNameSet);
 
-	bool HasAnyCommand() const { return !items_.empty(); }
+	bool IsEmpty() const { return items_.empty(); }
 
 	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
 	void Dump(const std::string& indent, const Pipeline& pipeline) const;
@@ -122,9 +123,10 @@ public:
 	bool FinalCheckAfterLoad();
 	bool Save(const std::string& filename) const;
 
-	bool SetDefaultBlock(const std::vector<std::string>& cmdList, bool parallel);
-	bool SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments);
-	bool SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs);
+	void ClearDefaultBlock();
+	void SetDefaultBlock(const std::vector<CommandLineParser>& cmdLineList, bool parallel);
+	void SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments);
+	void SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs);
 
 	size_t AppendBlock(const Block& block);
 

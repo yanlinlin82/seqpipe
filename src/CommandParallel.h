@@ -13,7 +13,7 @@ private:
 	void PrintUsage();
 	bool ParseArgs(const std::vector<std::string>& args);
 
-	static bool LoadCmdList(const std::string& filename, std::vector<std::string>& cmdList);
+	static bool LoadCmdLineList(const std::string& filename, std::vector<CommandLineParser>& cmdLineList);
 private:
 	int verbose_ = 0;
 	int maxJobNumber_ = 0;

@@ -17,7 +17,7 @@ void CommandParallel::PrintUsage()
 		<< std::endl;
 }
 
-bool CommandParallel::LoadCmdList(const std::string& filename, std::vector<std::string>& cmdList)
+bool CommandParallel::LoadCmdLineList(const std::string& filename, std::vector<CommandLineParser>& cmdLineList)
 {
 	const auto path = (filename == "-" ? "/dev/stdin" : filename);
 	std::ifstream file(path);
@@ -26,8 +26,17 @@ bool CommandParallel::LoadCmdList(const std::string& filename, std::vector<std::
 		return false;
 	}
 	std::string line;
+	size_t lineNo = 0;
 	while (std::getline(file, line)) {
-		cmdList.push_back(line);
+		++lineNo;
+		CommandLineParser parser;
+		if (!parser.Parse(line)) {
+			std::cerr << "Error: Invalid bash command string at line " << lineNo << " of '" << path << "':\n"
+				<< "   " << line << "\n"
+				<< "   " << parser.ErrorWithLeadingSpaces() << std::endl;
+			return false;
+		}
+		cmdLineList.push_back(parser);
 	}
 	file.close();
 	return true;
@@ -79,12 +88,12 @@ bool CommandParallel::ParseArgs(const std::vector<std::string>& args)
 		return false;
 	}
 
-	std::vector<std::string> cmdList;
-	if (!LoadCmdList(cmdListFilename, cmdList)) {
+	std::vector<CommandLineParser> cmdLineList;
+	if (!LoadCmdLineList(cmdListFilename, cmdLineList)) {
 		return false;
 	}
 
-	pipeline_.SetDefaultBlock(cmdList, true);
+	pipeline_.SetDefaultBlock(cmdLineList, true);
 	return true;
 }
 

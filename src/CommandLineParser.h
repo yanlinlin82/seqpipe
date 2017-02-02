@@ -11,6 +11,7 @@ public:
 
 	bool IsError() const { return (status_ == STATUS_ERROR); }
 	bool IsUnfinished() const { return (status_ == STATUS_UNFINISHED); }
+	std::string ErrorWithLeadingSpaces() const;
 
 	const std::vector<std::vector<std::string>>& GetArgLists() const { return argLists_; }
 	std::string ToFullCmdLine() const;
