@@ -100,6 +100,10 @@ There are different ways to install SeqPipe. Choose any one you like:
         $ seqpipe -e date -e pwd
         $ head .seqpipe/last/*.log   # check outputs
 
+    Use '-E' (instead of '-e') for parallel running:
+
+        $ seqpipe -E 'sleep 2' -E 'sleep 1'
+
 3. Use `seqpipe` to record commands:
 
         $ seq 1 3 | awk '{print "echo Hello - "$1}' | seqpipe run -
