@@ -59,7 +59,7 @@ int Launcher::RunProc(const std::string& procName, const ProcArgs& procArgs, std
 	LauncherTimer timer;
 	logFile_.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
 
-	WriteStringToFile(logDir_ + "/" + name + ".pipeline", procName);
+	WriteStringToFile(logDir_ + "/" + name + ".call", procName);
 
 	int retVal = RunBlock(pipeline_.GetBlock(procName), procArgs, indent + "  ");
 
