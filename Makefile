@@ -15,7 +15,7 @@ LDFLAGS  ?= -pthread
 ifeq ("${DEBUG}","1")
 	CXXFLAGS += -g
 else
-	CXXFLAGS += -O2
+	CXXFLAGS += -O2 -DNDEBUG
 endif
 
 #----------------------------------------------------------#
