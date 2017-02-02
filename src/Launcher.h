@@ -26,18 +26,12 @@ public:
 	unsigned int taskId_ = 0;
 };
 
-class WorkflowThread
+class WorkflowThread: public WorkflowTask
 {
 public:
 	WorkflowThread(size_t blockIndex, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId);
 
-	size_t blockIndex_ = 0;
-	size_t itemIndex_ = 0;
-	std::string indent_ = "";
-	ProcArgs procArgs_;
-
-	unsigned int taskId_ = 0;
-
+	bool finished_ = false;
 	std::set<unsigned int> waitingFor_;
 	int retVal_ = 0;
 };

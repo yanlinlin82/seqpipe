@@ -20,7 +20,7 @@ WorkflowTask::WorkflowTask(size_t blockIndex, size_t itemIndex, std::string inde
 }
 
 WorkflowThread::WorkflowThread(size_t blockIndex, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
-	blockIndex_(blockIndex), itemIndex_(itemIndex), indent_(indent), procArgs_(procArgs), taskId_(taskId)
+	WorkflowTask(blockIndex, itemIndex, indent, procArgs, taskId)
 {
 }
 
@@ -174,21 +174,26 @@ void Launcher::CheckFinishedTasks()
 		auto retVal = it->second;
 
 		for (auto& info : workflowThreads_) {
-			const auto& block = pipeline_.GetBlock(info.blockIndex_);
-
 			if (info.waitingFor_.find(taskId) != info.waitingFor_.end()) {
-				info.waitingFor_.erase(taskId);
-			}
-			if (info.waitingFor_.empty()) {
 				info.retVal_ = retVal; // TODO: save multiple retVal
-				if (block.IsParallel()) {
-					info.itemIndex_ = block.GetItems().size();
-				} else {
-					++info.itemIndex_;
+				info.waitingFor_.erase(taskId);
+				if (info.waitingFor_.empty()) {
+					info.finished_ = true;
 				}
 			}
 		}
 		it = finishedTasks_.erase(it);
+	}
+
+	for (auto& info : workflowThreads_) {
+		if (info.finished_ && info.waitingFor_.empty()) {
+			const auto& block = pipeline_.GetBlock(info.blockIndex_);
+			if (block.IsParallel()) {
+				info.itemIndex_ = block.GetItems().size();
+			} else {
+				++info.itemIndex_;
+			}
+		}
 	}
 }
 
