@@ -229,9 +229,12 @@ std::string Block::DetailToString() const
 		return items_[0].DetailToString();
 	} else {
 		std::ostringstream ss;
-		ss << " " << items_.size() << " items:\n";
+		ss << " (parallel = " << parallel_ << ") " << items_.size() << " items:\n";
 		for (size_t i = 0; i < items_.size(); ++i) {
-			ss << "  [" << i << "]" << items_[i].DetailToString() << "\n";
+			if (i > 0) {
+				ss << "\n";
+			}
+			ss << "  [" << i << "]" << items_[i].DetailToString();
 		}
 		return ss.str();
 	}
@@ -296,6 +299,7 @@ bool Pipeline::ReadLeftBracket(PipeFile& file, std::string& leftBracket)
 
 bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 {
+	block.SetParallel(parallel);
 	for (;;) {
 		std::string rightBracket;
 		if (PipeFile::IsRightBracket(file.CurrentLine(), rightBracket)) {
@@ -339,7 +343,6 @@ bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 			return false;
 		}
 	}
-	block.SetParallel(parallel);
 	return true;
 }
 
