@@ -58,6 +58,7 @@ private:
 	bool WriteToHistoryLog();
 	bool CreateLastSymbolicLink();
 	bool PrepareToRun();
+	bool RecordSysInfo(const std::string& filename);
 
 	static std::string GetUniqueId();
 private:

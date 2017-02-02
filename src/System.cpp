@@ -1,12 +1,14 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <map>
 #include <regex>
 #include <libgen.h>
 #include <fnmatch.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <sys/types.h>
+#include <sys/utsname.h>
 #include <dirent.h>
 #include <unistd.h>
 #include "System.h"
@@ -205,4 +207,78 @@ std::string System::RunShell(const std::string& cmdLine)
 	}
 	fclose(fp);
 	return text;
+}
+
+std::string System::GetUName()
+{
+	utsname buf = { };
+	if (uname(&buf) < 0) {
+		return "-";
+	}
+	return std::string(buf.sysname) + " " + buf.release + " " + buf.machine;
+}
+
+std::string System::GetCPUInfo()
+{
+	std::map<std::string, size_t> modules;
+
+	std::ifstream file("/proc/cpuinfo");
+	if (file.is_open()) {
+		std::string line;
+		std::regex e("model name\\s*:\\s*(.*)\\s*");
+		while (std::getline(file, line)) {
+			std::smatch s;
+			if (std::regex_match(line, s, e)) {
+				std::string name = s[1];
+				++modules[name];
+			}
+		}
+		file.close();
+	}
+
+	if (modules.empty()) {
+		return "-";
+	} else {
+		std::string s = "";
+		for (auto it = modules.begin(); it != modules.end(); ++it) {
+			if (!s.empty()) {
+				s += " + ";
+			}
+			s += std::to_string(it->second) + " core(s) (" + it->first + ")";
+		}
+		return s;
+	}
+}
+
+std::string System::GetMemoryInfo()
+{
+	int total = -1;
+
+	std::ifstream file("/proc/meminfo");
+	if (file.is_open()) {
+		std::string line;
+		while (std::getline(file, line)) {
+			std::string::size_type pos = line.find_first_of(':');
+			if (pos != std::string::npos) {
+				std::string name = line.substr(0, pos);
+				if (name == "MemTotal") {
+					total = std::stoi(line.substr(pos + 1));
+					break;
+				}
+			}
+		}
+		file.close();
+	}
+
+	if (total < 0) {
+		return "-";
+	} else if (total == 0) {
+		return "0";
+	} else if (total < 1024 * 10) {
+		return std::to_string(total) + " KB";
+	} else if (total < 1024 * 1024 * 10) {
+		return std::to_string(total / 1024) + " MB";
+	} else {
+		return std::to_string(total / 1024 / 1024) + " GB";
+	}
 }

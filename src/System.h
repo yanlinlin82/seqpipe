@@ -28,6 +28,10 @@ public:
 
 	static int Execute(const std::string& cmdLine);
 	static std::string RunShell(const std::string& cmdLine);
+
+	static std::string GetUName();
+	static std::string GetCPUInfo();
+	static std::string GetMemoryInfo();
 };
 
 #endif

@@ -8,11 +8,11 @@
 #include <unistd.h>
 #include "Launcher.h"
 #include "System.h"
-#include "SysInfo.h"
 #include "StringUtils.h"
 #include "SeqPipe.h"
 #include "Semaphore.h"
 #include "LauncherTimer.h"
+#include "TimeString.h"
 
 WorkflowTask::WorkflowTask(size_t blockIndex, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
 	blockIndex_(blockIndex), itemIndex_(itemIndex), indent_(indent), procArgs_(procArgs), taskId_(taskId)
@@ -36,7 +36,7 @@ void MySigAction(int signum, siginfo_t* siginfo, void* ucontext)
 	killed = true;
 #if 0
 	time_t now = time(NULL);
-	logFile_.WriteLine(Msg() << "(0) Aborts at " + StringUtils::TimeString(now));
+	logFile_.WriteLine(Msg() << "(0) Aborts at " + TimeString(now));
 #endif
 }
 
@@ -338,6 +338,30 @@ int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
 	}
 }
 
+bool Launcher::RecordSysInfo(const std::string& filename)
+{
+	std::ofstream file(filename);
+	if (!file.is_open()) {
+		std::cerr << "Error: Can not write to file '" << filename << "'!" << std::endl;
+		return false;
+	}
+
+	file << "system:\n"
+		"  uname : " + System::GetUName() + "\n"
+		"  date  : " + TimeString(time(NULL)) + "\n"
+		"  pwd   : " + System::GetCurrentDirectory() + "\n"
+		"  cpu   : " + System::GetCPUInfo() + "\n"
+		"  memory: " + System::GetMemoryInfo() + "\n"
+		"\n"
+		"seqpipe:\n"
+		"  version: " + VERSION + "\n"
+		"  path   : " + System::GetCurrentExe() + "\n"
+		<< std::endl;
+
+	file.close();
+	return true;
+}
+
 int Launcher::Run(const ProcArgs& procArgs)
 {
 	if (pipeline_.GetDefaultBlock().IsParallel()) {
@@ -354,12 +378,9 @@ int Launcher::Run(const ProcArgs& procArgs)
 	if (!PrepareToRun()) {
 		return 1;
 	}
-
-	SysInfo sysInfo;
-	if (!sysInfo.WriteToFile(logDir_ + "/sysinfo")) {
+	if (!RecordSysInfo(logDir_ + "/sysinfo")) {
 		return 1;
 	}
-
 	if (!pipeline_.Save(logDir_ + "/pipeline")) {
 		std::cerr << "Error: Can not write file '" << logDir_ << "/pipeline'!" << std::endl;
 		return 1;
