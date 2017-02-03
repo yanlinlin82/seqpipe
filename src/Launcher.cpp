@@ -11,7 +11,6 @@
 #include "StringUtils.h"
 #include "SeqPipe.h"
 #include "Semaphore.h"
-#include "LauncherTimer.h"
 #include "TimeString.h"
 
 WorkflowTask::WorkflowTask(size_t blockIndex, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
@@ -48,26 +47,6 @@ static void SetSigAction()
 
 	sigaction(SIGINT, &sa, NULL);
 	sigaction(SIGTERM, &sa, NULL);
-}
-
-int Launcher::RunProc(const std::string& procName, const ProcArgs& procArgs, std::string indent)
-{
-	unsigned int id = counter_.FetchId();
-
-	const std::string name = std::to_string(id) + "." + procName;
-
-	logFile_.WriteLine(Msg() << indent << "(" << id << ") [pipeline] " << procName << procArgs.ToString());
-	LauncherTimer timer;
-	logFile_.WriteLine(Msg() << indent << "(" << id << ") starts at " << timer.StartTime());
-
-	WriteStringToFile(logDir_ + "/" + name + ".call", procName);
-
-	int retVal = RunBlock(pipeline_.GetBlock(procName), procArgs, indent + "  ");
-
-	timer.Stop();
-	logFile_.WriteLine(Msg() << indent << "(" << id << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
-
-	return retVal;
 }
 
 static std::string ExpandArgs(const std::string& s, const ProcArgs& procArgs)
@@ -120,25 +99,6 @@ int Launcher::RunShell(const CommandItem& item, std::string indent, const ProcAr
 	return 0;
 }
 
-int Launcher::RunBlock(const Block& block, const ProcArgs& procArgs, std::string indent)
-{
-	for (size_t i = 0; i < block.GetItems().size() && !killed; ++i) {
-		const auto& item = block.GetItems()[i];
-		int retVal = 0;
-		if (item.Type() == CommandType::TYPE_PROC) {
-			retVal = RunProc(item.ProcName(), item.GetProcArgs(), indent);
-		} else if (item.Type() == CommandType::TYPE_SHELL) {
-			retVal = RunShell(item, indent, procArgs);
-		} else if (item.Type() == CommandType::TYPE_BLOCK) {
-			retVal = RunBlock(pipeline_.GetBlock(item.GetBlockIndex()), procArgs, indent);
-		}
-		if (retVal != 0) {
-			return retVal;
-		}
-	}
-	return 0;
-}
-
 std::string Launcher::GetUniqueId()
 {
 	char text[64] = "";
@@ -175,6 +135,12 @@ void Launcher::CheckFinishedTasks()
 
 		for (auto& info : workflowThreads_) {
 			if (info.waitingFor_.find(taskId) != info.waitingFor_.end()) {
+				const Block& block = pipeline_.GetBlock(info.blockIndex_);
+				const CommandItem& item = block.GetItems()[info.itemIndex_];
+				if (item.Type() == CommandType::TYPE_PROC) {
+					info.timer_.Stop();
+					logFile_.WriteLine(Msg() << info.indent_ << "(" << info.id_ << ") ends at " << info.timer_.EndTime() << " (elapsed: " << info.timer_.Elapse() << ")");
+				}
 				info.retVal_ = retVal; // TODO: save multiple retVal
 				info.waitingFor_.erase(taskId);
 				if (info.waitingFor_.empty()) {
@@ -192,6 +158,7 @@ void Launcher::CheckFinishedTasks()
 				info.itemIndex_ = block.GetItems().size();
 			} else {
 				++info.itemIndex_;
+				info.finished_ = false;
 			}
 		}
 	}
@@ -220,6 +187,23 @@ void Launcher::DumpWorkflowThreads() const
 	std::cout << std::flush;
 }
 
+void Launcher::PostBlockToThreads(size_t blockIndex, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
+		const std::string& indent, const ProcArgs& procArgs)
+{
+	const auto& subBlock = pipeline_.GetBlock(blockIndex);
+	if (subBlock.IsParallel()) {
+		for (size_t i = 0; i < subBlock.GetItems().size(); ++i) {
+			++taskIdCounter_;
+			newThreads.push_back(WorkflowThread(blockIndex, i, indent, procArgs, taskIdCounter_));
+			info.waitingFor_.insert(taskIdCounter_);
+		}
+	} else {
+		++taskIdCounter_;
+		newThreads.push_back(WorkflowThread(blockIndex, 0, indent, procArgs, taskIdCounter_));
+		info.waitingFor_.insert(taskIdCounter_);
+	}
+}
+
 void Launcher::PostNextTasks()
 {
 	std::list<WorkflowThread> newThreads;
@@ -229,21 +213,23 @@ void Launcher::PostNextTasks()
 		if (info.waitingFor_.empty() && info.retVal_ == 0 && info.itemIndex_ < block.GetItems().size()) {
 			const auto& item = block.GetItems()[info.itemIndex_];
 			if (item.Type() == CommandType::TYPE_BLOCK) {
-				const auto& subBlock = pipeline_.GetBlock(item.GetBlockIndex());
-				if (subBlock.IsParallel()) {
-					for (size_t i = 0; i < subBlock.GetItems().size(); ++i) {
-						++taskIdCounter_;
-						newThreads.push_back(WorkflowThread(item.GetBlockIndex(), i, info.indent_, info.procArgs_, taskIdCounter_)); // TODO: info.procArgs_
-						info.waitingFor_.insert(taskIdCounter_);
-					}
-				} else {
-					++taskIdCounter_;
-					newThreads.push_back(WorkflowThread(item.GetBlockIndex(), 0, info.indent_, info.procArgs_, taskIdCounter_)); // TODO: info.procArgs_
-					info.waitingFor_.insert(taskIdCounter_);
-				}
-			//} else if (item.Type() == CommandType::TYPE_PROC) {
+				PostBlockToThreads(item.GetBlockIndex(), info, newThreads, info.indent_, info.procArgs_);
+			} else if (item.Type() == CommandType::TYPE_PROC) {
+				unsigned int id = counter_.FetchId();
+				const auto name = std::to_string(id) + "." + item.ProcName();
+
+				info.timer_.Start();
+				info.id_ = id;
+				logFile_.WriteLine(Msg() << info.indent_ << "(" << id << ") [pipeline] " << item.ProcName() << item.GetProcArgs().ToString());
+				logFile_.WriteLine(Msg() << info.indent_ << "(" << id << ") starts at " << info.timer_.StartTime());
+
+				WriteStringToFile(logDir_ + "/" + name + ".call", item.ProcName());
+
+				++taskIdCounter_;
+				size_t blockIndex = pipeline_.GetBlockIndex(item.ProcName());
+				PostBlockToThreads(blockIndex, info, newThreads, info.indent_ + "  ", item.GetProcArgs());
 			} else {
-				//assert(item.Type() == CommandType::TYPE_SHELL);
+				assert(item.Type() == CommandType::TYPE_SHELL);
 				++taskIdCounter_;
 				taskQueue_.push_back(WorkflowTask(info.blockIndex_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
 				info.waitingFor_.insert(taskIdCounter_);
@@ -299,15 +285,8 @@ void Launcher::Worker()
 		if (GetTaskFromQueue(task)) {
 			const auto& block = pipeline_.GetBlock(task.blockIndex_);
 			const auto& item = block.GetItems()[task.itemIndex_];
-			int retVal = 0;
-			if (item.Type() == CommandType::TYPE_PROC) {
-				retVal = RunProc(item.ProcName(), item.GetProcArgs(), task.indent_);
-			} else if (item.Type() == CommandType::TYPE_SHELL) {
-				retVal = RunShell(item, task.indent_, task.procArgs_);
-			} else {
-				assert(item.Type() == CommandType::TYPE_BLOCK);
-				assert(false); // should not reach here
-			}
+			assert(item.Type() == CommandType::TYPE_SHELL); // it should only process 'shell cmd' in Worker()
+			int retVal = RunShell(item, task.indent_, task.procArgs_);
 			SetTaskFinished(task.taskId_, retVal);
 		} else {
 			usleep(100);

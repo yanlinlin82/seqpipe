@@ -627,11 +627,16 @@ const Block& Pipeline::GetBlock(size_t index) const
 
 const Block& Pipeline::GetBlock(const std::string& procName) const
 {
+	return blockList_[GetBlockIndex(procName)];
+}
+
+size_t Pipeline::GetBlockIndex(const std::string& procName) const
+{
 	auto it = procList_.find(procName);
 	if (it == procList_.end()) {
 		throw std::runtime_error("Invalid procName");
 	}
-	return blockList_[it->second.BlockIndex()];
+	return it->second.BlockIndex();
 }
 
 bool Pipeline::HasAnyDefaultCommand() const

@@ -1,18 +1,24 @@
+#include <cassert>
 #include "LauncherTimer.h"
 #include "TimeString.h"
 
 std::string LauncherTimer::StartTime() const
 {
+	assert(start_ != -1);
 	return TimeString(start_);
 }
 
 std::string LauncherTimer::EndTime() const
 {
+	assert(end_ != -1);
 	return TimeString(end_);
 }
 
 std::string LauncherTimer::Elapse() const
 {
+	assert(start_ != -1);
+	assert(end_ != -1);
+
 	int elapsed = end_ - start_;
 
 	std::string s;

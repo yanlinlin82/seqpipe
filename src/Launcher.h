@@ -9,6 +9,7 @@
 #include <mutex>
 #include <set>
 #include "LauncherCounter.h"
+#include "LauncherTimer.h"
 #include "LogFile.h"
 #include "Pipeline.h"
 
@@ -34,6 +35,9 @@ public:
 	bool finished_ = false;
 	std::set<unsigned int> waitingFor_;
 	int retVal_ = 0;
+
+	LauncherTimer timer_;
+	unsigned int id_ = 0;
 };
 
 class Launcher
@@ -45,8 +49,6 @@ public:
 private:
 	int ProcessWorkflowThreads(const ProcArgs& procArgs);
 
-	int RunProc(const std::string& procName, const ProcArgs& procArgs, std::string indent);
-	int RunBlock(const Block& block, const ProcArgs& procArgs, std::string indent);
 	int RunShell(const CommandItem& item, std::string indent, const ProcArgs& procArgs);
 
 	bool WriteToHistoryLog();
@@ -77,6 +79,9 @@ private:
 	void Worker();
 	bool GetTaskFromQueue(WorkflowTask& task);
 	void SetTaskFinished(unsigned int taskId, int retVal);
+
+	void PostBlockToThreads(size_t blockIndex, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
+			const std::string& indent, const ProcArgs& procArgs);
 private:
 	int maxJobNumber_ = 0;
 	std::mutex mutex_;

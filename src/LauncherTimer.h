@@ -7,8 +7,9 @@
 class LauncherTimer
 {
 public:
-	LauncherTimer() : start_(time(NULL)), end_(start_) { }
+	LauncherTimer() : start_(time(NULL)), end_(-1) { }
 
+	void Start() { start_ = time(NULL); }
 	void Stop() { end_ = time(NULL); }
 
 	std::string StartTime() const;

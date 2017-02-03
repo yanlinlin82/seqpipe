@@ -136,6 +136,7 @@ public:
 	const Block& GetDefaultBlock() const;
 	const Block& GetBlock(size_t index) const;
 	const Block& GetBlock(const std::string& procName) const;
+	size_t GetBlockIndex(const std::string& procName) const;
 	std::vector<std::string> GetProcNameList(const std::string& pattern) const;
 
 	void Dump() const;
