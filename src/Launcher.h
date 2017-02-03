@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 #include <list>
-#include <map>
-#include <atomic>
-#include <mutex>
 #include <set>
+#include <map>
+#include <mutex>
+#include <condition_variable>
 #include "LauncherCounter.h"
 #include "LauncherTimer.h"
 #include "LogFile.h"
@@ -70,7 +70,6 @@ private:
 	enum Status { STATUS_RUNNING, STATUS_EXITED };
 
 	Status CheckStatus();
-	void Wait();
 	void CheckFinishedTasks();
 	void PostNextTasks();
 	void EraseFinishedThreads();
@@ -90,7 +89,15 @@ private:
 	std::list<WorkflowTask> taskQueue_;
 	std::map<unsigned int, int> finishedTasks_; // { task-id => exit-value }
 	std::vector<int> failedRetVal_;
-	std::atomic<bool> exiting_{false};
+
+private:
+	bool WaitForTask();
+	void Notify();
+	void NotifyAll();
+private:
+	std::mutex mutexWorker_;
+	std::condition_variable condWorker_;
+	unsigned int countWorker_ = 0;
 };
 
 #endif

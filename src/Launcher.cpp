@@ -122,11 +122,6 @@ Launcher::Status Launcher::CheckStatus()
 	return (workflowThreads_.empty() ? STATUS_EXITED : STATUS_RUNNING);
 }
 
-void Launcher::Wait()
-{
-	usleep(100);
-}
-
 void Launcher::CheckFinishedTasks()
 {
 	for (auto it = finishedTasks_.begin(); it != finishedTasks_.end(); ) {
@@ -233,6 +228,7 @@ void Launcher::PostNextTasks()
 				++taskIdCounter_;
 				taskQueue_.push_back(WorkflowTask(info.blockIndex_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
 				info.waitingFor_.insert(taskIdCounter_);
+				Notify();
 			}
 		}
 	}
@@ -280,7 +276,7 @@ void Launcher::SetTaskFinished(unsigned int taskId, int retVal)
 
 void Launcher::Worker()
 {
-	while (!exiting_) {
+	while (WaitForTask()) {
 		WorkflowTask task;
 		if (GetTaskFromQueue(task)) {
 			const auto& block = pipeline_.GetBlock(task.blockIndex_);
@@ -289,6 +285,7 @@ void Launcher::Worker()
 			int retVal = RunShell(item, task.indent_, task.procArgs_);
 			SetTaskFinished(task.taskId_, retVal);
 		} else {
+			assert(false); // should not reach here!
 			usleep(100);
 		}
 	}
@@ -305,10 +302,10 @@ int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
 	}
 
 	while (CheckStatus() != STATUS_EXITED) {
-		Wait();
+		usleep(100);
 	}
 
-	exiting_ = true;
+	NotifyAll();
 	for (auto& thread : threads) {
 		thread.join();
 	}
@@ -437,4 +434,30 @@ bool Launcher::CreateLastSymbolicLink()
 	}
 
 	return true;
+}
+
+bool Launcher::WaitForTask()
+{
+	std::unique_lock<std::mutex> lock(mutexWorker_);
+	while (countWorker_ == 0) {
+		condWorker_.wait(lock);
+		if (countWorker_ == 0) {
+			return false;
+		}
+	}
+	--countWorker_;
+	return true;
+}
+
+void Launcher::Notify()
+{
+	std::unique_lock<std::mutex> lock(mutexWorker_);
+	++countWorker_;
+	condWorker_.notify_one();
+}
+
+void Launcher::NotifyAll()
+{
+	std::unique_lock<std::mutex> lock(mutexWorker_);
+	condWorker_.notify_all();
 }
