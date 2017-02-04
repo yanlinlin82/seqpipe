@@ -3,3 +3,4 @@ seqpipe
 *.o
 *.d
 .seqpipe/
+tmp/
