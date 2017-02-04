@@ -28,7 +28,7 @@ clean:
 	@rm -fv ${TARGET} ${MODULES:%=%.o} ${MODULES:%=%.d}
 
 test:
-	@./tests/run.sh
+	@./tests/system/run.sh
 
 ${TARGET}: ${MODULES:%=%.o}
 	${CXX} ${LDFLAGS} -o $@ $^

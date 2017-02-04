@@ -4,7 +4,7 @@
 export PATH=.:$PATH
 
 # Run every perl script in tests/
-for TEST in tests/*.pl; do
+for TEST in tests/system/*.pl; do
 	${TEST} || exit 1
 done
 
