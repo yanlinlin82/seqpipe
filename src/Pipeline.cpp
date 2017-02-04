@@ -28,7 +28,7 @@ std::string ProcArgs::ToString() const
 	for (auto name : order_) {
 		auto it = args_.find(name);
 		assert(it != args_.end());
-		s += " " + name + "=" + System::EncodeShell(it->second);
+		s += " " + name + "=" + System::EncodeShell(it->second, false);
 	}
 	return s;
 }
@@ -45,7 +45,7 @@ CommandItem::CommandItem(const std::string& cmd, const std::vector<std::string>&
 	name_ = StringUtils::RemoveSpecialCharacters(cmd);
 	fullCmdLine_ = cmd;
 	for (const auto arg : arguments) {
-		fullCmdLine_ += ' ' + System::EncodeShell(arg);
+		fullCmdLine_ += ' ' + System::EncodeShell(arg, false);
 	}
 }
 

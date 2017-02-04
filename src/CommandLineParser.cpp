@@ -162,7 +162,7 @@ std::string CommandLineParser::ToFullCmdLine() const
 			if (j > 0) {
 				s += " ";
 			}
-			s += System::EncodeShell(argLists_[i][j]);
+			s += System::EncodeShell(argLists_[i][j], true);
 		}
 	}
 	return s;
