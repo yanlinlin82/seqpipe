@@ -67,9 +67,6 @@ private:
 	int verbose_;
 
 private:
-	enum Status { STATUS_RUNNING, STATUS_EXITED };
-
-	Status CheckStatus();
 	void CheckFinishedTasks();
 	void PostNextTasks();
 	void EraseFinishedThreads();

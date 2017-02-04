@@ -111,17 +111,6 @@ std::string Launcher::GetUniqueId()
 	return (text + System::GetHostname());
 }
 
-Launcher::Status Launcher::CheckStatus()
-{
-	std::lock_guard<std::mutex> lock(mutex_);
-
-	CheckFinishedTasks();
-	PostNextTasks();
-	EraseFinishedThreads();
-
-	return (workflowThreads_.empty() ? STATUS_EXITED : STATUS_RUNNING);
-}
-
 void Launcher::CheckFinishedTasks()
 {
 	for (auto it = finishedTasks_.begin(); it != finishedTasks_.end(); ) {
@@ -301,7 +290,16 @@ int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
 		threads[i] = std::thread(&Launcher::Worker, std::ref(*this));
 	}
 
-	while (CheckStatus() != STATUS_EXITED) {
+	for (;;) {
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+
+			CheckFinishedTasks();
+			PostNextTasks();
+			EraseFinishedThreads();
+
+			if (workflowThreads_.empty()) break;
+		}
 		usleep(100);
 	}
 
