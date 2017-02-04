@@ -1,7 +1,14 @@
 # GNU make for project 'seqpipe'
 
-TARGET   := seqpipe
-MODULES  := $(patsubst %.cpp,%,$(wildcard src/*.cpp))
+TARGET  := seqpipe
+MODULES := $(patsubst %.cpp,%,$(wildcard src/*.cpp))
+
+UNIT_TEST    := tmp/unit-test
+UNIT_MODULES := \
+	src/CommandLineParser \
+	src/StringUtils \
+	src/System \
+	$(patsubst %.cpp,%,$(wildcard tests/unit/*.cpp))
 
 #----------------------------------------------------------#
 # compiler and flags
@@ -20,17 +27,23 @@ endif
 
 #----------------------------------------------------------#
 # build rules
-.PHONY: all clean test
+.PHONY: all clean unit test
 
 all: ${TARGET}
 
 clean:
 	@rm -fv ${TARGET} ${MODULES:%=tmp/%.o} ${MODULES:%=tmp/%.d}
 
-test:
+unit: ${UNIT_TEST}
+	@${UNIT_TEST}
+
+test: unit
 	@./tests/system/run.sh
 
 ${TARGET}: ${MODULES:%=tmp/%.o}
+	${CXX} ${LDFLAGS} -o $@ $^
+
+${UNIT_TEST}: ${UNIT_MODULES:%=tmp/%.o}
 	${CXX} ${LDFLAGS} -o $@ $^
 
 tmp/%.o: %.cpp
@@ -41,6 +54,7 @@ tmp/%.o: %.cpp
 
 ifneq ("${MAKECMDGOALS}", "clean")
 sinclude ${MODULES:%=tmp/%.d}
+sinclude ${UNIT_MODULES:%=tmp/%.d}
 tmp/%.d: %.cpp
 	@mkdir -p ${@D}
 	@${CXX} -std=c++11 -MM $< -MT ${@:%.d=%.o} | sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' > $@
