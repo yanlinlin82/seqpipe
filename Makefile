@@ -25,22 +25,23 @@ endif
 all: ${TARGET}
 
 clean:
-	@rm -fv ${TARGET} ${MODULES:%=%.o} ${MODULES:%=%.d}
+	@rm -fv ${TARGET} ${MODULES:%=tmp/%.o} ${MODULES:%=tmp/%.d}
 
 test:
 	@./tests/system/run.sh
 
-${TARGET}: ${MODULES:%=%.o}
+${TARGET}: ${MODULES:%=tmp/%.o}
 	${CXX} ${LDFLAGS} -o $@ $^
 
-%.o: %.cpp
+tmp/%.o: %.cpp
 	${CXX} ${CXXFLAGS} -c -o $@ $<
 
 #----------------------------------------------------------#
 # dependency auto checking
 
 ifneq ("${MAKECMDGOALS}", "clean")
-sinclude ${MODULES:%=%.d}
-%.d: %.cpp
+sinclude ${MODULES:%=tmp/%.d}
+tmp/%.d: %.cpp
+	@mkdir -p ${@D}
 	@${CXX} -std=c++11 -MM $< -MT ${@:%.d=%.o} | sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' > $@
 endif
