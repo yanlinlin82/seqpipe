@@ -238,6 +238,7 @@ function demo {
 			echo $c; \
 		fi; \
 	done
+	cat <(seq 1 3) | wc -l
 }
 ';
 	close $fh;
@@ -247,19 +248,23 @@ function demo {
 
 	# check results
 	my @lines = split("\n", $output);
-	die if scalar @lines != 8;
+	die if scalar @lines != 11;
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe foo.pipe demo$/;
 	die if $lines[1] ne '(1) [pipeline] demo';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
 	die if $lines[3] ne '  (2) [shell] for c in {1..22} X Y M; do if [ "$c" == "X" -o $c == "M" ]; then echo $c; fi; done';
 	die if $lines[4] !~ /^  \(2\) starts at $REGEX_TIME$/;
 	die if $lines[5] !~ /^  \(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[6] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[7] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
+	die if $lines[6] ne '  (3) [shell] cat <(seq 1 3) | wc -l';
+	die if $lines[7] !~ /^  \(3\) starts at $REGEX_TIME$/;
+	die if $lines[8] !~ /^  \(3\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[9] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[10] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
 	die if `cat .seqpipe/last/pipeline` ne "demo() {
 	for c in {1..22} X Y M; do if [ \"\$c\" == \"X\" -o \$c == \"M\" ]; then echo \$c; fi; done
+	cat <(seq 1 3) | wc -l
 }
 
 demo
@@ -268,6 +273,9 @@ demo
 	die if `cat .seqpipe/last/2.for.cmd` ne 'for c in {1..22} X Y M; do if [ "$c" == "X" -o $c == "M" ]; then echo $c; fi; done' . "\n";
 	die if `cat .seqpipe/last/2.for.log` ne "X\nM\n";
 	die if `cat .seqpipe/last/2.for.err` ne "";
+	die if `cat .seqpipe/last/3.cat.cmd` ne "cat <(seq 1 3) | wc -l\n";
+	die if `cat .seqpipe/last/3.cat.log` ne "3\n";
+	die if `cat .seqpipe/last/3.cat.err` ne "";
 
 	# clean up
 	unlink "foo.pipe";
