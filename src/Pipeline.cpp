@@ -39,14 +39,8 @@ void ProcArgs::Clear()
 	order_.clear();
 }
 
-CommandItem::CommandItem(const std::string& cmd, const std::vector<std::string>& arguments):
-	type_(CommandType::TYPE_SHELL), shellCmd_(cmd), shellArgs_(arguments)
-{
-	name_ = StringUtils::RemoveSpecialCharacters(cmd);
-}
-
 CommandItem::CommandItem(const std::string& procName, const ProcArgs& procArgs):
-	type_(CommandType::TYPE_PROC), procArgs_(procArgs), procName_(procName)
+	type_(CommandType::TYPE_PROC), procName_(procName), procArgs_(procArgs)
 {
 	name_ = procName;
 }
@@ -56,24 +50,13 @@ CommandItem::CommandItem(size_t blockIndex):
 {
 }
 
-CommandItem::CommandItem(const std::string& cmdLine):
-	type_(CommandType::TYPE_SHELL)
+CommandItem::CommandItem(const std::string& fullCmdLine):
+	type_(CommandType::TYPE_SHELL), shellCmd_(fullCmdLine)
 {
-	CommandLineParser parser;
-	if (!parser.Parse(cmdLine)) {
-		throw std::runtime_error("Command parsing failed: }" + cmdLine + "}");
+	name_ = StringUtils::RemoveSpecialCharacters(shellCmd_);
+	if (name_.empty()) {
+		name_ = "shell";
 	}
-	assert(false); // TODO: how about multi commands?
-}
-
-const std::string CommandItem::GetCmdLine() const
-{
-	assert(type_ == CommandType::TYPE_SHELL);
-	std::string cmdLine = StringUtils::ShellQuote(shellCmd_, false);
-	for (const auto& arg : shellArgs_) {
-		cmdLine += " " + StringUtils::ShellQuote(arg, false);
-	}
-	return cmdLine;
 }
 
 const std::string& CommandItem::ShellCmd() const
@@ -103,8 +86,9 @@ size_t CommandItem::GetBlockIndex() const
 std::string CommandItem::ToString() const
 {
 	if (type_ == CommandType::TYPE_SHELL) {
-		return GetCmdLine();
+		return ShellCmd();
 	} else {
+		assert(type_ == CommandType::TYPE_PROC);
 		return procName_ + procArgs_.ToString();
 	}
 }
@@ -141,16 +125,11 @@ std::string CommandItem::DetailToString() const
 
 	ss << "type='" << type_ << "'";
 	ss << ", name='" << name_ << "'";
-	ss << ", procArgs={" << procArgs_.ToString() << "}";
 
 	ss << ", shellCmd='" << shellCmd_ << "'";
-	ss << ", shellArgs={";
-	for (size_t i = 0; i < shellArgs_.size(); ++i) {
-		ss << (i == 0 ? "" : " ") << "'" << shellArgs_[i] << "'";
-	}
-	ss << "}";
 
 	ss << ", procName='" << procName_ << "'";
+	ss << ", procArgs={" << procArgs_.ToString() << "}";
 
 	ss << ", blockIndex=" << blockIndex_;
 
@@ -163,31 +142,9 @@ void Block::Clear()
 	parallel_ = false;
 }
 
-void Block::AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments)
+void Block::AppendCommand(const std::string& fullCmdLine)
 {
-	items_.push_back(CommandItem(cmd, arguments));
-}
-
-void Block::AppendCommand(const std::vector<std::vector<std::string>>& argLists, Pipeline& pipeline)
-{
-	if (argLists.size() == 1 || !parallel_) {
-		for (const auto& argList : argLists) {
-			assert(!argList.empty());
-			const auto& cmd = argList[0];
-			const auto args = std::vector<std::string>(argList.begin() + 1, argList.end());
-			AppendCommand(cmd, args);
-		}
-	} else if (!argLists.empty()) {
-		Block block;
-		for (const auto& argList : argLists) {
-			assert(!argList.empty());
-			const auto& cmd = argList[0];
-			const auto args = std::vector<std::string>(argList.begin() + 1, argList.end());
-			block.AppendCommand(cmd, args);
-		}
-		size_t blockIndex = pipeline.AppendBlock(block);
-		AppendBlock(blockIndex);
-	}
+	items_.push_back(CommandItem(fullCmdLine));
 }
 
 void Block::AppendCommand(const std::string& procName, const ProcArgs& procArgs)
@@ -204,11 +161,8 @@ bool Block::AppendBlock(size_t blockIndex)
 bool Block::UpdateCommandToProcCalling(const std::set<std::string>& procNameSet)
 {
 	for (auto& item : items_) {
-		if (item.Type() == CommandType::TYPE_SHELL
-				&& procNameSet.find(item.ShellCmd()) != procNameSet.end()) {
-			if (!item.ConvertShellToProc()) {
-				return false;
-			}
+		if (!item.TryConvertShellToProc(procNameSet)) {
+			return false;
 		}
 	}
 	return true;
@@ -352,7 +306,7 @@ bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 
 bool Pipeline::AppendCommandLineFromFile(PipeFile& file, Block& block)
 {
-	std::string lines = file.CurrentLine();
+	std::string lines = StringUtils::Trim(file.CurrentLine());
 	CommandLineParser parser;
 	for (;;) {
 		if (!parser.Parse(lines)) {
@@ -361,13 +315,13 @@ bool Pipeline::AppendCommandLineFromFile(PipeFile& file, Block& block)
 					std::cerr << "Unexpected EOF at " << file.Pos() << std::endl;
 					return false;
 				}
-				lines += "\n" + file.CurrentLine();
+				lines += "\n" + StringUtils::Trim(file.CurrentLine());
 				continue;
 			}
 			std::cerr << "Error when parsing shell command at " << file.Pos() << std::endl;
 			return false;
 		}
-		block.AppendCommand(parser.GetArgLists(), *this);
+		block.AppendCommand(lines);
 		break;
 	}
 	return true;
@@ -553,7 +507,7 @@ bool Pipeline::Load(const std::string& filename)
 std::string CommandItem::ToStringRaw(const std::vector<Block>& blockList, const std::string& indent) const
 {
 	if (type_ == CommandType::TYPE_SHELL) {
-		return indent + GetCmdLine();
+		return indent + ShellCmd();
 	} else if (type_ == CommandType::TYPE_PROC) {
 		return indent + procName_ + procArgs_.ToString();
 	} else {
@@ -608,19 +562,13 @@ void Pipeline::ClearDefaultBlock()
 	blockList_[0].Clear();
 }
 
-void Pipeline::SetDefaultBlock(const std::vector<CommandLineParser>& cmdLineList, bool parallel)
+void Pipeline::SetDefaultBlock(bool parallel, const std::vector<std::string> shellCmdList)
 {
 	assert(blockList_[0].IsEmpty());
 	blockList_[0].SetParallel(parallel);
-	for (const auto& cmdLine : cmdLineList) {
-		blockList_[0].AppendCommand(cmdLine.GetArgLists(), *this);
+	for (const auto& fullCmdLine : shellCmdList) {
+		blockList_[0].AppendCommand(StringUtils::Trim(fullCmdLine));
 	}
-}
-
-void Pipeline::SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments)
-{
-	assert(blockList_[0].IsEmpty());
-	blockList_[0].AppendCommand(cmd, arguments);
 }
 
 void Pipeline::SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs)
@@ -663,25 +611,45 @@ bool Pipeline::HasAnyDefaultCommand() const
 	return !blockList_[0].IsEmpty();
 }
 
-bool CommandItem::ConvertShellToProc()
+bool CommandItem::TryConvertShellToProc(const std::set<std::string>& procNameSet)
 {
+	if (type_ != CommandType::TYPE_SHELL) {
+		return true;
+	}
+
+	CommandLineParser parser;
+	if (!parser.Parse(shellCmd_)) {
+		return true;
+	}
+
+	const auto argLists = parser.GetArgLists();
+	if (argLists.size() != 1) {
+		return true;
+	}
+	const auto& args = argLists[0];
+	assert(args.size() > 0);
+	const auto& procName = args[0];
+	if (procNameSet.find(procName) == procNameSet.end()) {
+		return true;
+	}
+
 	ProcArgs procArgs;
-	for (const auto& arg : shellArgs_) {
+	for (size_t i = 1; i < args.size(); ++i) {
 		std::smatch sm;
-		if (!std::regex_match(arg, sm, std::regex("(\\w+)=(.*)"))) {
-			std::cerr << "Error: Invalid option '" << arg << "' for calling '" << shellCmd_ << "'!" << std::endl;
-			return false;
+		if (!std::regex_match(args[i], sm, std::regex("(\\w+)=(.*)"))) {
+			return true;
 		}
 		const auto& key = sm[1];
 		const auto& value = sm[2];
 		if (procArgs.Has(key)) {
-			std::cerr << "Error: Duplicated option '" << key << "'!" << std::endl;
+			std::cerr << "Warning: Duplicated option '" << key << "'!" << std::endl;
 			return false;
 		}
 		procArgs.Add(key, value);
 	}
+
 	type_ = CommandType::TYPE_PROC;
-	procName_ = shellCmd_;
+	procName_ = procName;
 	procArgs_ = procArgs;
 	return true;
 }

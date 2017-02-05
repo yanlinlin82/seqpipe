@@ -64,10 +64,10 @@ my $code = '{{
 
 	# check results
 	my @lines = split("\n", $output);
-	die if scalar @lines != 32;
-	@lines[1..30] = sort by_log_id_and_type @lines[1..30];
+	die if scalar @lines != 20;
+	@lines[1..18] = sort by_log_id_and_type @lines[1..18];
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe run foo.pipe$/;
-	die if $lines[31] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[19] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
 	die if `cat .seqpipe/last/pipeline` ne '{{
@@ -78,16 +78,8 @@ my $code = '{{
 	}
 	{
 		{{
-			{
-				echo C
-				sleep 2
-				echo D
-			}
-			{
-				echo E
-				sleep 1
-				echo F
-			}
+			echo C; sleep 2; echo D
+			echo E; sleep 1; echo F
 		}}
 		echo G
 	}

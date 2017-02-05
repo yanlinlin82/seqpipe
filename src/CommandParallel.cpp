@@ -17,7 +17,7 @@ void CommandParallel::PrintUsage()
 		<< std::endl;
 }
 
-bool CommandParallel::LoadCmdLineList(const std::string& filename, std::vector<CommandLineParser>& cmdLineList)
+bool CommandParallel::LoadCmdLineList(const std::string& filename, std::vector<std::string>& cmdList)
 {
 	const auto path = (filename == "-" ? "/dev/stdin" : filename);
 	std::ifstream file(path);
@@ -36,7 +36,7 @@ bool CommandParallel::LoadCmdLineList(const std::string& filename, std::vector<C
 				<< "   " << parser.ErrorWithLeadingSpaces() << std::endl;
 			return false;
 		}
-		cmdLineList.push_back(parser);
+		cmdList.push_back(line);
 	}
 	file.close();
 	return true;
@@ -88,12 +88,12 @@ bool CommandParallel::ParseArgs(const std::vector<std::string>& args)
 		return false;
 	}
 
-	std::vector<CommandLineParser> cmdLineList;
-	if (!LoadCmdLineList(cmdListFilename, cmdLineList)) {
+	std::vector<std::string> cmdList;
+	if (!LoadCmdLineList(cmdListFilename, cmdList)) {
 		return false;
 	}
 
-	pipeline_.SetDefaultBlock(cmdLineList, true);
+	pipeline_.SetDefaultBlock(true, cmdList);
 	return true;
 }
 

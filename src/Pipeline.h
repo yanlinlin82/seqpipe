@@ -32,21 +32,18 @@ std::ostream& operator << (std::ostream& os, CommandType type);
 class CommandItem
 {
 public:
-
 	CommandItem() { }
-	CommandItem(const std::string& cmd, const std::vector<std::string>& arguments);
 	CommandItem(const std::string& procName, const ProcArgs& procArgs);
-	explicit CommandItem(const std::string& cmdLine);
+	explicit CommandItem(const std::string& fullCmdLine);
 	explicit CommandItem(size_t blockIndex);
 
-	bool ConvertShellToProc();
+	bool TryConvertShellToProc(const std::set<std::string>& procNameSet);
 
 	// common attributes
 	CommandType Type() const { return type_; }
 	const std::string& Name() const { return name_; }
 
 	// 'shell command' attributes
-	const std::string GetCmdLine() const;
 	const std::string& ShellCmd() const;
 
 	// 'procedure' attributes
@@ -65,14 +62,13 @@ public:
 private:
 	CommandType type_ = CommandType::TYPE_SHELL;
 	std::string name_;
-	ProcArgs procArgs_;
 
 	// members for 'shell command'
 	std::string shellCmd_;
-	std::vector<std::string> shellArgs_;
 
 	// members for 'procedure'
 	std::string procName_;
+	ProcArgs procArgs_;
 
 	// members for 'block'
 	size_t blockIndex_ = 0;
@@ -84,8 +80,7 @@ public:
 	void Clear();
 
 	void SetParallel(bool parallel) { parallel_ = parallel; }
-	void AppendCommand(const std::vector<std::vector<std::string>>& argLists, Pipeline& pipeline);
-	void AppendCommand(const std::string& cmd, const std::vector<std::string>& arguments);
+	void AppendCommand(const std::string& fullCmdLine);
 	void AppendCommand(const std::string& procName, const ProcArgs& procArgs);
 
 	bool AppendBlock(size_t blockIndex);
@@ -129,8 +124,7 @@ public:
 	bool Save(const std::string& filename) const;
 
 	void ClearDefaultBlock();
-	void SetDefaultBlock(const std::vector<CommandLineParser>& cmdLineList, bool parallel);
-	void SetDefaultBlock(const std::string& cmd, const std::vector<std::string>& arguments);
+	void SetDefaultBlock(bool parallel, const std::vector<std::string> shellCmdList);
 	void SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs);
 
 	size_t AppendBlock(const Block& block);

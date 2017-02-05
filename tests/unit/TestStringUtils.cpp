@@ -66,6 +66,23 @@ UNIT_TEST(StringUtils, RemoveSpecialCharacters)
 
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("abc 123"  ) == "abc");
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("  abc 123") == "abc");
+
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc )"     ) == "abc");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc123 )"  ) == "abc123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc!123 )" ) == "abc123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc#@123 )") == "abc123");
+
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc  )"     ) == "abc");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc123  )"  ) == "abc123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc!123  )" ) == "abc123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc#@123  )") == "abc123");
+
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc 123 )"  ) == "abc");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc 123 )") == "abc");
+
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters(""     ) == "");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("!#$"  ) == "");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("##123") == "123");
 }
 
 UNIT_TEST(StringUtils, SingleQuote)

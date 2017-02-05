@@ -55,7 +55,7 @@ static std::string ExpandArgs(const std::string& s, const ProcArgs& procArgs)
 	std::smatch m;
 	std::regex e("\\$\\{(\\w+)\\}");
 	std::string res;
-	while (std::regex_search(text, m, e)) {
+	while (std::regex_search(text, m, e)) { // TODO: skip variables in single-quotes string
 		res += m.prefix();
 		res += procArgs.Get(m[1]);
 		text = m.suffix();
@@ -69,7 +69,7 @@ int Launcher::RunShell(const CommandItem& item, std::string indent, const ProcAr
 	unsigned int id = counter_.FetchId();
 
 	const std::string name = std::to_string(id) + "." + item.Name();
-	auto cmdLine = item.GetCmdLine();
+	auto cmdLine = item.ShellCmd();
 
 	cmdLine = ExpandArgs(cmdLine, procArgs);
 

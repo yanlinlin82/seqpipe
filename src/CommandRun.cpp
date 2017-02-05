@@ -38,7 +38,7 @@ void CommandRun::PrintUsage()
 
 bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 {
-	std::vector<CommandLineParser> cmdLineList; // for '-e' or '-E'
+	std::vector<std::string> cmdList; // for '-e' or '-E'
 	bool parallel = false;
 	std::vector<std::string> moduleFilenames; // for '-m'
 	std::string cmd;
@@ -60,7 +60,7 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 					std::cerr << "Error: Can not use '" << arg << "' after <workflow.pipe>!" << std::endl;
 					return false;
 				}
-				if (cmdLineList.empty()) {
+				if (cmdList.empty()) {
 					parallel = (arg == "-E");
 				} else if (parallel != (arg == "-E")) {
 					std::cerr << "Error: Can not use both '-e' and '-E'!" << std::endl;
@@ -74,7 +74,7 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 						<< "   " << parser.ErrorWithLeadingSpaces() << std::endl;
 					return false;
 				}
-				cmdLineList.push_back(parser);
+				cmdList.push_back(cmd);
 			} else if (arg == "-l" || arg == "-L") {
 				listMode_ = (arg == "-l" ? 1 : 2);
 				if (it + 1 != args.end() && (*(it + 1))[0] != '-') {
@@ -98,7 +98,7 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 				std::cerr << "Error: Unknown option '" << arg << "'!" << std::endl;
 				return false;
 			}
-		} else if (cmd.empty() && cmdLineList.empty() && moduleFilenames.empty()) {
+		} else if (cmd.empty() && cmdList.empty() && moduleFilenames.empty()) {
 			cmd = arg;
 			isShellCmd = System::IsShellCmd(cmd);
 			if (isShellCmd) {
@@ -123,15 +123,19 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 		}
 	}
 
-	if (cmd.empty() && cmdLineList.empty() && moduleFilenames.empty() && !listMode_) {
+	if (cmd.empty() && cmdList.empty() && moduleFilenames.empty() && !listMode_) {
 		PrintUsage();
 		return false;
 	}
 
-	if (!cmdLineList.empty()) {
-		pipeline_.SetDefaultBlock(cmdLineList, parallel);
+	if (!cmdList.empty()) {
+		pipeline_.SetDefaultBlock(parallel, cmdList);
 	} else if (isShellCmd) {
-		pipeline_.SetDefaultBlock(cmd, shellArgs);
+		for (const auto& arg : shellArgs) {
+			cmd += " " + StringUtils::ShellQuote(arg, false);
+		}
+		cmdList.push_back(cmd);
+		pipeline_.SetDefaultBlock(false, cmdList);
 	} else if (!cmd.empty()) {
 		if (!pipeline_.Load(cmd)) {
 			return false;
