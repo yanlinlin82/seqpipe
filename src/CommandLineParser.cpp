@@ -1,3 +1,4 @@
+#include <cassert>
 #include "CommandLineParser.h"
 #include "StringUtils.h"
 
@@ -49,6 +50,110 @@ int CommandLineParser::ParseOct(int c1, int c2)
 	return v1 * 8 + v2;
 }
 
+bool CommandLineParser::ParseSingleQuotedString(const std::string& s, size_t& i, std::string& res)
+{
+	assert(res.empty());
+
+	for (++i; i < s.size(); ++i) {
+		if (s[i] == '\'') {
+			break;
+		}
+		res += s[i];
+	}
+	if (i >= s.size()) {
+		status_ = STATUS_UNFINISHED;
+		errorPos_ = s.size();
+		errorMsg_ = "incomplete single-quoted string";
+		return false;
+	}
+	return true;
+}
+
+bool CommandLineParser::ParseDoubleQuotedString(const std::string& s, size_t& i, std::string& res)
+{
+	assert(res.empty());
+	for (++i; i < s.size(); ++i) {
+		if (s[i] == '"') {
+			break;
+		} else if (s[i] == '\\') {
+			if (i + 1 >= s.size()) {
+				goto incomplete_string;
+			}
+			++i;
+			if (s[i] == 'x') {
+				if (i + 2 >= s.size()) {
+					goto incomplete_string;
+				}
+				int value = ParseHex(s[i + 1], s[i + 2]);
+				if (value < 0) {
+					status_ = STATUS_ERROR;
+					errorPos_ = i;
+					errorMsg_ = "invalid character for '\\xXX'";
+					return false;
+				}
+				i += 2;
+				res += static_cast<char>(value);
+			} else if (s[i] == '0') {
+				if (i + 2 >= s.size()) {
+					goto incomplete_string;
+				}
+				int value = ParseOct(s[i + 1], s[i + 2]);
+				if (value < 0) {
+					status_ = STATUS_ERROR;
+					errorPos_ = i;
+					errorMsg_ = "invalid character for '\\0NN'";
+					return false;
+				}
+				i += 2;
+				res += static_cast<char>(value);
+			} else if (s[i] == 't' || s[i] == 'r' || s[i] == 'n' || s[i] == 'b') {
+				res += '\\';
+				res += s[i];
+			} else {
+				status_ = STATUS_ERROR;
+				errorPos_ = i;
+				errorMsg_ = "invalid character after '\\'";
+				return false;
+			}
+		} else {
+			res += s[i];
+		}
+	}
+	if (i >= s.size()) {
+		goto incomplete_string;
+	}
+	return true;
+
+incomplete_string:
+	status_ = STATUS_UNFINISHED;
+	errorPos_ = s.size();
+	errorMsg_ = "incomplete double-quoted string";
+	return false;
+}
+
+bool CommandLineParser::ParseEscapeCharacter(const std::string& s, size_t& i, std::string& res)
+{
+	assert(res.empty());
+
+	if (i + 1 >= s.size()) {
+		status_ = STATUS_UNFINISHED;
+		errorPos_ = s.size();
+		errorMsg_ = "incomplete command line";
+		return false;
+	}
+	++i;
+
+	if (s[i] == '\n') {
+		res = "";
+	} else if (s[i] == '\r' && i + 1 < s.size() && s[i + 1] == '\n') {
+		++i;
+		res = "";
+	} else {
+		res = s[i];
+	}
+	return true;
+}
+
 bool CommandLineParser::Parse(const std::string& s)
 {
 	argLists_.clear();
@@ -68,76 +173,21 @@ bool CommandLineParser::Parse(const std::string& s)
 				word = "";
 			}
 		} else if (s[i] == '\'') {
-			for (++i; i < s.size(); ++i) {
-				if (s[i] == '\'') {
-					break;
-				}
-				word += s[i];
+			std::string res;
+			if (!ParseSingleQuotedString(s, i, res)) {
+				return false;
 			}
-			if (i >= s.size()) {
-				goto incomplete_string;
-			}
+			word += res;
 		} else if (s[i] == '"') {
-			for (++i; i < s.size(); ++i) {
-				if (s[i] == '"') {
-					break;
-				} else if (s[i] == '\\') {
-					if (i + 1 >= s.size()) {
-						goto incomplete_string;
-					}
-					++i;
-					if (s[i] == 'x') {
-						if (i + 2 >= s.size()) {
-							goto incomplete_string;
-						}
-						int value = ParseHex(s[i + 1], s[i + 2]);
-						if (value < 0) {
-							status_ = STATUS_ERROR;
-							errorPos_ = i;
-							errorMsg_ = "invalid character for '\\xXX'";
-							return false;
-						}
-						i += 2;
-						word += static_cast<char>(value);
-					} else if (s[i] == '0') {
-						if (i + 2 >= s.size()) {
-							goto incomplete_string;
-						}
-						int value = ParseOct(s[i + 1], s[i + 2]);
-						if (value < 0) {
-							status_ = STATUS_ERROR;
-							errorPos_ = i;
-							errorMsg_ = "invalid character for '\\0NN'";
-							return false;
-						}
-						i += 2;
-						word += static_cast<char>(value);
-					} else if (s[i] == 't' || s[i] == 'r' || s[i] == 'n' || s[i] == 'b') {
-						word += '\\';
-						word += s[i];
-					} else {
-						status_ = STATUS_ERROR;
-						errorPos_ = i;
-						errorMsg_ = "invalid character after '\\'";
-						return false;
-					}
-				} else {
-					word += s[i];
-				}
+			std::string res;
+			if (!ParseDoubleQuotedString(s, i, res)) {
+				return false;
 			}
-			if (i >= s.size()) {
-				goto incomplete_string;
-			}
+			word += res;
 		} else if (s[i] == '\\') {
-			if (i + 1 >= s.size()) {
-				goto incomplete_string;
-			}
-			++i;
-			if (s[i] != '\n') {
-				if (s[i] == '\r' && i + 1 < s.size() && s[i + 1] == '\n') {
-					++i;
-				}
-				word += s[i];
+			std::string res;
+			if (!ParseEscapeCharacter(s, i, res)) {
+				return false;
 			}
 		} else {
 			word += s[i];
@@ -147,12 +197,6 @@ bool CommandLineParser::Parse(const std::string& s)
 		argLists_.back().push_back(word);
 	}
 	return true;
-
-incomplete_string:
-	status_ = STATUS_UNFINISHED;
-	errorPos_ = s.size();
-	errorMsg_ = "incomplete string";
-	return false;
 }
 
 std::string CommandLineParser::ToFullCmdLine() const

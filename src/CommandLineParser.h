@@ -19,6 +19,10 @@ public:
 
 	void Dump(std::ostream& os = std::cout) const;
 private:
+	bool ParseDoubleQuotedString(const std::string& s, size_t& i, std::string& res);
+	bool ParseSingleQuotedString(const std::string& s, size_t& i, std::string& res);
+	bool ParseEscapeCharacter(const std::string& s, size_t& i, std::string& res);
+
 	static int ParseHex(int c);
 	static int ParseOct(int c);
 	static int ParseHex(int c1, int c2);
