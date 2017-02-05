@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use strict;
 
-print STDERR "$0 - ";
+print STDERR "$0 ";
 
 my $REGEX_UNIQUE_ID = '\[[0-9]{6}\.[0-9]{4}\.[0-9]+\.[^\]]+\]';
 my $REGEX_TIME = '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}';
@@ -56,7 +56,7 @@ hello
 	die if `cat .seqpipe/last/3.echo.log` ne "Goodbye!\n";
 	die if `cat .seqpipe/last/3.echo.err` ne "";
 }
-test_001;
+test_001; print '.';
 
 #==========================================================#
 
@@ -101,7 +101,7 @@ hello
 	die if `cat .seqpipe/last/3.echo.log` ne "Goodbye!\n";
 	die if `cat .seqpipe/last/3.echo.err` ne "";
 }
-test_002;
+test_002; print '.';
 
 #==========================================================#
 
@@ -112,5 +112,5 @@ sub clean_up
 clean_up;
 
 #==========================================================#
-print "OK!\n";
+print " OK!\n";
 exit 0;

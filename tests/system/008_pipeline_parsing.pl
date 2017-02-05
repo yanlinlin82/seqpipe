@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use strict;
 
-print STDERR "$0 - ";
+print STDERR "$0 ";
 
 my $REGEX_UNIQUE_ID = '\[[0-9]{6}\.[0-9]{4}\.[0-9]+\.[^\]]+\]';
 my $REGEX_TIME = '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}';
@@ -44,7 +44,7 @@ demo
 	# clean up
 	unlink "foo.pipe";
 }
-test_001;
+test_001; print '.';
 
 #==========================================================#
 
@@ -82,8 +82,8 @@ demo
 	# clean up
 	unlink "foo.pipe";
 }
-test_001;
+test_002; print '.';
 
 #==========================================================#
-print "OK!\n";
+print " OK!\n";
 exit 0;
