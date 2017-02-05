@@ -15,6 +15,10 @@ UNIT_TEST(StringUtils, TrimLeft)
 	UNIT_ASSERT(StringUtils::TrimLeft(" a b " ) == "a b ");
 	UNIT_ASSERT(StringUtils::TrimLeft("  a b ") == "a b ");
 
+	UNIT_ASSERT(StringUtils::TrimLeft(""  ) == "");
+	UNIT_ASSERT(StringUtils::TrimLeft(" " ) == "");
+	UNIT_ASSERT(StringUtils::TrimLeft("  ") == "");
+
 	UNIT_ASSERT(StringUtils::TrimLeft("\t\r\n  abc \t\r\n ") == "abc \t\r\n ");
 }
 
@@ -32,6 +36,10 @@ UNIT_TEST(StringUtils, TrimRight)
 	UNIT_ASSERT(StringUtils::TrimRight(" a b " ) == " a b");
 	UNIT_ASSERT(StringUtils::TrimRight(" a b  ") == " a b");
 
+	UNIT_ASSERT(StringUtils::TrimRight(""  ) == "");
+	UNIT_ASSERT(StringUtils::TrimRight(" " ) == "");
+	UNIT_ASSERT(StringUtils::TrimRight("  ") == "");
+
 	UNIT_ASSERT(StringUtils::TrimRight("\t\r\n  abc \t\r\n ") == "\t\r\n  abc");
 }
 
@@ -48,6 +56,10 @@ UNIT_TEST(StringUtils, Trim)
 	UNIT_ASSERT(StringUtils::Trim("a b "  ) == "a b");
 	UNIT_ASSERT(StringUtils::Trim(" a b " ) == "a b");
 	UNIT_ASSERT(StringUtils::Trim("  a b ") == "a b");
+
+	UNIT_ASSERT(StringUtils::Trim(""  ) == "");
+	UNIT_ASSERT(StringUtils::Trim(" " ) == "");
+	UNIT_ASSERT(StringUtils::Trim("  ") == "");
 
 	UNIT_ASSERT(StringUtils::Trim("\t\r\n  abc \t\r\n ") == "abc");
 }

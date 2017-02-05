@@ -7,13 +7,13 @@ const std::string StringUtils::SPACES = " \t\r\n";
 std::string StringUtils::TrimLeft(const std::string& s, const std::string& spaces)
 {
 	std::string::size_type pos = s.find_first_not_of(spaces);
-	return (pos == std::string::npos ? s : s.substr(pos));
+	return (pos == std::string::npos ? "" : s.substr(pos));
 }
 
 std::string StringUtils::TrimRight(const std::string& s, const std::string& spaces)
 {
 	std::string::size_type pos = s.find_last_not_of(spaces);
-	return (pos == std::string::npos ? s : s.substr(0, pos + 1));
+	return (pos == std::string::npos ? "" : s.substr(0, pos + 1));
 }
 
 std::string StringUtils::Trim(const std::string& s, const std::string& spaces)
