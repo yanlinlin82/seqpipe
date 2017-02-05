@@ -9,7 +9,7 @@ my $REGEX_ELAPSE = '\(elapsed: [^)]+\)';
 
 #==========================================================#
 
-sub test_001
+sub test_001 # Demo(1) - Hello, world!
 {
 	# prepare input
 	open my $fh, '>', 'foo.pipe' or die;
@@ -49,7 +49,7 @@ test_001;
 
 #==========================================================#
 
-sub test_002
+sub test_002 # Demo(2) - More Commands
 {
 	# prepare input
 	open my $fh, '>', 'foo.pipe' or die;
@@ -108,6 +108,54 @@ demo
 	unlink "foo.pipe";
 }
 test_002;
+
+#==========================================================#
+
+sub test_003 # Demo(3) - Return Value
+{
+	# prepare input
+	open my $fh, '>', 'foo.pipe' or die;
+	print $fh '
+function demo {
+	wc -l foo.pipe; false
+	echo "This command will never be run!"
+}
+';
+	close $fh;
+
+	# run command
+	my $output = `seqpipe foo.pipe demo` or die;
+
+	# check results
+	my @lines = split("\n", $output);
+	die if scalar @lines != 9;
+	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe foo.pipe demo$/;
+	die if $lines[1] !~ /^\(1\) \[pipeline\] demo$/;
+	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
+	die if $lines[3] !~ /^  \(2\) \[shell\] wc -l foo.pipe; false$/;
+	die if $lines[4] !~ /^  \(2\) starts at $REGEX_TIME$/;
+	die if $lines[5] !~ /^  \(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[6] !~ /^  \(2\) returns 1$/;
+	die if $lines[7] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[8] !~ /^$REGEX_UNIQUE_ID Pipeline finished abnormally with exit value: 1! $REGEX_ELAPSE$/;
+
+	die if `cat .seqpipe/last/log` ne $output;
+	die if `cat .seqpipe/last/pipeline` ne "demo() {
+	wc -l foo.pipe; false
+	echo \"This command will never be run!\"
+}
+
+demo
+";
+	die if `cat .seqpipe/last/1.demo.call` ne "demo\n";
+	die if `cat .seqpipe/last/2.wc.cmd` ne "wc -l foo.pipe; false\n";
+	die if `cat .seqpipe/last/2.wc.log` ne "5 foo.pipe\n";
+	die if `cat .seqpipe/last/2.wc.err` ne "";
+
+	# clean up
+	unlink "foo.pipe";
+}
+test_003;
 
 #==========================================================#
 print "OK!\n";
