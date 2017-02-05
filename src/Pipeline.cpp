@@ -315,7 +315,12 @@ bool Pipeline::AppendCommandLineFromFile(PipeFile& file, Block& block)
 					std::cerr << "Unexpected EOF at " << file.Pos() << std::endl;
 					return false;
 				}
-				lines += "\n" + StringUtils::Trim(file.CurrentLine());
+				if (!lines.empty() && lines.substr(lines.size() - 1) == "\\") {
+					lines = lines.substr(0, lines.size() - 1);
+				} else {
+					lines += "\n";
+				}
+				lines += StringUtils::Trim(file.CurrentLine());
 				continue;
 			}
 			std::cerr << "Error when parsing shell command at " << file.Pos() << std::endl;
