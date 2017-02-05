@@ -71,7 +71,7 @@ echo 1; foo A=hello B=world; echo 2
 echo 3
 ';
 	# prepare input
-	open my $fh, ">foo.pipe" or die;
+	open my $fh, '>', 'foo.pipe' or die;
 	print $fh $code;
 	close $fh;
 
@@ -87,10 +87,10 @@ echo 3
 	die if $lines[3] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
 	die if $lines[4] !~ /^\(2\) \[pipeline\] foo A=hello B=world$/;
 	die if $lines[5] !~ /^\(2\) starts at $REGEX_TIME$/;
-	die if $lines[6] !~ /^  \(3\) \[shell\] echo hello$/;
+	die if $lines[6] !~ /^  \(3\) \[shell\] echo "hello"$/;
 	die if $lines[7] !~ /^  \(3\) starts at $REGEX_TIME$/;
 	die if $lines[8] !~ /^  \(3\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[9] !~ /^  \(4\) \[shell\] echo world$/;
+	die if $lines[9] !~ /^  \(4\) \[shell\] echo "world"$/;
 	die if $lines[10] !~ /^  \(4\) starts at $REGEX_TIME$/;
 	die if $lines[11] !~ /^  \(4\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
 	die if $lines[12] !~ /^\(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
@@ -104,8 +104,8 @@ echo 3
 
 	die if `cat .seqpipe/last/log` ne $output;
 	die if `cat .seqpipe/last/pipeline` ne 'foo() {
-	echo ${A}
-	echo ${B}
+	echo "${A}"
+	echo "${B}"
 }
 
 {
@@ -119,10 +119,10 @@ echo 3
 	die if `cat .seqpipe/last/1.echo.log` ne "1\n";
 	die if `cat .seqpipe/last/1.echo.err` ne "";
 	die if `cat .seqpipe/last/2.foo.call` ne "foo\n";
-	die if `cat .seqpipe/last/3.echo.cmd` ne "echo hello\n";
+	die if `cat .seqpipe/last/3.echo.cmd` ne "echo \"hello\"\n";
 	die if `cat .seqpipe/last/3.echo.log` ne "hello\n";
 	die if `cat .seqpipe/last/3.echo.err` ne "";
-	die if `cat .seqpipe/last/4.echo.cmd` ne "echo world\n";
+	die if `cat .seqpipe/last/4.echo.cmd` ne "echo \"world\"\n";
 	die if `cat .seqpipe/last/4.echo.log` ne "world\n";
 	die if `cat .seqpipe/last/4.echo.err` ne "";
 	die if `cat .seqpipe/last/5.echo.cmd` ne "echo 2\n";

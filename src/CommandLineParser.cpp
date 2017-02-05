@@ -1,6 +1,5 @@
-#include <iostream>
 #include "CommandLineParser.h"
-#include "System.h"
+#include "StringUtils.h"
 
 int CommandLineParser::ParseHex(int c)
 {
@@ -130,11 +129,16 @@ bool CommandLineParser::Parse(const std::string& s)
 				goto incomplete_string;
 			}
 		} else if (s[i] == '\\') {
-			word += s[i];
 			if (i + 1 >= s.size()) {
 				goto incomplete_string;
 			}
-			word += s[++i];
+			++i;
+			if (s[i] != '\n') {
+				if (s[i] == '\r' && i + 1 < s.size() && s[i + 1] == '\n') {
+					++i;
+				}
+				word += s[i];
+			}
 		} else {
 			word += s[i];
 		}
@@ -162,23 +166,23 @@ std::string CommandLineParser::ToFullCmdLine() const
 			if (j > 0) {
 				s += " ";
 			}
-			s += System::EncodeShell(argLists_[i][j], true);
+			s += StringUtils::ShellQuote(argLists_[i][j], false);
 		}
 	}
 	return s;
 }
 
-void CommandLineParser::Dump() const
+void CommandLineParser::Dump(std::ostream& os) const
 {
-	std::cerr << "Total " << argLists_.size() << " args:\n";
+	os << "Total " << argLists_.size() << " args:\n";
 	for (size_t i = 0; i < argLists_.size(); ++i) {
-		std::cerr << "[" << i << "]";
+		os << "[" << i << "] ";
 		for (const auto& x : argLists_[i]) {
-			std::cerr << " (" <<  x << ")";
+			os << StringUtils::ShellQuote(x, false);
 		}
-		std::cerr << "\n";
+		os << "\n";
 	}
-	std::cerr << std::flush;
+	os << std::flush;
 }
 
 std::string CommandLineParser::ErrorWithLeadingSpaces() const

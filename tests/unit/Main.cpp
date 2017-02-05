@@ -9,7 +9,7 @@ int main(int argc, const char** argv)
 			std::cerr << " OK" << std::endl;
 		}
 	} catch (std::runtime_error& e) {
-		std::cerr << " failed in unit assertion: '" << e.what() << "'!" << std::endl;
+		std::cerr << " failed\n" << e.what() << std::endl;
 		return 1;
 	}
 	std::cerr << "All " << UnitTest::GetTests().size() << " test(s) passed." << std::endl;

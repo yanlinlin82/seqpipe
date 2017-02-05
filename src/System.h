@@ -24,7 +24,6 @@ public:
 	static std::vector<std::string> ListFiles(const std::string& dir, const std::string& pattern);
 
 	static bool IsShellCmd(const std::string& path);
-	static std::string EncodeShell(const std::string& s, bool singleQuote);
 
 	static int Execute(const std::string& cmdLine);
 	static std::string RunShell(const std::string& cmdLine);

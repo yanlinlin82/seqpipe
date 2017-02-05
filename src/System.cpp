@@ -39,9 +39,9 @@ std::string System::GetFullCommandLine()
 			if (std::regex_match(word, sm, std::regex("(\\w+)=(.*)"))) {
 				std::string key = sm[1];
 				std::string value = sm[2];
-				cmdLine += key + "=" + EncodeShell(value, true);
+				cmdLine += key + "=" + StringUtils::ShellQuote(value, true);
 			} else {
-				cmdLine += EncodeShell(word, true);
+				cmdLine += StringUtils::ShellQuote(word, true);
 			}
 		}
 	}
@@ -155,69 +155,6 @@ bool System::IsShellCmd(const std::string& path)
 {
 	auto fullpath = StringUtils::Trim(RunShell("/usr/bin/which " + path + " 2>/dev/null"));
 	return !fullpath.empty() && HasExecutiveAttribute(fullpath);
-}
-
-std::vector<std::string> Split(const std::string& s, const std::regex& e)
-{
-	std::string text = s;
-	std::vector<std::string> parts;
-	std::smatch sm;
-	while (std::regex_search(text, sm, e)) {
-		parts.push_back(sm.prefix());
-		parts.push_back(sm[1]);
-		text = sm.suffix();
-	}
-	parts.push_back(text);
-	return parts;
-}
-
-std::string SingleQuote(const std::string& s)
-{
-	std::string t;
-	for (size_t i = 0; i < s.size(); ++i) {
-		if (s[i] == '\'') {
-			t += "'\\''";
-		} else {
-			t += s[i];
-		}
-	}
-	return "'" + t + "'";
-}
-
-std::string DoubleQuote(const std::string& s, bool simplify = true)
-{
-	std::string t;
-	bool hasSpace = false;
-	for (size_t i = 0; i < s.size(); ++i) {
-		if (s[i] == '"') {
-			t += "\\\"";
-		} else if (s[i] == '\'') {
-			t += "\\\t";
-		} else if (s[i] == '\\') {
-			t += "\\\\";
-		} else {
-			if (isspace(s[i])) {
-				hasSpace = true;
-			}
-			t += s[i];
-		}
-	}
-	if (simplify && !hasSpace) {
-		return t;
-	} else {
-		return '"' + t + '"';
-	}
-}
-
-std::string System::EncodeShell(const std::string& s, bool singleQuote)
-{
-	if (!singleQuote && std::regex_search(s, std::regex("\\$\\{\\w+\\}"))) {
-		return DoubleQuote(s);
-	} else if (s.find_first_of(" \t\r\n\'\"$!()[]{};|") != std::string::npos) {
-		return SingleQuote(s);
-	} else {
-		return s;
-	}
 }
 
 int System::Execute(const std::string& cmdLine)

@@ -22,6 +22,7 @@ private:
 	std::vector<std::string> order_;
 };
 
+class Block;
 class Pipeline;
 
 enum class CommandType { TYPE_SHELL, TYPE_PROC, TYPE_BLOCK };
@@ -45,7 +46,7 @@ public:
 	const std::string& Name() const { return name_; }
 
 	// 'shell command' attributes
-	const std::string& CmdLine() const;
+	const std::string GetCmdLine() const;
 	const std::string& ShellCmd() const;
 
 	// 'procedure' attributes
@@ -59,13 +60,14 @@ public:
 	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
 	void Dump(const std::string& indent, const Pipeline& pipeline) const;
 	std::string DetailToString() const;
+
+	std::string ToStringRaw(const std::vector<Block>& blockList, const std::string& indent) const;
 private:
 	CommandType type_ = CommandType::TYPE_SHELL;
 	std::string name_;
 	ProcArgs procArgs_;
 
 	// members for 'shell command'
-	std::string fullCmdLine_;
 	std::string shellCmd_;
 	std::vector<std::string> shellArgs_;
 
@@ -94,6 +96,7 @@ public:
 	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
 	void Dump(const std::string& indent, const Pipeline& pipeline) const;
 	std::string DetailToString() const;
+	std::string ToStringRaw(const std::vector<Block>& blockList, const std::string& indent) const;
 
 	const std::vector<CommandItem>& GetItems() const { return items_; }
 	bool IsParallel() const { return parallel_; }
@@ -109,6 +112,8 @@ public:
 
 	std::string Name() const { return name_; }
 	size_t BlockIndex() const { return blockIndex_; }
+
+	std::string ToStringRaw(const std::vector<Block>& blockList) const;
 private:
 	std::string name_;
 	size_t blockIndex_ = 0;

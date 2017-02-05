@@ -69,7 +69,7 @@ int Launcher::RunShell(const CommandItem& item, std::string indent, const ProcAr
 	unsigned int id = counter_.FetchId();
 
 	const std::string name = std::to_string(id) + "." + item.Name();
-	auto cmdLine = item.CmdLine();
+	auto cmdLine = item.GetCmdLine();
 
 	cmdLine = ExpandArgs(cmdLine, procArgs);
 

@@ -28,7 +28,7 @@ std::string ProcArgs::ToString() const
 	for (auto name : order_) {
 		auto it = args_.find(name);
 		assert(it != args_.end());
-		s += " " + name + "=" + System::EncodeShell(it->second, false);
+		s += " " + name + "=" + StringUtils::ShellQuote(it->second, false);
 	}
 	return s;
 }
@@ -43,10 +43,6 @@ CommandItem::CommandItem(const std::string& cmd, const std::vector<std::string>&
 	type_(CommandType::TYPE_SHELL), shellCmd_(cmd), shellArgs_(arguments)
 {
 	name_ = StringUtils::RemoveSpecialCharacters(cmd);
-	fullCmdLine_ = cmd;
-	for (const auto arg : arguments) {
-		fullCmdLine_ += ' ' + System::EncodeShell(arg, false);
-	}
 }
 
 CommandItem::CommandItem(const std::string& procName, const ProcArgs& procArgs):
@@ -61,14 +57,23 @@ CommandItem::CommandItem(size_t blockIndex):
 }
 
 CommandItem::CommandItem(const std::string& cmdLine):
-	type_(CommandType::TYPE_SHELL), fullCmdLine_(cmdLine)
+	type_(CommandType::TYPE_SHELL)
 {
+	CommandLineParser parser;
+	if (!parser.Parse(cmdLine)) {
+		throw std::runtime_error("Command parsing failed: }" + cmdLine + "}");
+	}
+	assert(false); // TODO: how about multi commands?
 }
 
-const std::string& CommandItem::CmdLine() const
+const std::string CommandItem::GetCmdLine() const
 {
 	assert(type_ == CommandType::TYPE_SHELL);
-	return fullCmdLine_;
+	std::string cmdLine = StringUtils::ShellQuote(shellCmd_, false);
+	for (const auto& arg : shellArgs_) {
+		cmdLine += " " + StringUtils::ShellQuote(arg, false);
+	}
+	return cmdLine;
 }
 
 const std::string& CommandItem::ShellCmd() const
@@ -98,7 +103,7 @@ size_t CommandItem::GetBlockIndex() const
 std::string CommandItem::ToString() const
 {
 	if (type_ == CommandType::TYPE_SHELL) {
-		return fullCmdLine_;
+		return GetCmdLine();
 	} else {
 		return procName_ + procArgs_.ToString();
 	}
@@ -138,7 +143,6 @@ std::string CommandItem::DetailToString() const
 	ss << ", name='" << name_ << "'";
 	ss << ", procArgs={" << procArgs_.ToString() << "}";
 
-	ss << ", fullCmdLine='" << fullCmdLine_ << "'";
 	ss << ", shellCmd='" << shellCmd_ << "'";
 	ss << ", shellArgs={";
 	for (size_t i = 0; i < shellArgs_.size(); ++i) {
@@ -546,6 +550,34 @@ bool Pipeline::Load(const std::string& filename)
 	return true;
 }
 
+std::string CommandItem::ToStringRaw(const std::vector<Block>& blockList, const std::string& indent) const
+{
+	if (type_ == CommandType::TYPE_SHELL) {
+		return indent + GetCmdLine();
+	} else if (type_ == CommandType::TYPE_PROC) {
+		return indent + procName_ + procArgs_.ToString();
+	} else {
+		assert(type_ == CommandType::TYPE_BLOCK);
+		return blockList.at(blockIndex_).ToStringRaw(blockList, indent);
+	}
+}
+
+std::string Block::ToStringRaw(const std::vector<Block>& blockList, const std::string& indent) const
+{
+	std::string s;
+	s += indent + (parallel_ ? "{{" : "{") + "\n";
+	for (const auto& item : items_) {
+		s += item.ToStringRaw(blockList, indent + "\t") + "\n";
+	}
+	s += indent + (parallel_ ? "}}" : "}") + "\n";
+	return s;
+}
+
+std::string Procedure::ToStringRaw(const std::vector<Block>& blockList) const
+{
+	return name_ + "() " + blockList.at(blockIndex_).ToStringRaw(blockList, "");
+}
+
 bool Pipeline::Save(const std::string& filename) const
 {
 	std::ofstream file(filename);
@@ -553,26 +585,13 @@ bool Pipeline::Save(const std::string& filename) const
 		return false;
 	}
 
-	bool first = true;
 	for (auto it = procList_.begin(); it != procList_.end(); ++it) {
-		if (first) {
-			first = false;
-		} else {
-			file << "\n";
-		}
-
-		file << it->first << "() {\n";
-		for (const auto& item : blockList_[it->second.BlockIndex()].GetItems()) {
-			file << "\t" << item.ToString() << "\n";
-		}
-		file << "}\n";
+		const auto& proc = it->second;
+		file << proc.ToStringRaw(blockList_) << "\n";
 	}
 
 	const Block& block = blockList_[0];
 	if (!block.IsEmpty()) {
-		if (!procList_.empty()) {
-			file << "\n";
-		}
 		if (block.GetItems().size() == 1) {
 			file << block.GetItems()[0].ToString("", *this);
 		} else {

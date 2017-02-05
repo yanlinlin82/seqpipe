@@ -34,7 +34,8 @@ public:
 #define UNIT_ASSERT(exp) \
 	do { \
 		if (!(exp)) { \
-			throw std::runtime_error(#exp); \
+			throw std::runtime_error(__FILE__ ":" + std::to_string(__LINE__) \
+					+ ": assertion '" #exp "' failed!"); \
 		} \
 		std::cerr << "." << std::flush; \
 	} while (false)

@@ -55,7 +55,7 @@ my $code = '{{
 }}
 ';
 	# prepare input
-	open my $fh, ">foo.pipe" or die;
+	open my $fh, '>', 'foo.pipe' or die;
 	print $fh $code;
 	close $fh;
 

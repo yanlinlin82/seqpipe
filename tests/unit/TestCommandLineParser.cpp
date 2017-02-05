@@ -37,3 +37,14 @@ UNIT_TEST(CommandLineParser, HasQuoteAndSpace)
 	UNIT_ASSERT(argsList[0][0] == "echo");
 	UNIT_ASSERT(argsList[0][1] == "hello world");
 }
+
+UNIT_TEST(CommandLineParser, MulitLine)
+{
+	CommandLineParser parser;
+	UNIT_ASSERT(parser.Parse("abc\\\ndef") != false);
+
+	const auto& argsList = parser.GetArgLists();
+	UNIT_ASSERT(argsList.size() == 1);
+	UNIT_ASSERT(argsList[0].size() == 1);
+	UNIT_ASSERT(argsList[0][0] == "abcdef");
+}

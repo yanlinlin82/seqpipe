@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
 
 class CommandLineParser
 {
@@ -15,13 +16,13 @@ public:
 
 	const std::vector<std::vector<std::string>>& GetArgLists() const { return argLists_; }
 	std::string ToFullCmdLine() const;
+
+	void Dump(std::ostream& os = std::cout) const;
 private:
 	static int ParseHex(int c);
 	static int ParseOct(int c);
 	static int ParseHex(int c1, int c2);
 	static int ParseOct(int c1, int c2);
-
-	void Dump() const;
 private:
 	std::vector<std::vector<std::string>> argLists_;
 
