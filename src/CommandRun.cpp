@@ -70,8 +70,8 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 				CommandLineParser parser;
 				if (!parser.Parse(cmd)) {
 					std::cerr << "Error: Invalid bash command string after '" << arg << "':\n"
-						<< "   " << cmd << "\n"
-						<< "   " << parser.ErrorWithLeadingSpaces() << std::endl;
+						"   " << cmd << "\n"
+						"   " << parser.ErrorWithLeadingSpaces() << std::endl;
 					return false;
 				}
 				cmdList.push_back(cmd);

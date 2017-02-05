@@ -158,5 +158,66 @@ demo
 test_003;
 
 #==========================================================#
+
+sub test_004 # Demo(4) - Logical Operations
+{
+	# prepare input
+	open my $fh, '>', 'foo.pipe' or die;
+	print $fh '
+function demo {
+	true && echo "This will be executed!"
+	true || echo "This will not be executed!"
+	false || echo "This works fine!"
+}
+';
+	close $fh;
+
+	# run command
+	my $output = `seqpipe foo.pipe demo` or die;
+
+	# check results
+	my @lines = split("\n", $output);
+	die if scalar @lines != 14;
+	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe foo.pipe demo$/;
+	die if $lines[1] !~ /^\(1\) \[pipeline\] demo$/;
+	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
+	die if $lines[3] !~ /^  \(2\) \[shell\] true && echo "This will be executed!"$/;
+	die if $lines[4] !~ /^  \(2\) starts at $REGEX_TIME$/;
+	die if $lines[5] !~ /^  \(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[6] !~ /^  \(3\) \[shell\] true || echo "This will not be executed!"$/;
+	die if $lines[7] !~ /^  \(3\) starts at $REGEX_TIME$/;
+	die if $lines[8] !~ /^  \(3\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[9] !~ /^  \(4\) \[shell\] false || echo "This works fine!"$/;
+	die if $lines[10] !~ /^  \(4\) starts at $REGEX_TIME$/;
+	die if $lines[11] !~ /^  \(4\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[12] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[13] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+
+	die if `cat .seqpipe/last/log` ne $output;
+	die if `cat .seqpipe/last/pipeline` ne "demo() {
+	true && echo \"This will be executed!\"
+	true || echo \"This will not be executed!\"
+	false || echo \"This works fine!\"
+}
+
+demo
+";
+	die if `cat .seqpipe/last/1.demo.call` ne "demo\n";
+	die if `cat .seqpipe/last/2.true.cmd` ne "true && echo \"This will be executed!\"\n";
+	die if `cat .seqpipe/last/2.true.log` ne "This will be executed!\n";
+	die if `cat .seqpipe/last/2.true.err` ne "";
+	die if `cat .seqpipe/last/3.true.cmd` ne "true || echo \"This will not be executed!\"\n";
+	die if `cat .seqpipe/last/3.true.log` ne "";
+	die if `cat .seqpipe/last/3.true.err` ne "";
+	die if `cat .seqpipe/last/4.false.cmd` ne "false || echo \"This works fine!\"\n";
+	die if `cat .seqpipe/last/4.false.log` ne "This works fine!\n";
+	die if `cat .seqpipe/last/4.false.err` ne "";
+
+	# clean up
+	unlink "foo.pipe";
+}
+test_004;
+
+#==========================================================#
 print "OK!\n";
 exit 0;

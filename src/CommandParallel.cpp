@@ -32,8 +32,8 @@ bool CommandParallel::LoadCmdLineList(const std::string& filename, std::vector<s
 		CommandLineParser parser;
 		if (!parser.Parse(line)) {
 			std::cerr << "Error: Invalid bash command string at line " << lineNo << " of '" << path << "':\n"
-				<< "   " << line << "\n"
-				<< "   " << parser.ErrorWithLeadingSpaces() << std::endl;
+				"   " << line << "\n"
+				"   " << parser.ErrorWithLeadingSpaces() << std::endl;
 			return false;
 		}
 		cmdList.push_back(line);

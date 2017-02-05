@@ -323,7 +323,9 @@ bool Pipeline::AppendCommandLineFromFile(PipeFile& file, Block& block)
 				lines += StringUtils::Trim(file.CurrentLine());
 				continue;
 			}
-			std::cerr << "Error when parsing shell command at " << file.Pos() << std::endl;
+			std::cerr << "Error when parsing shell command at " << file.Pos() << ":\n"
+				"   " << lines << "\n"
+				"   " << parser.ErrorWithLeadingSpaces() << std::endl;
 			return false;
 		}
 		block.AppendCommand(lines);
