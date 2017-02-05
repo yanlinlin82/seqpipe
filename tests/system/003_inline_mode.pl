@@ -6,6 +6,8 @@ print STDERR "$0 - ";
 my $REGEX_UNIQUE_ID = '\[[0-9]{6}\.[0-9]{4}\.[0-9]+\.[^\]]+\]';
 my $REGEX_TIME = '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}';
 my $REGEX_ELAPSE = '\(elapsed: [^)]+\)';
+my $REGEX_OK = 'Pipeline finished successfully!';
+my $REGEX_FAILED = 'Pipeline finished abnormally with exit value:';
 
 #==========================================================#
 
@@ -46,16 +48,20 @@ sub test_001
 	my @lines = split("\n", $output);
 	die if scalar @lines != 8;
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe -e 'echo hello' -e 'echo world'$/;
-	die if $lines[1] !~ /^\(1\) \[shell\] echo hello$/;
+	die if $lines[1] ne '(1) [shell] echo hello';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
 	die if $lines[3] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[4] !~ /^\(2\) \[shell\] echo world$/;
+	die if $lines[4] ne '(2) [shell] echo world';
 	die if $lines[5] !~ /^\(2\) starts at $REGEX_TIME$/;
 	die if $lines[6] !~ /^\(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[7] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[7] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
-	die if `cat .seqpipe/last/pipeline` ne "{\n\techo hello\n\techo world\n}\n";
+	die if `cat .seqpipe/last/pipeline` ne "{
+	echo hello
+	echo world
+}
+";
 	die if `cat .seqpipe/last/1.echo.cmd` ne "echo hello\n";
 	die if `cat .seqpipe/last/1.echo.log` ne "hello\n";
 	die if `cat .seqpipe/last/1.echo.err` ne "";
@@ -76,16 +82,20 @@ sub test_002
 	my @lines = split("\n", $output);
 	die if scalar @lines != 8;
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe -e 'sleep 2' -e 'sleep 1'$/;
-	die if $lines[1] !~ /^\(1\) \[shell\] sleep 2$/;
+	die if $lines[1] ne '(1) [shell] sleep 2';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
 	die if $lines[3] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[4] !~ /^\(2\) \[shell\] sleep 1$/;
+	die if $lines[4] ne '(2) [shell] sleep 1';
 	die if $lines[5] !~ /^\(2\) starts at $REGEX_TIME$/;
 	die if $lines[6] !~ /^\(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[7] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[7] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
-	die if `cat .seqpipe/last/pipeline` ne "{\n\tsleep 2\n\tsleep 1\n}\n";
+	die if `cat .seqpipe/last/pipeline` ne "{
+	sleep 2
+	sleep 1
+}
+";
 	die if `cat .seqpipe/last/1.sleep.cmd` ne "sleep 2\n";
 	die if `cat .seqpipe/last/1.sleep.log` ne "";
 	die if `cat .seqpipe/last/1.sleep.err` ne "";
@@ -107,16 +117,20 @@ sub test_003
 	die if scalar @lines != 8;
 	@lines[1..4] = sort by_log_id_and_type @lines[1..4];
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe -E 'sleep 2' -E 'sleep 1'$/;
-	die if $lines[1] !~ /^\(1\) \[shell\] sleep 2$/;
+	die if $lines[1] ne '(1) [shell] sleep 2';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
-	die if $lines[3] !~ /^\(2\) \[shell\] sleep 1$/;
+	die if $lines[3] ne '(2) [shell] sleep 1';
 	die if $lines[4] !~ /^\(2\) starts at $REGEX_TIME$/;
 	die if $lines[5] !~ /^\(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
 	die if $lines[6] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[7] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[7] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
-	die if `cat .seqpipe/last/pipeline` ne "{{\n\tsleep 2\n\tsleep 1\n}}\n";
+	die if `cat .seqpipe/last/pipeline` ne "{{
+	sleep 2
+	sleep 1
+}}
+";
 	die if `cat .seqpipe/last/1.sleep.cmd` ne "sleep 2\n";
 	die if `cat .seqpipe/last/1.sleep.log` ne "";
 	die if `cat .seqpipe/last/1.sleep.err` ne "";
@@ -138,16 +152,20 @@ sub test_004
 	die if scalar @lines != 8;
 	@lines[1..6] = sort by_log_id_and_type @lines[1..6];
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe -E 'echo hello' -E 'echo world'$/;
-	die if $lines[1] !~ /^\(1\) \[shell\] echo hello$/;
+	die if $lines[1] ne '(1) [shell] echo hello';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
 	die if $lines[3] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[4] !~ /^\(2\) \[shell\] echo world$/;
+	die if $lines[4] ne '(2) [shell] echo world';
 	die if $lines[5] !~ /^\(2\) starts at $REGEX_TIME$/;
 	die if $lines[6] !~ /^\(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[7] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[7] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
-	die if `cat .seqpipe/last/pipeline` ne "{{\n\techo hello\n\techo world\n}}\n";
+	die if `cat .seqpipe/last/pipeline` ne "{{
+	echo hello
+	echo world
+}}
+";
 	die if `cat .seqpipe/last/1.echo.cmd` ne "echo hello\n";
 	die if `cat .seqpipe/last/1.echo.log` ne "hello\n";
 	die if `cat .seqpipe/last/1.echo.err` ne "";

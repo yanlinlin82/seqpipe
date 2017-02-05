@@ -6,6 +6,8 @@ print STDERR "$0 - ";
 my $REGEX_UNIQUE_ID = '\[[0-9]{6}\.[0-9]{4}\.[0-9]+\.[^\]]+\]';
 my $REGEX_TIME = '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}';
 my $REGEX_ELAPSE = '\(elapsed: [^)]+\)';
+my $REGEX_OK = 'Pipeline finished successfully!';
+my $REGEX_FAILED = 'Pipeline finished abnormally with exit value:';
 
 #==========================================================#
 
@@ -27,13 +29,13 @@ function demo {
 	my @lines = split("\n", $output);
 	die if scalar @lines != 8;
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe foo.pipe demo$/;
-	die if $lines[1] !~ /^\(1\) \[pipeline\] demo$/;
+	die if $lines[1] ne '(1) [pipeline] demo';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
-	die if $lines[3] !~ /^  \(2\) \[shell\] echo "Hello, world!"$/;
+	die if $lines[3] ne '  (2) [shell] echo "Hello, world!"';
 	die if $lines[4] !~ /^  \(2\) starts at $REGEX_TIME$/;
 	die if $lines[5] !~ /^  \(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
 	die if $lines[6] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[7] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[7] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
 	die if `cat .seqpipe/last/pipeline` ne "demo() {
@@ -75,19 +77,19 @@ function demo {
 	my @lines = split("\n", $output);
 	die if scalar @lines != 14;
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe foo.pipe demo$/;
-	die if $lines[1] !~ /^\(1\) \[pipeline\] demo$/;
+	die if $lines[1] ne '(1) [pipeline] demo';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
-	die if $lines[3] !~ /^  \(2\) \[shell\] echo "Write to stderr" >\/dev\/stderr$/;
+	die if $lines[3] ne '  (2) [shell] echo "Write to stderr" >/dev/stderr';
 	die if $lines[4] !~ /^  \(2\) starts at $REGEX_TIME$/;
 	die if $lines[5] !~ /^  \(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[6] !~ /^  \(3\) \[shell\] pwd; date$/;
+	die if $lines[6] ne '  (3) [shell] pwd; date';
 	die if $lines[7] !~ /^  \(3\) starts at $REGEX_TIME$/;
 	die if $lines[8] !~ /^  \(3\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[9] !~ /^  \(4\) \[shell\] cat foo.pipe \| grep function \| wc -l$/;
+	die if $lines[9] ne '  (4) [shell] cat foo.pipe | grep function | wc -l';
 	die if $lines[10] !~ /^  \(4\) starts at $REGEX_TIME$/;
 	die if $lines[11] !~ /^  \(4\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
 	die if $lines[12] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[13] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[13] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
 	die if `cat .seqpipe/last/pipeline` ne "demo() {
@@ -135,14 +137,14 @@ function demo {
 	my @lines = split("\n", $output);
 	die if scalar @lines != 9;
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe foo.pipe demo$/;
-	die if $lines[1] !~ /^\(1\) \[pipeline\] demo$/;
+	die if $lines[1] ne '(1) [pipeline] demo';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
-	die if $lines[3] !~ /^  \(2\) \[shell\] wc -l foo.pipe; false$/;
+	die if $lines[3] ne '  (2) [shell] wc -l foo.pipe; false';
 	die if $lines[4] !~ /^  \(2\) starts at $REGEX_TIME$/;
 	die if $lines[5] !~ /^  \(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[6] !~ /^  \(2\) returns 1$/;
+	die if $lines[6] ne '  (2) returns 1';
 	die if $lines[7] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[8] !~ /^$REGEX_UNIQUE_ID Pipeline finished abnormally with exit value: 1! $REGEX_ELAPSE$/;
+	die if $lines[8] !~ /^$REGEX_UNIQUE_ID $REGEX_FAILED 1! $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
 	die if `cat .seqpipe/last/pipeline` ne "demo() {
@@ -184,19 +186,19 @@ function demo {
 	my @lines = split("\n", $output);
 	die if scalar @lines != 14;
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe foo.pipe demo$/;
-	die if $lines[1] !~ /^\(1\) \[pipeline\] demo$/;
+	die if $lines[1] ne '(1) [pipeline] demo';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
-	die if $lines[3] !~ /^  \(2\) \[shell\] true && echo "This will be executed!"$/;
+	die if $lines[3] ne '  (2) [shell] true && echo "This will be executed!"';
 	die if $lines[4] !~ /^  \(2\) starts at $REGEX_TIME$/;
 	die if $lines[5] !~ /^  \(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[6] !~ /^  \(3\) \[shell\] true || echo "This will not be executed!"$/;
+	die if $lines[6] ne '  (3) [shell] true || echo "This will not be executed!"';
 	die if $lines[7] !~ /^  \(3\) starts at $REGEX_TIME$/;
 	die if $lines[8] !~ /^  \(3\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[9] !~ /^  \(4\) \[shell\] false || echo "This works fine!"$/;
+	die if $lines[9] ne '  (4) [shell] false || echo "This works fine!"';
 	die if $lines[10] !~ /^  \(4\) starts at $REGEX_TIME$/;
 	die if $lines[11] !~ /^  \(4\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
 	die if $lines[12] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[13] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[13] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
 	die if `cat .seqpipe/last/pipeline` ne "demo() {
@@ -247,13 +249,13 @@ function demo {
 	my @lines = split("\n", $output);
 	die if scalar @lines != 8;
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe foo.pipe demo$/;
-	die if $lines[1] !~ /^\(1\) \[pipeline\] demo$/;
+	die if $lines[1] ne '(1) [pipeline] demo';
 	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
-	die if $lines[3] !~ /^  \(2\) \[shell\] for c in \{1..22\} X Y M; do if \[ "\$c" == "X" -o \$c == "M" \]; then echo \$c; fi; done$/;
+	die if $lines[3] ne '  (2) [shell] for c in {1..22} X Y M; do if [ "$c" == "X" -o $c == "M" ]; then echo $c; fi; done';
 	die if $lines[4] !~ /^  \(2\) starts at $REGEX_TIME$/;
 	die if $lines[5] !~ /^  \(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
 	die if $lines[6] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
-	die if $lines[7] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[7] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
 	die if `cat .seqpipe/last/pipeline` ne "demo() {

@@ -6,6 +6,8 @@ print STDERR "$0 - ";
 my $REGEX_UNIQUE_ID = '\[[0-9]{6}\.[0-9]{4}\.[0-9]+\.[^\]]+\]';
 my $REGEX_TIME = '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}';
 my $REGEX_ELAPSE = '\(elapsed: [^)]+\)';
+my $REGEX_OK = 'Pipeline finished successfully!';
+my $REGEX_FAILED = 'Pipeline finished abnormally with exit value:';
 
 #==========================================================#
 
@@ -67,7 +69,7 @@ my $code = '{{
 	die if scalar @lines != 20;
 	@lines[1..18] = sort by_log_id_and_type @lines[1..18];
 	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe run foo.pipe$/;
-	die if $lines[19] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+	die if $lines[19] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
 	die if `cat .seqpipe/last/pipeline` ne '{{
