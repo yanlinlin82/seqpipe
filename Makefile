@@ -32,7 +32,7 @@ endif
 all: ${TARGET}
 
 clean:
-	@rm -fv ${TARGET} ${MODULES:%=tmp/%.o} ${MODULES:%=tmp/%.d}
+	@rm -rfv ${TARGET} tmp/
 
 unit: ${UNIT_TEST}
 	@${UNIT_TEST}
