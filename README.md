@@ -15,7 +15,8 @@ Any suggestions are welcome to yanlinlin82[AT]gmail.com
 ## Installation
 
     $ git clone https://github.com/yanlinlin82/seqpipe -b cpp-v0.5 --single-branch
-    $ make -C seqpipe/
+    $ make -C seqpipe/ -j8
+    $ make -C seqpipe/ test                   # (optionally) sanity checking
     $ sudo cp -av seqpipe/seqpipe /usr/bin/   # or other directory set in PATH
     $ rm -rf seqpipe/                         # (optionally) clean up
 

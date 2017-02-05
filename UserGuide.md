@@ -25,6 +25,8 @@ The following lists software required in SeqPipe:
 * [GNU bash](https://www.gnu.org/software/bash/) (command 'which')
 * [GNU core utilities](https://www.gnu.org/software/coreutils/coreutils.html) (command 'tee')
 
+To run (system) tests, [Perl](https://www.perl.org/) is also required.
+
 ## Installation
 
 There are different ways to install SeqPipe. Choose any one you like:
@@ -32,7 +34,8 @@ There are different ways to install SeqPipe. Choose any one you like:
 * (Method 1): Install from GitHub source:
 
         $ git clone https://github.com/yanlinlin82/seqpipe -b cpp-v0.5 --single-branch
-        $ make -C seqpipe/
+        $ make -C seqpipe/ -j8
+        $ make -C seqpipe/ test                   # (optionally) sanity checking
         $ sudo cp -av seqpipe/seqpipe /usr/bin/   # or other directory set in PATH
         $ rm -rf seqpipe/                         # (optionally) clean up
 
