@@ -161,7 +161,11 @@ bool CommandLineParser::Parse(const std::string& s)
 
 	std::string word;
 	for (size_t i = 0; i < s.size(); ++i) {
-		if (s[i] == ';') {
+		if (s[i] == '&' && s[i + 1] != '&') {
+			status_ = STATUS_ERROR;
+			errorMsg_ = "shell background operator '&' is not allowed!";
+			return false;
+		} else if (s[i] == ';') {
 			if (!word.empty()) {
 				argLists_.back().push_back(word);
 				word = "";

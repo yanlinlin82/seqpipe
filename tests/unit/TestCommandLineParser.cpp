@@ -5,46 +5,62 @@
 UNIT_TEST(CommandLineParser, Simple)
 {
 	CommandLineParser parser;
+
+	UNIT_ASSERT(parser.Parse("echo") != false);
+	{
+		const auto& argsList = parser.GetArgLists();
+		UNIT_ASSERT(argsList.size() == 1);
+		UNIT_ASSERT(argsList[0].size() == 1);
+		UNIT_ASSERT(argsList[0][0] == "echo");
+	}
+
 	UNIT_ASSERT(parser.Parse("echo hello") != false);
+	{
+		const auto& argsList = parser.GetArgLists();
+		UNIT_ASSERT(argsList.size() == 1);
+		UNIT_ASSERT(argsList[0].size() == 2);
+		UNIT_ASSERT(argsList[0][0] == "echo");
+		UNIT_ASSERT(argsList[0][1] == "hello");
+	}
 
-	const auto& argsList = parser.GetArgLists();
-	UNIT_ASSERT(argsList.size() == 1);
-	UNIT_ASSERT(argsList[0].size() == 2);
-	UNIT_ASSERT(argsList[0][0] == "echo");
-	UNIT_ASSERT(argsList[0][1] == "hello");
-}
+	UNIT_ASSERT(parser.Parse("echo 'hello, world!'") != false);
+	{
+		const auto& argsList = parser.GetArgLists();
+		UNIT_ASSERT(argsList.size() == 1);
+		UNIT_ASSERT(argsList[0].size() == 2);
+		UNIT_ASSERT(argsList[0][0] == "echo");
+		UNIT_ASSERT(argsList[0][1] == "hello, world!");
+	}
 
-UNIT_TEST(CommandLineParser, HasQuote)
-{
-	CommandLineParser parser;
-	UNIT_ASSERT(parser.Parse("echo \"hello\"") != false);
-
-	const auto& argsList = parser.GetArgLists();
-	UNIT_ASSERT(argsList.size() == 1);
-	UNIT_ASSERT(argsList[0].size() == 2);
-	UNIT_ASSERT(argsList[0][0] == "echo");
-	UNIT_ASSERT(argsList[0][1] == "hello");
-}
-
-UNIT_TEST(CommandLineParser, HasQuoteAndSpace)
-{
-	CommandLineParser parser;
-	UNIT_ASSERT(parser.Parse("echo \"hello world\"") != false);
-
-	const auto& argsList = parser.GetArgLists();
-	UNIT_ASSERT(argsList.size() == 1);
-	UNIT_ASSERT(argsList[0].size() == 2);
-	UNIT_ASSERT(argsList[0][0] == "echo");
-	UNIT_ASSERT(argsList[0][1] == "hello world");
+	UNIT_ASSERT(parser.Parse("echo \"hello, world!\"") != false);
+	{
+		const auto& argsList = parser.GetArgLists();
+		UNIT_ASSERT(argsList.size() == 1);
+		UNIT_ASSERT(argsList[0].size() == 2);
+		UNIT_ASSERT(argsList[0][0] == "echo");
+		UNIT_ASSERT(argsList[0][1] == "hello, world!");
+	}
 }
 
 UNIT_TEST(CommandLineParser, MulitLine)
 {
 	CommandLineParser parser;
-	UNIT_ASSERT(parser.Parse("abc\\\ndef") != false);
 
-	const auto& argsList = parser.GetArgLists();
-	UNIT_ASSERT(argsList.size() == 1);
-	UNIT_ASSERT(argsList[0].size() == 1);
-	UNIT_ASSERT(argsList[0][0] == "abcdef");
+	UNIT_ASSERT(parser.Parse("abc\\\ndef") != false);
+	{
+		const auto& argsList = parser.GetArgLists();
+		UNIT_ASSERT(argsList.size() == 1);
+		UNIT_ASSERT(argsList[0].size() == 1);
+		UNIT_ASSERT(argsList[0][0] == "abcdef");
+	}
+}
+
+UNIT_TEST(CommandLineParser, DisallowBackground)
+{
+	CommandLineParser parser;
+
+	UNIT_ASSERT(parser.Parse("echo&") == false);
+	UNIT_ASSERT(parser.Parse("echo& ") == false);
+	UNIT_ASSERT(parser.Parse("echo &") == false);
+	UNIT_ASSERT(parser.Parse("echo&hello") == false);
 }
