@@ -36,7 +36,12 @@ function demo {
 	die if $lines[7] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
-	die if `cat .seqpipe/last/pipeline` ne "demo() {\n\techo \"Hello, world!\"\n}\n\ndemo\n";
+	die if `cat .seqpipe/last/pipeline` ne "demo() {
+	echo \"Hello, world!\"
+}
+
+demo
+";
 	die if `cat .seqpipe/last/1.demo.call` ne "demo\n";
 	die if `cat .seqpipe/last/2.echo.cmd` ne "echo \"Hello, world!\"\n";
 	die if `cat .seqpipe/last/2.echo.log` ne "Hello, world!\n";
@@ -217,6 +222,55 @@ demo
 	unlink "foo.pipe";
 }
 test_004;
+
+#==========================================================#
+
+sub test_005 # Demo(5) - Complex Bash
+{
+	# prepare input
+	open my $fh, '>', 'foo.pipe' or die;
+	print $fh '
+function demo {
+	for c in {1..22} X Y M; do \
+		if [ "$c" == "X" -o $c == "M" ]; then \
+			echo $c; \
+		fi; \
+	done
+}
+';
+	close $fh;
+
+	# run command
+	my $output = `seqpipe foo.pipe demo` or die;
+
+	# check results
+	my @lines = split("\n", $output);
+	die if scalar @lines != 8;
+	die if $lines[0] !~ /^$REGEX_UNIQUE_ID seqpipe foo.pipe demo$/;
+	die if $lines[1] !~ /^\(1\) \[pipeline\] demo$/;
+	die if $lines[2] !~ /^\(1\) starts at $REGEX_TIME$/;
+	die if $lines[3] !~ /^  \(2\) \[shell\] for c in \{1..22\} X Y M; do if \[ "\$c" == "X" -o \$c == "M" \]; then echo \$c; fi; done$/;
+	die if $lines[4] !~ /^  \(2\) starts at $REGEX_TIME$/;
+	die if $lines[5] !~ /^  \(2\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[6] !~ /^\(1\) ends at $REGEX_TIME $REGEX_ELAPSE$/;
+	die if $lines[7] !~ /^$REGEX_UNIQUE_ID Pipeline finished successfully! $REGEX_ELAPSE$/;
+
+	die if `cat .seqpipe/last/log` ne $output;
+	die if `cat .seqpipe/last/pipeline` ne "demo() {
+	for c in {1..22} X Y M; do if [ \"\$c\" == \"X\" -o \$c == \"M\" ]; then echo \$c; fi; done
+}
+
+demo
+";
+	die if `cat .seqpipe/last/1.demo.call` ne "demo\n";
+	die if `cat .seqpipe/last/2.for.cmd` ne 'for c in {1..22} X Y M; do if [ "$c" == "X" -o $c == "M" ]; then echo $c; fi; done' . "\n";
+	die if `cat .seqpipe/last/2.for.log` ne "X\nM\n";
+	die if `cat .seqpipe/last/2.for.err` ne "";
+
+	# clean up
+	unlink "foo.pipe";
+}
+test_005;
 
 #==========================================================#
 print "OK!\n";
