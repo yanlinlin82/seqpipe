@@ -37,7 +37,7 @@ clean:
 unit: ${UNIT_TEST}
 	@${UNIT_TEST}
 
-test: unit
+test: unit ${TARGET}
 	@./tests/system/run.sh
 
 ${TARGET}: ${MODULES:%=tmp/%.o}

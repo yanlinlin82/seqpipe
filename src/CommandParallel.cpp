@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include "CommandParallel.h"
 #include "Launcher.h"
+#include "StringUtils.h"
 
 void CommandParallel::PrintUsage()
 {
@@ -27,6 +28,7 @@ bool CommandParallel::LoadCmdLineList(const std::string& filename, std::vector<s
 	}
 	std::string line;
 	size_t lineNo = 0;
+	bool skippedEmptyLines = false;
 	while (std::getline(file, line)) {
 		++lineNo;
 		CommandLineParser parser;
@@ -36,9 +38,21 @@ bool CommandParallel::LoadCmdLineList(const std::string& filename, std::vector<s
 				"   " << parser.ErrorWithLeadingSpaces() << std::endl;
 			return false;
 		}
-		cmdList.push_back(line);
+		const auto trimmedLine = StringUtils::Trim(line);
+		if (trimmedLine.empty()) {
+			skippedEmptyLines = true;
+		} else {
+			cmdList.push_back(trimmedLine);
+		}
 	}
 	file.close();
+
+	if (cmdList.empty()) {
+		std::cerr << "Error: No any command line loaded from file '" << path << "'!" << std::endl;
+		return false;
+	} else if (skippedEmptyLines) {
+		std::cerr << "Warning: One or more empty lines (loaded from file '" << path << "') were skipped!" << std::endl;
+	}
 	return true;
 }
 

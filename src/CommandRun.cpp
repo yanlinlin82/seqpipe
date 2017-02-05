@@ -66,15 +66,20 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 					std::cerr << "Error: Can not use both '-e' and '-E'!" << std::endl;
 					return false;
 				}
-				const auto& cmd = *(++it);
+				const auto& cmdLine = *(++it);
 				CommandLineParser parser;
-				if (!parser.Parse(cmd)) {
+				if (!parser.Parse(cmdLine)) {
 					std::cerr << "Error: Invalid bash command string after '" << arg << "':\n"
-						"   " << cmd << "\n"
+						"   " << cmdLine << "\n"
 						"   " << parser.ErrorWithLeadingSpaces() << std::endl;
 					return false;
 				}
-				cmdList.push_back(cmd);
+				const auto trimmedCmd = StringUtils::Trim(cmdLine);
+				if (trimmedCmd.empty()) {
+					std::cerr << "Error: Empty command after '" << arg << "' is not allowed!" << std::endl;
+					return false;
+				}
+				cmdList.push_back(trimmedCmd);
 			} else if (arg == "-l" || arg == "-L") {
 				listMode_ = (arg == "-l" ? 1 : 2);
 				if (it + 1 != args.end() && (*(it + 1))[0] != '-') {

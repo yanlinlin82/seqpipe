@@ -328,7 +328,9 @@ bool Pipeline::AppendCommandLineFromFile(PipeFile& file, Block& block)
 				"   " << parser.ErrorWithLeadingSpaces() << std::endl;
 			return false;
 		}
-		block.AppendCommand(lines);
+		if (!lines.empty()) {
+			block.AppendCommand(lines);
+		}
 		break;
 	}
 	return true;
@@ -634,7 +636,9 @@ bool CommandItem::TryConvertShellToProc(const std::set<std::string>& procNameSet
 		return true;
 	}
 	const auto& args = argLists[0];
-	assert(args.size() > 0);
+	if (args.empty()) {
+		return true;
+	}
 	const auto& procName = args[0];
 	if (procNameSet.find(procName) == procNameSet.end()) {
 		return true;
