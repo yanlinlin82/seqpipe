@@ -6,6 +6,7 @@
 #include <cassert>
 #include <libgen.h>
 #include <fnmatch.h>
+#include <pwd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -25,6 +26,19 @@ std::string System::GetHostname()
 }
 
 std::string System::GetUserName()
+{
+	static char buffer[64] = "";
+	if (!buffer[0]) {
+		uid_t uid = getuid();
+		struct passwd* pw = getpwuid(uid);
+		if (pw) {
+			snprintf(buffer, sizeof(buffer), "%s", pw->pw_name);
+		}
+	}
+	return buffer;
+}
+
+std::string System::GetLoginName()
 {
 	static char buffer[64] = "";
 	if (!buffer[0]) {

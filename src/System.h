@@ -9,6 +9,7 @@ class System
 public:
 	static std::string GetHostname();
 	static std::string GetUserName();
+	static std::string GetLoginName();
 	static unsigned int GetUserId();
 
 	static std::string GetFullCommandLine();
