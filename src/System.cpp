@@ -24,6 +24,20 @@ std::string System::GetHostname()
 	return buffer;
 }
 
+std::string System::GetUserName()
+{
+	static char buffer[64] = "";
+	if (!buffer[0]) {
+		getlogin_r(buffer, sizeof(buffer));
+	}
+	return buffer;
+}
+
+unsigned int System::GetUserId()
+{
+	return static_cast<unsigned int>(getuid());
+}
+
 std::string System::GetFullCommandLine()
 {
 	static std::string cmdLine;

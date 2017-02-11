@@ -8,6 +8,8 @@ class System
 {
 public:
 	static std::string GetHostname();
+	static std::string GetUserName();
+	static unsigned int GetUserId();
 
 	static std::string GetFullCommandLine();
 	static std::string GetCurrentDirectory();

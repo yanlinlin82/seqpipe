@@ -327,6 +327,8 @@ bool Launcher::RecordSysInfo(const std::string& filename)
 
 	file << "system:\n"
 		"  uname : " + System::GetUName() + "\n"
+		"  user  : " + System::GetUserName() + "\n"
+		"  uid   : " + std::to_string(System::GetUserId()) + "\n"
 		"  date  : " + TimeString(time(NULL)) + "\n"
 		"  pwd   : " + System::GetCurrentDirectory() + "\n"
 		"  cpu   : " + System::GetCPUInfo() + "\n"
