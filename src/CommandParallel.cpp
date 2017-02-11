@@ -48,10 +48,13 @@ bool CommandParallel::LoadCmdLineList(const std::string& filename, std::vector<s
 	file.close();
 
 	if (cmdList.empty()) {
-		std::cerr << "Error: No any command line loaded from file '" << path << "'!" << std::endl;
-		return false;
+		if (verbose_ > 0) {
+			std::cerr << "Warning: No any command line loaded from file '" << path << "'!" << std::endl;
+		}
 	} else if (skippedEmptyLines) {
-		std::cerr << "Warning: One or more empty lines (loaded from file '" << path << "') were skipped!" << std::endl;
+		if (verbose_ > 0) {
+			std::cerr << "Warning: One or more empty lines (loaded from file '" << path << "') were skipped!" << std::endl;
+		}
 	}
 	return true;
 }
@@ -115,6 +118,10 @@ int CommandParallel::Run(const std::vector<std::string>& args)
 {
 	if (!ParseArgs(args)) {
 		return 1;
+	}
+
+	if (!pipeline_.HasAnyDefaultCommand()) {
+		return 0;
 	}
 
 	Launcher launcher(pipeline_, maxJobNumber_, verbose_);
