@@ -68,33 +68,36 @@ UNIT_TEST(StringUtils, RemoveSpecialCharacters)
 {
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("abc"     ) == "abc");
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("abc123"  ) == "abc123");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("abc!123" ) == "abc123");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("abc#@123") == "abc123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("abc!123" ) == "abc_123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("abc#@123") == "abc_123");
 
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("  abc  "     ) == "abc");
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("  abc123  "  ) == "abc123");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("  abc!123  " ) == "abc123");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("  abc#@123  ") == "abc123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("  abc!123  " ) == "abc_123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("  abc#@123  ") == "abc_123");
 
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("abc 123"  ) == "abc");
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("  abc 123") == "abc");
 
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc )"     ) == "abc");
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc123 )"  ) == "abc123");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc!123 )" ) == "abc123");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc#@123 )") == "abc123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc!123 )" ) == "abc_123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc#@123 )") == "abc_123");
 
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc  )"     ) == "abc");
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc123  )"  ) == "abc123");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc!123  )" ) == "abc123");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc#@123  )") == "abc123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc!123  )" ) == "abc_123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc#@123  )") == "abc_123");
 
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("( abc 123 )"  ) == "abc");
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("(   abc 123 )") == "abc");
 
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters(""     ) == "");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("!#$"  ) == "");
-	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("##123") == "123");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("!#$"  ) == "_");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("##123") == "_123");
+
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("/bin/ls") == "ls");
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("/path/to/foo.py") == "foo_py");
 }
 
 UNIT_TEST(StringUtils, SingleQuote)

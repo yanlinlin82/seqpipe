@@ -25,14 +25,20 @@ std::string StringUtils::RemoveSpecialCharacters(const std::string& s)
 {
 	std::string t;
 	for (size_t i = 0; i < s.size(); ++i) {
-		if (s[i] == '-' || s[i] == '_' || s[i] == '+' ||
-				(s[i] >= '0' && s[i] <= '9') ||
-				(s[i] >= 'A' && s[i] <= 'Z') ||
-				(s[i] >= 'a' && s[i] <= 'z')) {
+		if (s[i] == '_' || isalnum(s[i])) {
 			t += s[i];
+		} else if (s[i] == '/') {
+			t = "";
 		} else if (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') {
 			if (!t.empty()) {
 				break;
+			}
+		} else if (s[i] == '{' || s[i] == '}' || s[i] == '[' || s[i] == ']' ||
+				s[i] == '(' || s[i] == ')' || s[i] == '|' || s[i] == '&') {
+			continue;
+		} else {
+			if (t.empty() || t.substr(t.size() - 1) != "_") {
+				t += "_";
 			}
 		}
 	}
