@@ -130,6 +130,7 @@ public:
 	size_t AppendBlock(const Block& block);
 
 	bool HasProcedure(const std::string& name) const;
+	bool HasAnyProcedure() const;
 	bool HasAnyDefaultCommand() const;
 
 	const Block& GetDefaultBlock() const;

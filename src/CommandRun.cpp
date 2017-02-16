@@ -197,9 +197,12 @@ int CommandRun::Run(const std::vector<std::string>& args)
 	}
 
 	if (!pipeline_.HasAnyDefaultCommand()) {
-		std::cerr << "Error: Procedure name should be provided, since no any default command found in pipeline script.\n"
-			"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
-		return 1;
+		if (pipeline_.HasAnyProcedure()) {
+			std::cerr << "Error: Procedure name should be provided, since no any default command found in pipeline script.\n"
+				"   Try 'seqpipe -l ...' to see what procedures were defined." << std::endl;
+			return 1;
+		}
+		return 0;
 	}
 
 	Launcher launcher(pipeline_, maxJobNumber_, verbose_);

@@ -615,6 +615,11 @@ size_t Pipeline::GetBlockIndex(const std::string& procName) const
 	return it->second.BlockIndex();
 }
 
+bool Pipeline::HasAnyProcedure() const
+{
+	return !procList_.empty();
+}
+
 bool Pipeline::HasAnyDefaultCommand() const
 {
 	return !blockList_[0].IsEmpty();
