@@ -29,7 +29,7 @@ std::string StringUtils::RemoveSpecialCharacters(const std::string& s)
 			t += s[i];
 		} else if (s[i] == '/') {
 			t = "";
-		} else if (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') {
+		} else if (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n' || s[i] == ';') {
 			if (!t.empty()) {
 				break;
 			}

@@ -98,6 +98,8 @@ UNIT_TEST(StringUtils, RemoveSpecialCharacters)
 
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("/bin/ls") == "ls");
 	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("/path/to/foo.py") == "foo_py");
+
+	UNIT_ASSERT(StringUtils::RemoveSpecialCharacters("pwd; date") == "pwd");
 }
 
 UNIT_TEST(StringUtils, SingleQuote)
