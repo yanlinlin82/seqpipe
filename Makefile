@@ -25,6 +25,15 @@ else
 	CXXFLAGS += -O2 -DNDEBUG
 endif
 
+# check gcc version
+ifneq ("${MAKECMDGOALS}", "clean")
+GCCVER := $(shell gcc -dumpversion | awk -F . '{printf "%02d%02d%02d", $$1, $$2, $$3}')
+GCCVER_GE494 := $(shell expr ${GCCVER} \>= 040904)
+ifeq ("${GCCVER_GE494}","0")
+$(error "g++ version should be >= 4.9.4")
+endif
+endif
+
 #----------------------------------------------------------#
 # build rules
 .PHONY: all clean unit test
