@@ -27,35 +27,44 @@ static void PrintUsage()
 
 int main(int argc, const char** argv)
 {
-	if (argc < 2) {
-		PrintUsage();
-		return 1;
+	try
+	{
+		if (argc < 2) {
+			PrintUsage();
+			return 1;
+		}
+		const std::string name = argv[1];
+		std::vector<std::string> args(argv + 2, argv + argc);
+
+		if (name == "run") {
+			CommandRun cmd;
+			return cmd.Run(args);
+
+		} else if (name == "parallel") {
+			CommandParallel cmd;
+			return cmd.Run(args);
+
+		} else if (name == "log" || name == "history") {
+			CommandLog cmd;
+			return cmd.Run(args);
+
+		} else if (name == "version") {
+			std::cout << VERSION << std::endl;
+			return 0;
+
+		} else if (name == "help") {
+			CommandHelp cmd;
+			return cmd.Run(args);
+		}
+
+		CommandRun cmd; // Try as optional 'run' command
+		args.insert(args.begin(), name);
+		return cmd.Run(args);
+
+	} catch (const std::exception& e) {
+		std::cerr << "Abort for exception: " << e.what() << std::endl;
+	} catch (...) {
+		std::cerr << "Abort for exception!" << std::endl;
 	}
-	const std::string name = argv[1];
-	std::vector<std::string> args(argv + 2, argv + argc);
-
-	if (name == "run") {
-		CommandRun cmd;
-		return cmd.Run(args);
-
-	} else if (name == "parallel") {
-		CommandParallel cmd;
-		return cmd.Run(args);
-
-	} else if (name == "log" || name == "history") {
-		CommandLog cmd;
-		return cmd.Run(args);
-
-	} else if (name == "version") {
-		std::cout << VERSION << std::endl;
-		return 0;
-
-	} else if (name == "help") {
-		CommandHelp cmd;
-		return cmd.Run(args);
-	}
-
-	CommandRun cmd; // Try as optional 'run' command
-	args.insert(args.begin(), name);
-	return cmd.Run(args);
+	return 1;
 }
