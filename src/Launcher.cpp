@@ -389,7 +389,7 @@ int Launcher::Run(const ProcArgs& procArgs)
 
 bool Launcher::PrepareToRun()
 {
-	Semaphore sem("/seqpipe");
+	Semaphore sem("/seqpipe." + System::GetUserName());
 	std::lock_guard<Semaphore> lock(sem);
 
 	if (!System::EnsureDirectory(LOG_ROOT)) {

@@ -156,7 +156,7 @@ int CommandLog::ShowHistory()
 
 bool CommandLog::RelinkLastSymbolic(const std::string& uniqueId)
 {
-	Semaphore sem("/seqpipe");
+	Semaphore sem("/seqpipe." + System::GetUserName());
 	std::lock_guard<Semaphore> lock(sem);
 
 	if (System::CheckFileExists(LOG_LAST)) {
