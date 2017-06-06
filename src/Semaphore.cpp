@@ -5,7 +5,7 @@
 
 Semaphore::Semaphore(const std::string& name)
 {
-	sem_ = sem_open(name.c_str(), O_CREAT, S_IRUSR | S_IWUSR, 1);
+	sem_ = sem_open(name.c_str(), O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR, 1);
 	if (sem_ == SEM_FAILED) {
 		perror("sem_open");
 		throw std::runtime_error("sem_open");

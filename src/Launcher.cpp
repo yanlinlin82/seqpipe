@@ -265,6 +265,7 @@ void Launcher::SetTaskFinished(unsigned int taskId, int retVal)
 
 void Launcher::Worker()
 {
+	--waitingWorker_;
 	while (WaitForTask()) {
 		WorkflowTask task;
 		if (GetTaskFromQueue(task)) {
@@ -285,9 +286,13 @@ int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
 	if (maxJobNumber_ == 0) {
 		maxJobNumber_ = std::thread::hardware_concurrency();
 	}
+	waitingWorker_ = maxJobNumber_;
 	std::thread threads[maxJobNumber_];
 	for (int i = 0; i < maxJobNumber_; ++i) {
 		threads[i] = std::thread(&Launcher::Worker, std::ref(*this));
+	}
+	while (waitingWorker_ > 0) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
 	for (;;) {

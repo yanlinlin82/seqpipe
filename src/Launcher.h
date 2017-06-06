@@ -6,6 +6,7 @@
 #include <list>
 #include <set>
 #include <map>
+#include <atomic>
 #include <mutex>
 #include <condition_variable>
 #include "LauncherCounter.h"
@@ -95,6 +96,8 @@ private:
 	std::mutex mutexWorker_;
 	std::condition_variable condWorker_;
 	unsigned int countWorker_ = 0;
+
+	std::atomic_int waitingWorker_{0};
 };
 
 #endif
