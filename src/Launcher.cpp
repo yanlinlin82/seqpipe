@@ -398,9 +398,11 @@ bool Launcher::PrepareToRun()
 	std::lock_guard<Semaphore> lock(sem);
 
 	if (!System::EnsureDirectory(LOG_ROOT)) {
+		std::cerr << "Error: Can not prepare directory '" << LOG_ROOT << "'!" << std::endl;
 		return false;
 	}
 	if (!System::EnsureDirectory(logDir_)) {
+		std::cerr << "Error: Can not prepare directory '" << logDir_ << "'!" << std::endl;
 		return false;
 	}
 
@@ -426,7 +428,6 @@ bool Launcher::WriteToHistoryLog()
 
 	file << uniqueId_ << '\t' << System::GetFullCommandLine() << std::endl;
 	file.close();
-
 	return true;
 }
 
