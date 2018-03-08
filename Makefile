@@ -19,10 +19,14 @@ CXX      ?= g++
 CXXFLAGS ?= -std=c++11 -DGITVER=\"${GITVER}\" -Wall
 LDFLAGS  ?= -pthread
 
+ifneq ("$(shell which ccache)","")
+CXX := ccache ${CXX}
+endif
+
 ifeq ("${DEBUG}","1")
-	CXXFLAGS += -g
+CXXFLAGS += -g
 else
-	CXXFLAGS += -O2 -DNDEBUG
+CXXFLAGS += -O2 -DNDEBUG
 endif
 
 # check gcc version
