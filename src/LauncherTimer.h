@@ -1,6 +1,4 @@
-#ifndef LAUNCHER_TIMER_H__
-#define LAUNCHER_TIMER_H__
-
+#pragma once
 #include <string>
 #include <ctime>
 
@@ -19,5 +17,3 @@ private:
 	time_t start_;
 	time_t end_;
 };
-
-#endif

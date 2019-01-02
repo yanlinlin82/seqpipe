@@ -1,6 +1,4 @@
-#ifndef STRING_UTILS_H__
-#define STRING_UTILS_H__
-
+#pragma once
 #include <string>
 #include <vector>
 #include <regex>
@@ -24,5 +22,3 @@ public:
 
 	static std::string ShellQuote(const std::string& s, bool singleQuote);
 };
-
-#endif

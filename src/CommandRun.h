@@ -1,6 +1,4 @@
-#ifndef COMMAND_RUN_H__
-#define COMMAND_RUN_H__
-
+#pragma once
 #include <string>
 #include <vector>
 #include "Pipeline.h"
@@ -25,5 +23,3 @@ private:
 	Pipeline pipeline_;
 	std::string pattern_; // for '-l' or '-L'
 };
-
-#endif

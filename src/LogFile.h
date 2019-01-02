@@ -1,6 +1,4 @@
-#ifndef LOG_FILE_H__
-#define LOG_FILE_H__
-
+#pragma once
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -29,5 +27,3 @@ private:
 };
 
 void WriteStringToFile(const std::string& filename, const std::string& s);
-
-#endif

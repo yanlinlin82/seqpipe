@@ -1,6 +1,4 @@
-#ifndef PIPE_FILE_H__
-#define PIPE_FILE_H__
-
+#pragma once
 #include <fstream>
 
 class PipeFile
@@ -29,5 +27,3 @@ private:
 	std::string currentLine_;
 	size_t lineNo_ = 0;
 };
-
-#endif

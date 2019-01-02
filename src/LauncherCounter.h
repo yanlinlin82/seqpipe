@@ -1,6 +1,4 @@
-#ifndef LAUNCHER_COUNTER_H__
-#define LAUNCHER_COUNTER_H__
-
+#pragma once
 #include <mutex>
 
 class LauncherCounter
@@ -15,5 +13,3 @@ private:
 	std::mutex mutex_;
 	unsigned int counter_ = 0;
 };
-
-#endif

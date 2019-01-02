@@ -1,6 +1,4 @@
-#ifndef COMMAND_PARALLEL_H__
-#define COMMAND_PARALLEL_H__
-
+#pragma once
 #include <string>
 #include <vector>
 #include "Pipeline.h"
@@ -21,5 +19,3 @@ private:
 	ProcArgs procArgs_;
 	Pipeline pipeline_;
 };
-
-#endif

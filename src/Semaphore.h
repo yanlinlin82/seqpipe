@@ -1,6 +1,4 @@
-#ifndef SEMAPHORE_H__
-#define SEMAPHORE_H__
-
+#pragma once
 #include <string>
 #include <mutex>
 #include <semaphore.h>
@@ -20,5 +18,3 @@ private:
 	sem_t* sem_;
 	std::string name_;
 };
-
-#endif

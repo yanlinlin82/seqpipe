@@ -1,6 +1,4 @@
-#ifndef COMMAND_LINE_PARSER_H__
-#define COMMAND_LINE_PARSER_H__
-
+#pragma once
 #include <string>
 #include <vector>
 #include <iostream>
@@ -36,5 +34,3 @@ private:
 	size_t errorPos_ = 0;
 	std::string errorMsg_ = "";
 };
-
-#endif

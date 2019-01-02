@@ -1,6 +1,4 @@
-#ifndef COMMAND_HELP_H__
-#define COMMAND_HELP_H__
-
+#pragma once
 #include <string>
 #include <vector>
 
@@ -11,5 +9,3 @@ public:
 private:
 	void PrintUsage();
 };
-
-#endif

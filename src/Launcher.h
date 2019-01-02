@@ -1,6 +1,4 @@
-#ifndef LAUNCHER_H__
-#define LAUNCHER_H__
-
+#pragma once
 #include <string>
 #include <vector>
 #include <list>
@@ -99,5 +97,3 @@ private:
 
 	std::atomic_int waitingWorker_{0};
 };
-
-#endif

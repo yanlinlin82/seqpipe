@@ -1,6 +1,4 @@
-#ifndef COMMAND_LOG_H__
-#define COMMAND_LOG_H__
-
+#pragma once
 #include <vector>
 #include <string>
 
@@ -20,5 +18,3 @@ private:
 	std::string command_;
 	std::string idOrOrder_;
 };
-
-#endif

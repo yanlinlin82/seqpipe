@@ -1,6 +1,4 @@
-#ifndef SYSTEM_H__
-#define SYSTEM_H__
-
+#pragma once
 #include <string>
 #include <vector>
 
@@ -35,5 +33,3 @@ public:
 	static std::string GetCPUInfo();
 	static std::string GetMemoryInfo();
 };
-
-#endif

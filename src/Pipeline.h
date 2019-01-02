@@ -1,6 +1,4 @@
-#ifndef PIPELINE_H__
-#define PIPELINE_H__
-
+#pragma once
 #include <string>
 #include <vector>
 #include <map>
@@ -153,5 +151,3 @@ private:
 	std::map<std::string, std::string> procAtLineNo_;
 	std::vector<Block> blockList_{1}; // the first 'Block' is the default one.
 };
-
-#endif
