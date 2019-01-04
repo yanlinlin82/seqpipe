@@ -148,29 +148,6 @@ void Launcher::CheckFinishedTasks()
 	}
 }
 
-void Launcher::DumpWorkflowThreads() const
-{
-	std::cout << "==================" << std::endl;
-
-	std::cout << "Total " << workflowThreads_.size() << " thread(s):\n";
-	for (const auto& info : workflowThreads_) {
-		std::cout << "  thread{" << info.taskId_ << "}: block = " << info.blockIndex_ << ", item = " << info.itemIndex_ << ", waiting for: ";
-		if (info.waitingFor_.empty()) {
-			std::cout << "(nothing)";
-		} else {
-			for (const auto& x : info.waitingFor_) {
-				std::cout << x << " ";
-			}
-		}
-		std::cout << "\n";
-	}
-	std::cout << "Total " << taskQueue_.size() << " task(s):\n";
-	for (const auto& task : taskQueue_) {
-		std::cout << "  task{" << task.taskId_ << "}: block = " << task.blockIndex_ << ", item = " << task.itemIndex_ << "\n";
-	}
-	std::cout << std::flush;
-}
-
 void Launcher::PostBlockToThreads(size_t blockIndex, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
 		const std::string& indent, const ProcArgs& procArgs)
 {
@@ -281,47 +258,6 @@ void Launcher::Worker()
 	}
 }
 
-int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
-{
-	if (maxJobNumber_ == 0) {
-		maxJobNumber_ = std::thread::hardware_concurrency();
-	}
-	waitingWorker_ = maxJobNumber_;
-	std::thread threads[maxJobNumber_];
-	for (int i = 0; i < maxJobNumber_; ++i) {
-		threads[i] = std::thread(&Launcher::Worker, std::ref(*this));
-	}
-	while (waitingWorker_ > 0) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
-
-	for (;;) {
-		{
-			std::lock_guard<std::mutex> lock(mutex_);
-
-			CheckFinishedTasks();
-			PostNextTasks();
-			EraseFinishedThreads();
-
-			if (workflowThreads_.empty()) break;
-		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
-
-	NotifyAll();
-	for (auto& thread : threads) {
-		thread.join();
-	}
-
-	if (failedRetVal_.size() > 1) {
-		return 1;
-	} else if (failedRetVal_.size() == 1) {
-		return failedRetVal_[0];
-	} else {
-		return 0;
-	}
-}
-
 bool Launcher::RecordSysInfo(const std::string& filename)
 {
 	std::ofstream file(filename);
@@ -381,7 +317,42 @@ int Launcher::Run(const ProcArgs& procArgs)
 
 	LauncherTimer timer;
 
-	int retVal = ProcessWorkflowThreads(procArgs);
+	if (maxJobNumber_ == 0) {
+		maxJobNumber_ = std::thread::hardware_concurrency();
+	}
+	waitingWorker_ = maxJobNumber_;
+	std::thread threads[maxJobNumber_];
+	for (int i = 0; i < maxJobNumber_; ++i) {
+		threads[i] = std::thread(&Launcher::Worker, std::ref(*this));
+	}
+	while (waitingWorker_ > 0) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+
+	for (;;) {
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+
+			CheckFinishedTasks();
+			PostNextTasks();
+			EraseFinishedThreads();
+
+			if (workflowThreads_.empty()) break;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+
+	NotifyAll();
+	for (auto& thread : threads) {
+		thread.join();
+	}
+
+	int retVal = 0;
+	if (failedRetVal_.size() > 1) {
+		retVal = 1;
+	} else if (failedRetVal_.size() == 1) {
+		retVal = failedRetVal_[0];
+	}
 
 	timer.Stop();
 	if (retVal != 0) {

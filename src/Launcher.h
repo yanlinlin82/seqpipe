@@ -46,8 +46,6 @@ public:
 
 	int Run(const ProcArgs& procArgs);
 private:
-	int ProcessWorkflowThreads(const ProcArgs& procArgs);
-
 	int RunShell(const CommandItem& item, std::string indent, const ProcArgs& procArgs);
 
 	bool WriteToHistoryLog();
@@ -69,7 +67,6 @@ private:
 	void CheckFinishedTasks();
 	void PostNextTasks();
 	void EraseFinishedThreads();
-	void DumpWorkflowThreads() const;
 
 	void Worker();
 	bool GetTaskFromQueue(WorkflowTask& task);
