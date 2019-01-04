@@ -276,7 +276,7 @@ void Launcher::Worker()
 			SetTaskFinished(task.taskId_, retVal);
 		} else {
 			assert(false); // should not reach here!
-			usleep(100);
+			std::this_thread::sleep_for(std::chrono::milliseconds(1)); // TODO: Use signal instead of sleep
 		}
 	}
 }
@@ -305,7 +305,7 @@ int Launcher::ProcessWorkflowThreads(const ProcArgs& procArgs)
 
 			if (workflowThreads_.empty()) break;
 		}
-		usleep(100);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
 	NotifyAll();
