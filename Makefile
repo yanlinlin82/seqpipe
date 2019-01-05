@@ -16,7 +16,7 @@ UNIT_MODULES := \
 GITVER := $(shell git rev-parse --short HEAD)
 
 CXX      ?= g++
-CXXFLAGS ?= -std=c++11 -DGITVER=\"${GITVER}\" -Wall
+CXXFLAGS ?= -std=c++17 -DGITVER=\"${GITVER}\" -Wall
 LDFLAGS  ?= -pthread
 
 ifneq ("$(shell which ccache)","")

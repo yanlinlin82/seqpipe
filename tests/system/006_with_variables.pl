@@ -108,11 +108,9 @@ echo 2
 	echo ${B}
 }
 
-{
-	echo 1
-	foo A=hello B=world
-	echo 2
-}
+echo 1
+foo A=hello B=world
+echo 2
 ';
 	die if `cat .seqpipe/last/1.echo.cmd` ne "echo 1\n";
 	die if `cat .seqpipe/last/1.echo.log` ne "1\n";

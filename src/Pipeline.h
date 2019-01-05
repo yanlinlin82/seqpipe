@@ -27,8 +27,6 @@ class Pipeline;
 
 enum class CommandType { TYPE_SHELL, TYPE_PROC, TYPE_BLOCK };
 
-std::ostream& operator << (std::ostream& os, CommandType type);
-
 class CommandItem
 {
 public:
@@ -52,12 +50,9 @@ public:
 
 	// 'block' attributes
 	const Block& GetBlock() const { assert(block_ != nullptr); return *block_; }
+	bool Simplify();
 
-	std::string ToString() const;
-	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
-	std::string DetailToString() const;
-
-	std::string ToStringRaw(const std::string& indent) const;
+	std::string ToString(const std::string& indent = "") const;
 private:
 	CommandType type_ = CommandType::TYPE_SHELL;
 	std::string name_;
@@ -87,12 +82,12 @@ public:
 
 	bool IsEmpty() const { return items_.empty(); }
 
-	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
-	std::string DetailToString() const;
-	std::string ToStringRaw(const std::string& indent) const;
+	std::string ToString(const std::string& indent = "", bool root = false) const;
 
 	const std::vector<CommandItem>& GetItems() const { return items_; }
 	bool IsParallel() const { return parallel_; }
+
+	bool Simplify(bool root = true);
 protected:
 	void Set(const Block& block) { items_ = block.items_; parallel_ = block.parallel_; }
 private:
@@ -107,7 +102,7 @@ public:
 
 	std::string Name() const { return name_; }
 
-	std::string ToStringRaw() const;
+	std::string ToString() const;
 private:
 	std::string name_;
 };

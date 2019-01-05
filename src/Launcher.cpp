@@ -276,13 +276,7 @@ bool Launcher::RecordSysInfo(const std::string& filename)
 
 int Launcher::Run(const ProcArgs& procArgs)
 {
-	if (pipeline_.GetDefaultBlock().IsParallel()) {
-		for (size_t i = 0; i < pipeline_.GetDefaultBlock().GetItems().size(); ++i) {
-			workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultBlock(), i, "", procArgs, ++taskIdCounter_)); // add every command of default block (blockIndex = 0)
-		}
-	} else {
-		workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultBlock(), 0, "", procArgs, ++taskIdCounter_)); // first command (itemIndex = 0) of default block (blockIndex = 0)
-	}
+	SetSigAction();
 
 	uniqueId_ = GetUniqueId();
 	logDir_ = LOG_ROOT + "/" + uniqueId_;
@@ -301,7 +295,13 @@ int Launcher::Run(const ProcArgs& procArgs)
 	logFile_.Initialize(logDir_ + "/log");
 	logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] " << System::GetFullCommandLine());
 
-	SetSigAction();
+	if (pipeline_.GetDefaultBlock().IsParallel()) {
+		for (size_t i = 0; i < pipeline_.GetDefaultBlock().GetItems().size(); ++i) {
+			workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultBlock(), i, "", procArgs, ++taskIdCounter_)); // add every command of default block (blockIndex = 0)
+		}
+	} else {
+		workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultBlock(), 0, "", procArgs, ++taskIdCounter_)); // first command (itemIndex = 0) of default block (blockIndex = 0)
+	}
 
 	LauncherTimer timer;
 

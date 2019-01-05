@@ -57,10 +57,8 @@ sub test_001
 	die if $lines[7] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
-	die if `cat .seqpipe/last/pipeline` ne "{
-	echo hello
-	echo world
-}
+	die if `cat .seqpipe/last/pipeline` ne "echo hello
+echo world
 ";
 	die if `cat .seqpipe/last/1.echo.cmd` ne "echo hello\n";
 	die if `cat .seqpipe/last/1.echo.log` ne "hello\n";
@@ -91,10 +89,8 @@ sub test_002
 	die if $lines[7] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
-	die if `cat .seqpipe/last/pipeline` ne "{
-	sleep 2
-	sleep 1
-}
+	die if `cat .seqpipe/last/pipeline` ne "sleep 2
+sleep 1
 ";
 	die if `cat .seqpipe/last/1.sleep.cmd` ne "sleep 2\n";
 	die if `cat .seqpipe/last/1.sleep.log` ne "";

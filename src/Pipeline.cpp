@@ -77,54 +77,16 @@ const ProcArgs& CommandItem::GetProcArgs() const
 	return procArgs_;
 }
 
-std::string CommandItem::ToString() const
+std::string CommandItem::ToString(const std::string& indent) const
 {
 	if (type_ == CommandType::TYPE_SHELL) {
-		return ShellCmd();
+		return indent + ShellCmd() + "\n";
+	} else if (Type() == CommandType::TYPE_BLOCK) {
+		return GetBlock().ToString(indent, false);
 	} else {
 		assert(type_ == CommandType::TYPE_PROC);
-		return procName_ + procArgs_.ToString();
+		return procName_ + procArgs_.ToString() + "\n";
 	}
-}
-
-std::string CommandItem::ToString(const std::string& indent, const Pipeline& pipeline) const
-{
-	if (Type() == CommandType::TYPE_BLOCK) {
-		return GetBlock().ToString(indent, pipeline);
-	} else {
-		return indent + ToString() + "\n";
-	}
-}
-
-std::ostream& operator << (std::ostream& os, CommandType type)
-{
-	if (type == CommandType::TYPE_SHELL) {
-		os << "shell";
-	} else if (type == CommandType::TYPE_PROC) {
-		os << "proc";
-	} else if (type == CommandType::TYPE_BLOCK) {
-		os << "block";
-	}
-	return os;
-}
-
-std::string CommandItem::DetailToString() const
-{
-	std::ostringstream ss;
-
-	ss << "type='" << type_ << "'";
-	ss << ", name='" << name_ << "'";
-
-	ss << ", shellCmd='" << shellCmd_ << "'";
-
-	ss << ", procName='" << procName_ << "'";
-	ss << ", procArgs={" << procArgs_.ToString() << "}";
-
-	if (block_) {
-		ss << ", block=" << block_->DetailToString();
-	}
-
-	return ss.str();
 }
 
 void Block::Clear()
@@ -159,34 +121,54 @@ bool Block::UpdateCommandToProcCalling(const std::set<std::string>& procNameSet)
 	return true;
 }
 
-std::string Block::ToString(const std::string& indent, const Pipeline& pipeline) const
+std::string Block::ToString(const std::string& indent, bool root) const
 {
 	std::string s;
-	s += indent + (parallel_ ? "{{" : "{") + "\n";
-	for (const auto& item : items_) {
-		s += item.ToString(indent + "\t", pipeline);
+	if (!root || parallel_) {
+		s += indent + (parallel_ ? "{{" : "{") + "\n";
 	}
-	s += indent + (parallel_ ? "}}" : "}") + "\n";
+	for (const auto& item : items_) {
+		s += item.ToString((root && !parallel_) ? indent : indent + "\t");
+	}
+	if (!root || parallel_) {
+		s += indent + (parallel_ ? "}}" : "}") + "\n";
+	}
 	return s;
 }
 
-std::string Block::DetailToString() const
+bool CommandItem::Simplify()
 {
-	if (items_.empty()) {
-		return "<empty>";
-	} else if (items_.size() == 1) {
-		return items_[0].DetailToString();
-	} else {
-		std::ostringstream ss;
-		ss << " (parallel = " << parallel_ << ") " << items_.size() << " items:\n";
-		for (size_t i = 0; i < items_.size(); ++i) {
-			if (i > 0) {
-				ss << "\n";
+	assert(block_ != nullptr);
+	return block_->Simplify();
+}
+
+bool Block::Simplify(bool root)
+{
+	bool somethingChanged = false;
+	bool requireChecking = true;
+	while (requireChecking) {
+		requireChecking = false;
+		if (items_.size() == 1) {
+			if (items_[0].Type() == CommandType::TYPE_BLOCK) {
+				if (root || parallel_ == items_[0].GetBlock().parallel_) {
+					parallel_ = items_[0].GetBlock().parallel_;
+					items_ = items_[0].GetBlock().items_;
+					somethingChanged = true;
+					requireChecking = true;
+				}
 			}
-			ss << "  [" << i << "]" << items_[i].DetailToString();
+		} else {
+			for (size_t i = 0; i < items_.size(); ++i) {
+				if (items_[i].Type() == CommandType::TYPE_BLOCK) {
+					if (items_[i].Simplify()) {
+						somethingChanged = true;
+						requireChecking = true;
+					}
+				}
+			}
 		}
-		return ss.str();
 	}
+	return somethingChanged;
 }
 
 bool Pipeline::CheckIfPipeFile(const std::string& command)
@@ -490,35 +472,14 @@ bool Pipeline::Load(const std::string& filename)
 			return false;
 		}
 	}
+
+	block_.Simplify();
 	return true;
 }
 
-std::string CommandItem::ToStringRaw(const std::string& indent) const
+std::string Procedure::ToString() const
 {
-	if (type_ == CommandType::TYPE_SHELL) {
-		return indent + ShellCmd();
-	} else if (type_ == CommandType::TYPE_PROC) {
-		return indent + procName_ + procArgs_.ToString();
-	} else {
-		assert(type_ == CommandType::TYPE_BLOCK);
-		return block_->ToStringRaw(indent);
-	}
-}
-
-std::string Block::ToStringRaw(const std::string& indent) const
-{
-	std::string s;
-	s += indent + (parallel_ ? "{{" : "{") + "\n";
-	for (const auto& item : items_) {
-		s += item.ToStringRaw(indent + "\t") + "\n";
-	}
-	s += indent + (parallel_ ? "}}" : "}") + "\n";
-	return s;
-}
-
-std::string Procedure::ToStringRaw() const
-{
-	return name_ + "() " + Block::ToStringRaw("");
+	return name_ + "() " + Block::ToString("", false);
 }
 
 bool Pipeline::Save(const std::string& filename) const
@@ -530,16 +491,15 @@ bool Pipeline::Save(const std::string& filename) const
 
 	for (auto it = procList_.begin(); it != procList_.end(); ++it) {
 		const auto& proc = it->second;
-		file << proc.ToStringRaw() << "\n";
+		file << proc.ToString();
 	}
 
 	const Block& block = block_;
 	if (!block.IsEmpty()) {
-		if (block.GetItems().size() == 1) {
-			file << block.GetItems()[0].ToString("", *this);
-		} else {
-			file << block.ToString("", *this);
+		if (!procList_.empty()) {
+			file << std::endl;
 		}
+		file << block.ToString("", true);
 	}
 
 	file.close();

@@ -60,11 +60,9 @@ sub test_001
 	die if $lines[10] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
-	die if `cat .seqpipe/last/pipeline` ne "{
-	echo Hello - 1
-	echo Hello - 2
-	echo Hello - 3
-}
+	die if `cat .seqpipe/last/pipeline` ne "echo Hello - 1
+echo Hello - 2
+echo Hello - 3
 ";
 	die if `cat .seqpipe/last/1.echo.cmd` ne "echo Hello - 1\n";
 	die if `cat .seqpipe/last/1.echo.log` ne "Hello - 1\n";
@@ -101,11 +99,9 @@ sub test_002
 	die if $lines[10] !~ /^$REGEX_UNIQUE_ID $REGEX_OK $REGEX_ELAPSE$/;
 
 	die if `cat .seqpipe/last/log` ne $output;
-	die if `cat .seqpipe/last/pipeline` ne "{
-	echo Hello - 1
-	echo Hello - 2
-	echo Hello - 3
-}
+	die if `cat .seqpipe/last/pipeline` ne "echo Hello - 1
+echo Hello - 2
+echo Hello - 3
 ";
 	die if `cat .seqpipe/last/1.echo.cmd` ne "echo Hello - 1\n";
 	die if `cat .seqpipe/last/1.echo.log` ne "Hello - 1\n";
