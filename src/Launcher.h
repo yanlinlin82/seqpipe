@@ -16,9 +16,12 @@ class WorkflowTask
 {
 public:
 	WorkflowTask() { }
-	WorkflowTask(size_t blockIndex, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId);
+	WorkflowTask(const Block* block, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
+		block_(block), itemIndex_(itemIndex), indent_(indent), procArgs_(procArgs), taskId_(taskId)
+	{
+	}
 
-	size_t blockIndex_ = 0;
+	const Block* block_ = nullptr;
 	size_t itemIndex_ = 0;
 	std::string indent_ = "";
 	ProcArgs procArgs_;
@@ -29,7 +32,10 @@ public:
 class WorkflowThread: public WorkflowTask
 {
 public:
-	WorkflowThread(size_t blockIndex, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId);
+	WorkflowThread(const Block* block, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
+		WorkflowTask(block, itemIndex, indent, procArgs, taskId)
+	{
+	}
 
 	bool finished_ = false;
 	std::set<unsigned int> waitingFor_;
@@ -72,7 +78,7 @@ private:
 	bool GetTaskFromQueue(WorkflowTask& task);
 	void SetTaskFinished(unsigned int taskId, int retVal);
 
-	void PostBlockToThreads(size_t blockIndex, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
+	void PostBlockToThreads(const Block& block, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
 			const std::string& indent, const ProcArgs& procArgs);
 private:
 	int maxJobNumber_ = 0;

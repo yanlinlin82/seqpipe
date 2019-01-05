@@ -45,11 +45,6 @@ CommandItem::CommandItem(const std::string& procName, const ProcArgs& procArgs):
 	name_ = procName;
 }
 
-CommandItem::CommandItem(size_t blockIndex):
-	type_(CommandType::TYPE_BLOCK), blockIndex_(blockIndex)
-{
-}
-
 CommandItem::CommandItem(const std::string& fullCmdLine):
 	type_(CommandType::TYPE_SHELL), shellCmd_(fullCmdLine)
 {
@@ -57,6 +52,11 @@ CommandItem::CommandItem(const std::string& fullCmdLine):
 	if (name_.empty()) {
 		name_ = "shell";
 	}
+}
+
+CommandItem::CommandItem(const Block& block):
+	type_(CommandType::TYPE_BLOCK), block_(new Block(block))
+{
 }
 
 const std::string& CommandItem::ShellCmd() const
@@ -77,12 +77,6 @@ const ProcArgs& CommandItem::GetProcArgs() const
 	return procArgs_;
 }
 
-size_t CommandItem::GetBlockIndex() const
-{
-	assert(type_ == CommandType::TYPE_BLOCK);
-	return blockIndex_;
-}
-
 std::string CommandItem::ToString() const
 {
 	if (type_ == CommandType::TYPE_SHELL) {
@@ -96,15 +90,10 @@ std::string CommandItem::ToString() const
 std::string CommandItem::ToString(const std::string& indent, const Pipeline& pipeline) const
 {
 	if (Type() == CommandType::TYPE_BLOCK) {
-		return pipeline.GetBlock(blockIndex_).ToString(indent, pipeline);
+		return GetBlock().ToString(indent, pipeline);
 	} else {
 		return indent + ToString() + "\n";
 	}
-}
-
-void CommandItem::Dump(const std::string& indent, const Pipeline& pipeline) const
-{
-	std::cout << ToString(indent, pipeline);
 }
 
 std::ostream& operator << (std::ostream& os, CommandType type)
@@ -131,7 +120,9 @@ std::string CommandItem::DetailToString() const
 	ss << ", procName='" << procName_ << "'";
 	ss << ", procArgs={" << procArgs_.ToString() << "}";
 
-	ss << ", blockIndex=" << blockIndex_;
+	if (block_) {
+		ss << ", block=" << block_->DetailToString();
+	}
 
 	return ss.str();
 }
@@ -152,9 +143,9 @@ void Block::AppendCommand(const std::string& procName, const ProcArgs& procArgs)
 	items_.push_back(CommandItem(procName, procArgs));
 }
 
-bool Block::AppendBlock(size_t blockIndex)
+bool Block::AppendBlock(const Block& block)
 {
-	items_.push_back(CommandItem(blockIndex));
+	items_.push_back(CommandItem(block));
 	return true;
 }
 
@@ -196,11 +187,6 @@ std::string Block::DetailToString() const
 		}
 		return ss.str();
 	}
-}
-
-void Block::Dump(const std::string& indent, const Pipeline& pipeline) const
-{
-	std::cout << ToString(indent, pipeline);
 }
 
 bool Pipeline::CheckIfPipeFile(const std::string& command)
@@ -282,8 +268,7 @@ bool Pipeline::LoadBlock(PipeFile& file, Block& block, bool parallel)
 			if (!LoadBlock(file, subBlock, (leftBracket == "{{"))) {
 				return false;
 			}
-			size_t blockIndex = AppendBlock(subBlock);
-			if (!block.AppendBlock(blockIndex)) {
+			if (!block.AppendBlock(subBlock)) {
 				return false;
 			}
 			if (!file.ReadLine()) {
@@ -351,10 +336,7 @@ bool Pipeline::LoadProc(PipeFile& file, const std::string& name, std::string lef
 	if (!LoadBlock(file, block, (leftBracket == "{{"))) {
 		return false;
 	}
-	size_t blockIndex = blockList_.size();
-	blockList_.push_back(block);
-
-	procList_[name].Initialize(name, blockIndex);
+	procList_[name].Initialize(name, block);
 	return true;
 }
 
@@ -445,9 +427,7 @@ bool Pipeline::Load(const std::string& filename)
 					if (!LoadBlock(file, block, (leftBracket == "{{"))) {
 						return false;
 					}
-					size_t blockIndex = blockList_.size();
-					blockList_.push_back(block);
-					if (!blockList_[0].AppendBlock(blockIndex)) {
+					if (!block_.AppendBlock(block)) {
 						return false;
 					}
 
@@ -494,7 +474,7 @@ bool Pipeline::Load(const std::string& filename)
 			}
 
 			{ // try shell command line
-				if (!AppendCommandLineFromFile(file, blockList_[0])) {
+				if (!AppendCommandLineFromFile(file, block_)) {
 					return false;
 				}
 				if (!file.ReadLine()) {
@@ -513,7 +493,7 @@ bool Pipeline::Load(const std::string& filename)
 	return true;
 }
 
-std::string CommandItem::ToStringRaw(const std::vector<Block>& blockList, const std::string& indent) const
+std::string CommandItem::ToStringRaw(const std::string& indent) const
 {
 	if (type_ == CommandType::TYPE_SHELL) {
 		return indent + ShellCmd();
@@ -521,24 +501,24 @@ std::string CommandItem::ToStringRaw(const std::vector<Block>& blockList, const 
 		return indent + procName_ + procArgs_.ToString();
 	} else {
 		assert(type_ == CommandType::TYPE_BLOCK);
-		return blockList.at(blockIndex_).ToStringRaw(blockList, indent);
+		return block_->ToStringRaw(indent);
 	}
 }
 
-std::string Block::ToStringRaw(const std::vector<Block>& blockList, const std::string& indent) const
+std::string Block::ToStringRaw(const std::string& indent) const
 {
 	std::string s;
 	s += indent + (parallel_ ? "{{" : "{") + "\n";
 	for (const auto& item : items_) {
-		s += item.ToStringRaw(blockList, indent + "\t") + "\n";
+		s += item.ToStringRaw(indent + "\t") + "\n";
 	}
 	s += indent + (parallel_ ? "}}" : "}") + "\n";
 	return s;
 }
 
-std::string Procedure::ToStringRaw(const std::vector<Block>& blockList) const
+std::string Procedure::ToStringRaw() const
 {
-	return name_ + "() " + blockList.at(blockIndex_).ToStringRaw(blockList, "");
+	return name_ + "() " + Block::ToStringRaw("");
 }
 
 bool Pipeline::Save(const std::string& filename) const
@@ -550,10 +530,10 @@ bool Pipeline::Save(const std::string& filename) const
 
 	for (auto it = procList_.begin(); it != procList_.end(); ++it) {
 		const auto& proc = it->second;
-		file << proc.ToStringRaw(blockList_) << "\n";
+		file << proc.ToStringRaw() << "\n";
 	}
 
-	const Block& block = blockList_[0];
+	const Block& block = block_;
 	if (!block.IsEmpty()) {
 		if (block.GetItems().size() == 1) {
 			file << block.GetItems()[0].ToString("", *this);
@@ -568,22 +548,22 @@ bool Pipeline::Save(const std::string& filename) const
 
 void Pipeline::ClearDefaultBlock()
 {
-	blockList_[0].Clear();
+	block_.Clear();
 }
 
 void Pipeline::SetDefaultBlock(bool parallel, const std::vector<std::string> shellCmdList)
 {
-	assert(blockList_[0].IsEmpty());
-	blockList_[0].SetParallel(parallel);
+	assert(block_.IsEmpty());
+	block_.SetParallel(parallel);
 	for (const auto& fullCmdLine : shellCmdList) {
-		blockList_[0].AppendCommand(StringUtils::Trim(fullCmdLine));
+		block_.AppendCommand(StringUtils::Trim(fullCmdLine));
 	}
 }
 
 void Pipeline::SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs)
 {
-	assert(blockList_[0].IsEmpty());
-	blockList_[0].AppendCommand(procName, procArgs);
+	assert(block_.IsEmpty());
+	block_.AppendCommand(procName, procArgs);
 }
 
 bool Pipeline::HasProcedure(const std::string& name) const
@@ -593,26 +573,14 @@ bool Pipeline::HasProcedure(const std::string& name) const
 
 const Block& Pipeline::GetDefaultBlock() const
 {
-	return blockList_.at(0);
-}
-
-const Block& Pipeline::GetBlock(size_t index) const
-{
-	return blockList_.at(index);
+	return block_;
 }
 
 const Block& Pipeline::GetBlock(const std::string& procName) const
 {
-	return blockList_[GetBlockIndex(procName)];
-}
-
-size_t Pipeline::GetBlockIndex(const std::string& procName) const
-{
 	auto it = procList_.find(procName);
-	if (it == procList_.end()) {
-		throw std::runtime_error("Invalid procName");
-	}
-	return it->second.BlockIndex();
+	assert(it != procList_.end());
+	return it->second;
 }
 
 bool Pipeline::HasAnyProcedure() const
@@ -622,7 +590,7 @@ bool Pipeline::HasAnyProcedure() const
 
 bool Pipeline::HasAnyDefaultCommand() const
 {
-	return !blockList_[0].IsEmpty();
+	return !block_.IsEmpty();
 }
 
 bool CommandItem::TryConvertShellToProc(const std::set<std::string>& procNameSet)
@@ -674,26 +642,8 @@ bool Pipeline::FinalCheckAfterLoad()
 {
 	auto procNameList = GetProcNameList("");
 	std::set<std::string> procNameSet(procNameList.begin(), procNameList.end());
-	for (auto& block : blockList_) {
-		if (!block.UpdateCommandToProcCalling(procNameSet)) {
-			return false;
-		}
+	if (!block_.UpdateCommandToProcCalling(procNameSet)) {
+		return false;
 	}
 	return true;
-}
-
-void Pipeline::Dump() const
-{
-	std::cerr << "===== pipeline dump - " << blockList_.size() << " block(s):\n";
-	for (size_t i = 0; i < blockList_.size(); ++i) {
-		std::cerr << "block[" << i << "]: " << blockList_[i].DetailToString() << "\n";
-	}
-	std::cerr << "===== Pipeline Dump End =====" << std::endl;
-}
-
-size_t Pipeline::AppendBlock(const Block& block)
-{
-	size_t index = blockList_.size();
-	blockList_.push_back(block);
-	return index;
 }

@@ -1,8 +1,10 @@
 #pragma once
 #include <string>
+#include <memory>
 #include <vector>
 #include <map>
 #include <set>
+#include <cassert>
 #include "PipeFile.h"
 #include "CommandLineParser.h"
 
@@ -33,7 +35,7 @@ public:
 	CommandItem() { }
 	CommandItem(const std::string& procName, const ProcArgs& procArgs);
 	explicit CommandItem(const std::string& fullCmdLine);
-	explicit CommandItem(size_t blockIndex);
+	explicit CommandItem(const Block& block);
 
 	bool TryConvertShellToProc(const std::set<std::string>& procNameSet);
 
@@ -49,14 +51,13 @@ public:
 	const ProcArgs& GetProcArgs() const;
 
 	// 'block' attributes
-	size_t GetBlockIndex() const;
+	const Block& GetBlock() const { assert(block_ != nullptr); return *block_; }
 
 	std::string ToString() const;
 	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
-	void Dump(const std::string& indent, const Pipeline& pipeline) const;
 	std::string DetailToString() const;
 
-	std::string ToStringRaw(const std::vector<Block>& blockList, const std::string& indent) const;
+	std::string ToStringRaw(const std::string& indent) const;
 private:
 	CommandType type_ = CommandType::TYPE_SHELL;
 	std::string name_;
@@ -69,7 +70,7 @@ private:
 	ProcArgs procArgs_;
 
 	// members for 'block'
-	size_t blockIndex_ = 0;
+	std::shared_ptr<Block> block_;
 };
 
 class Block
@@ -81,35 +82,34 @@ public:
 	void AppendCommand(const std::string& fullCmdLine);
 	void AppendCommand(const std::string& procName, const ProcArgs& procArgs);
 
-	bool AppendBlock(size_t blockIndex);
+	bool AppendBlock(const Block& block);
 	bool UpdateCommandToProcCalling(const std::set<std::string>& procNameSet);
 
 	bool IsEmpty() const { return items_.empty(); }
 
 	std::string ToString(const std::string& indent, const Pipeline& pipeline) const;
-	void Dump(const std::string& indent, const Pipeline& pipeline) const;
 	std::string DetailToString() const;
-	std::string ToStringRaw(const std::vector<Block>& blockList, const std::string& indent) const;
+	std::string ToStringRaw(const std::string& indent) const;
 
 	const std::vector<CommandItem>& GetItems() const { return items_; }
 	bool IsParallel() const { return parallel_; }
+protected:
+	void Set(const Block& block) { items_ = block.items_; parallel_ = block.parallel_; }
 private:
 	std::vector<CommandItem> items_;
 	bool parallel_ = false;
 };
 
-class Procedure
+class Procedure: public Block
 {
 public:
-	void Initialize(const std::string& name, size_t blockIndex) { name_ = name; blockIndex_ = blockIndex; }
+	void Initialize(const std::string& name, const Block& block) { name_ = name; Block::Set(block); }
 
 	std::string Name() const { return name_; }
-	size_t BlockIndex() const { return blockIndex_; }
 
-	std::string ToStringRaw(const std::vector<Block>& blockList) const;
+	std::string ToStringRaw() const;
 private:
 	std::string name_;
-	size_t blockIndex_ = 0;
 };
 
 class Pipeline
@@ -125,19 +125,13 @@ public:
 	void SetDefaultBlock(bool parallel, const std::vector<std::string> shellCmdList);
 	void SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs);
 
-	size_t AppendBlock(const Block& block);
-
 	bool HasProcedure(const std::string& name) const;
 	bool HasAnyProcedure() const;
 	bool HasAnyDefaultCommand() const;
 
 	const Block& GetDefaultBlock() const;
-	const Block& GetBlock(size_t index) const;
 	const Block& GetBlock(const std::string& procName) const;
-	size_t GetBlockIndex(const std::string& procName) const;
 	std::vector<std::string> GetProcNameList(const std::string& pattern) const;
-
-	void Dump() const;
 private:
 	bool LoadConf(const std::string& filename, std::map<std::string, std::string>& confMap);
 	bool LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc);
@@ -149,5 +143,5 @@ private:
 private:
 	std::map<std::string, Procedure> procList_;
 	std::map<std::string, std::string> procAtLineNo_;
-	std::vector<Block> blockList_{1}; // the first 'Block' is the default one.
+	Block block_;
 };
