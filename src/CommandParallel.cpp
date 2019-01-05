@@ -110,7 +110,7 @@ bool CommandParallel::ParseArgs(const std::vector<std::string>& args)
 		return false;
 	}
 
-	pipeline_.SetDefaultBlock(true, cmdList);
+	pipeline_.SetDefaultStatement(true, cmdList);
 	return true;
 }
 

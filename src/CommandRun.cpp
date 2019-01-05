@@ -134,13 +134,13 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 	}
 
 	if (!cmdList.empty()) {
-		pipeline_.SetDefaultBlock(parallel, cmdList);
+		pipeline_.SetDefaultStatement(parallel, cmdList);
 	} else if (isShellCmd) {
 		for (const auto& arg : shellArgs) {
 			cmd += " " + StringUtils::ShellQuote(arg, false);
 		}
 		cmdList.push_back(cmd);
-		pipeline_.SetDefaultBlock(false, cmdList);
+		pipeline_.SetDefaultStatement(false, cmdList);
 	} else if (!cmd.empty()) {
 		if (!pipeline_.Load(cmd)) {
 			return false;
@@ -158,8 +158,8 @@ bool CommandRun::ParseArgs(const std::vector<std::string>& args)
 			std::cerr << "Error: Can not find procedure '" << procName << "'!" << std::endl;
 			return 1;
 		}
-		pipeline_.ClearDefaultBlock();
-		pipeline_.SetDefaultBlock(procName, procArgs_);
+		pipeline_.ClearDefaultStatement();
+		pipeline_.SetDefaultStatement(procName, procArgs_);
 		procArgs_.Clear();
 	}
 

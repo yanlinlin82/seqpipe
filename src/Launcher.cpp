@@ -54,7 +54,7 @@ static std::string ExpandArgs(const std::string& s, const ProcArgs& procArgs)
 	return res;
 }
 
-int Launcher::RunShell(const CommandItem& item, std::string indent, const ProcArgs& procArgs)
+int Launcher::RunShell(const Statement& item, std::string indent, const ProcArgs& procArgs)
 {
 	unsigned int id = counter_.FetchId();
 
@@ -109,9 +109,9 @@ void Launcher::CheckFinishedTasks()
 
 		for (auto& info : workflowThreads_) {
 			if (info.waitingFor_.find(taskId) != info.waitingFor_.end()) {
-				const Block& block = *info.block_;
-				const CommandItem& item = block.GetItems()[info.itemIndex_];
-				if (item.Type() == CommandType::TYPE_PROC) {
+				const Statement& block = *info.block_;
+				const Statement& item = block.GetItems()[info.itemIndex_];
+				if (item.Type() == Statement::TYPE_PROC) {
 					info.timer_.Stop();
 					logFile_.WriteLine(Msg() << info.indent_ << "(" << info.id_ << ") ends at " << info.timer_.EndTime() << " (elapsed: " << info.timer_.Elapse() << ")");
 				}
@@ -127,7 +127,7 @@ void Launcher::CheckFinishedTasks()
 
 	for (auto& info : workflowThreads_) {
 		if (info.finished_ && info.waitingFor_.empty()) {
-			const Block& block = *info.block_;
+			const Statement& block = *info.block_;
 			if (block.IsParallel()) {
 				info.itemIndex_ = block.GetItems().size();
 			} else {
@@ -138,7 +138,7 @@ void Launcher::CheckFinishedTasks()
 	}
 }
 
-void Launcher::PostBlockToThreads(const Block& block, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
+void Launcher::PostStatementToThreads(const Statement& block, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
 		const std::string& indent, const ProcArgs& procArgs)
 {
 	if (block.IsParallel()) {
@@ -162,9 +162,9 @@ void Launcher::PostNextTasks()
 		const auto& block = *info.block_;
 		if (info.waitingFor_.empty() && info.retVal_ == 0 && info.itemIndex_ < block.GetItems().size()) {
 			const auto& item = block.GetItems()[info.itemIndex_];
-			if (item.Type() == CommandType::TYPE_BLOCK) {
-				PostBlockToThreads(item.GetBlock(), info, newThreads, info.indent_, info.procArgs_);
-			} else if (item.Type() == CommandType::TYPE_PROC) {
+			if (item.Type() == Statement::TYPE_BLOCK) {
+				PostStatementToThreads(item, info, newThreads, info.indent_, info.procArgs_);
+			} else if (item.Type() == Statement::TYPE_PROC) {
 				unsigned int id = counter_.FetchId();
 				const auto name = std::to_string(id) + "." + item.ProcName();
 
@@ -176,9 +176,9 @@ void Launcher::PostNextTasks()
 				WriteStringToFile(logDir_ + "/" + name + ".call", item.ProcName());
 
 				++taskIdCounter_;
-				PostBlockToThreads(pipeline_.GetBlock(item.ProcName()), info, newThreads, info.indent_ + "  ", item.GetProcArgs());
+				PostStatementToThreads(pipeline_.GetStatement(item.ProcName()), info, newThreads, info.indent_ + "  ", item.GetProcArgs());
 			} else {
-				assert(item.Type() == CommandType::TYPE_SHELL);
+				assert(item.Type() == Statement::TYPE_SHELL);
 				++taskIdCounter_;
 				taskQueue_.push_back(WorkflowTask(info.block_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
 				info.waitingFor_.insert(taskIdCounter_);
@@ -236,7 +236,7 @@ void Launcher::Worker()
 		if (GetTaskFromQueue(task)) {
 			const auto& block = *task.block_;
 			const auto& item = block.GetItems()[task.itemIndex_];
-			assert(item.Type() == CommandType::TYPE_SHELL); // it should only process 'shell cmd' in Worker()
+			assert(item.Type() == Statement::TYPE_SHELL); // it should only process 'shell cmd' in Worker()
 			int retVal = RunShell(item, task.indent_, task.procArgs_);
 			SetTaskFinished(task.taskId_, retVal);
 		} else {
@@ -295,12 +295,12 @@ int Launcher::Run(const ProcArgs& procArgs)
 	logFile_.Initialize(logDir_ + "/log");
 	logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] " << System::GetFullCommandLine());
 
-	if (pipeline_.GetDefaultBlock().IsParallel()) {
-		for (size_t i = 0; i < pipeline_.GetDefaultBlock().GetItems().size(); ++i) {
-			workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultBlock(), i, "", procArgs, ++taskIdCounter_)); // add every command of default block (blockIndex = 0)
+	if (pipeline_.GetDefaultStatement().IsParallel()) {
+		for (size_t i = 0; i < pipeline_.GetDefaultStatement().GetItems().size(); ++i) {
+			workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultStatement(), i, "", procArgs, ++taskIdCounter_)); // add every command of default block (blockIndex = 0)
 		}
 	} else {
-		workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultBlock(), 0, "", procArgs, ++taskIdCounter_)); // first command (itemIndex = 0) of default block (blockIndex = 0)
+		workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultStatement(), 0, "", procArgs, ++taskIdCounter_)); // first command (itemIndex = 0) of default block (blockIndex = 0)
 	}
 
 	LauncherTimer timer;

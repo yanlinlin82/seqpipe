@@ -1,6 +1,5 @@
 #pragma once
 #include <string>
-#include <memory>
 #include <vector>
 #include <map>
 #include <set>
@@ -22,20 +21,18 @@ private:
 	std::vector<std::string> order_;
 };
 
-class Block;
-class Pipeline;
-
-enum class CommandType { TYPE_SHELL, TYPE_PROC, TYPE_BLOCK };
-
-class CommandItem
+class Statement
 {
 public:
-	CommandItem() { }
-	CommandItem(const std::string& procName, const ProcArgs& procArgs);
-	explicit CommandItem(const std::string& fullCmdLine);
-	explicit CommandItem(const Block& block);
+	enum CommandType { TYPE_SHELL, TYPE_PROC, TYPE_BLOCK };
+
+	Statement() { }
+	Statement(const std::string& procName, const ProcArgs& procArgs);
+	explicit Statement(const std::string& fullCmdLine);
 
 	bool TryConvertShellToProc(const std::set<std::string>& procNameSet);
+
+	std::string ToString(const std::string& indent = "", bool root = false) const;
 
 	// common attributes
 	CommandType Type() const { return type_; }
@@ -49,12 +46,28 @@ public:
 	const ProcArgs& GetProcArgs() const;
 
 	// 'block' attributes
-	const Block& GetBlock() const { assert(block_ != nullptr); return *block_; }
-	bool Simplify();
+	bool Simplify(bool root = true);
 
-	std::string ToString(const std::string& indent = "") const;
+public:
+	void Clear();
+
+	void SetParallel(bool parallel) { type_ = TYPE_BLOCK; parallel_ = parallel; }
+	void AppendCommand(const std::string& fullCmdLine);
+	void AppendCommand(const std::string& procName, const ProcArgs& procArgs);
+
+	bool AppendStatement(const Statement& block);
+	bool UpdateCommandToProcCalling(const std::set<std::string>& procNameSet);
+
+	bool IsEmpty() const { return items_.empty(); }
+
+	const std::vector<Statement>& GetItems() const { return items_; }
+	bool IsParallel() const { return parallel_; }
+
+protected:
+	void Set(const Statement& block) { type_ = TYPE_BLOCK; items_ = block.items_; parallel_ = block.parallel_; }
+
 private:
-	CommandType type_ = CommandType::TYPE_SHELL;
+	CommandType type_ = TYPE_SHELL;
 	std::string name_;
 
 	// members for 'shell command'
@@ -65,40 +78,14 @@ private:
 	ProcArgs procArgs_;
 
 	// members for 'block'
-	std::shared_ptr<Block> block_;
-};
-
-class Block
-{
-public:
-	void Clear();
-
-	void SetParallel(bool parallel) { parallel_ = parallel; }
-	void AppendCommand(const std::string& fullCmdLine);
-	void AppendCommand(const std::string& procName, const ProcArgs& procArgs);
-
-	bool AppendBlock(const Block& block);
-	bool UpdateCommandToProcCalling(const std::set<std::string>& procNameSet);
-
-	bool IsEmpty() const { return items_.empty(); }
-
-	std::string ToString(const std::string& indent = "", bool root = false) const;
-
-	const std::vector<CommandItem>& GetItems() const { return items_; }
-	bool IsParallel() const { return parallel_; }
-
-	bool Simplify(bool root = true);
-protected:
-	void Set(const Block& block) { items_ = block.items_; parallel_ = block.parallel_; }
-private:
-	std::vector<CommandItem> items_;
 	bool parallel_ = false;
+	std::vector<Statement> items_;
 };
 
-class Procedure: public Block
+class Procedure: public Statement
 {
 public:
-	void Initialize(const std::string& name, const Block& block) { name_ = name; Block::Set(block); }
+	void Initialize(const std::string& name, const Statement& block) { name_ = name; Statement::Set(block); }
 
 	std::string Name() const { return name_; }
 
@@ -116,27 +103,27 @@ public:
 	bool FinalCheckAfterLoad();
 	bool Save(const std::string& filename) const;
 
-	void ClearDefaultBlock();
-	void SetDefaultBlock(bool parallel, const std::vector<std::string> shellCmdList);
-	void SetDefaultBlock(const std::string& procName, const ProcArgs& procArgs);
+	void ClearDefaultStatement();
+	void SetDefaultStatement(bool parallel, const std::vector<std::string> shellCmdList);
+	void SetDefaultStatement(const std::string& procName, const ProcArgs& procArgs);
 
 	bool HasProcedure(const std::string& name) const;
 	bool HasAnyProcedure() const;
 	bool HasAnyDefaultCommand() const;
 
-	const Block& GetDefaultBlock() const;
-	const Block& GetBlock(const std::string& procName) const;
+	const Statement& GetDefaultStatement() const;
+	const Statement& GetStatement(const std::string& procName) const;
 	std::vector<std::string> GetProcNameList(const std::string& pattern) const;
 private:
 	bool LoadConf(const std::string& filename, std::map<std::string, std::string>& confMap);
 	bool LoadProc(PipeFile& file, const std::string& name, std::string leftBracket, Procedure& proc);
-	bool LoadBlock(PipeFile& file, Block& block, bool parallel);
+	bool LoadBlock(PipeFile& file, Statement& block, bool parallel);
 
 	bool ReadLeftBracket(PipeFile& file, std::string& leftBracket);
 
-	bool AppendCommandLineFromFile(PipeFile& file, Block& block);
+	bool AppendCommandLineFromFile(PipeFile& file, Statement& block);
 private:
 	std::map<std::string, Procedure> procList_;
 	std::map<std::string, std::string> procAtLineNo_;
-	Block block_;
+	Statement block_;
 };

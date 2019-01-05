@@ -16,12 +16,12 @@ class WorkflowTask
 {
 public:
 	WorkflowTask() { }
-	WorkflowTask(const Block* block, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
+	WorkflowTask(const Statement* block, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
 		block_(block), itemIndex_(itemIndex), indent_(indent), procArgs_(procArgs), taskId_(taskId)
 	{
 	}
 
-	const Block* block_ = nullptr;
+	const Statement* block_ = nullptr;
 	size_t itemIndex_ = 0;
 	std::string indent_ = "";
 	ProcArgs procArgs_;
@@ -32,7 +32,7 @@ public:
 class WorkflowThread: public WorkflowTask
 {
 public:
-	WorkflowThread(const Block* block, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
+	WorkflowThread(const Statement* block, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
 		WorkflowTask(block, itemIndex, indent, procArgs, taskId)
 	{
 	}
@@ -52,7 +52,7 @@ public:
 
 	int Run(const ProcArgs& procArgs);
 private:
-	int RunShell(const CommandItem& item, std::string indent, const ProcArgs& procArgs);
+	int RunShell(const Statement& item, std::string indent, const ProcArgs& procArgs);
 
 	bool WriteToHistoryLog();
 	bool CreateLastSymbolicLink();
@@ -78,7 +78,7 @@ private:
 	bool GetTaskFromQueue(WorkflowTask& task);
 	void SetTaskFinished(unsigned int taskId, int retVal);
 
-	void PostBlockToThreads(const Block& block, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
+	void PostStatementToThreads(const Statement& block, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
 			const std::string& indent, const ProcArgs& procArgs);
 private:
 	int maxJobNumber_ = 0;
