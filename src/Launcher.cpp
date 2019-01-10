@@ -183,7 +183,11 @@ void Launcher::PostNextTasks()
 				++taskIdCounter_;
 				taskQueue_.push_back(Task(info.block_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
 				info.waitingFor_.insert(taskIdCounter_);
-				Notify();
+				{
+					std::unique_lock<std::mutex> lock(mutexWorker_);
+					++countWorker_;
+					condWorker_.notify_one();
+				}
 			}
 		}
 	}
@@ -212,37 +216,35 @@ void Launcher::EraseFinishedThreads()
 	}
 }
 
-bool Launcher::GetTaskFromQueue(Task& task)
-{
-	std::lock_guard<std::mutex> lock(mutex_);
-	if (taskQueue_.empty()) {
-		return false;
-	}
-	task = taskQueue_.front();
-	taskQueue_.pop_front();
-	return true;
-}
-
-void Launcher::SetTaskFinished(unsigned int taskId, int retVal)
-{
-	std::lock_guard<std::mutex> lock(mutex_);
-	finishedTasks_[taskId] = retVal;
-}
-
 void Launcher::Worker()
 {
 	--waitingWorker_;
-	while (WaitForTask()) {
+	for (;;) {
+		{
+			std::unique_lock<std::mutex> lock(mutexWorker_);
+			while (countWorker_ == 0) {
+				condWorker_.wait(lock);
+				if (countWorker_ == 0) {
+					return;
+				}
+			}
+			--countWorker_;
+		}
+
 		Task task;
-		if (GetTaskFromQueue(task)) {
-			const auto& block = *task.block_;
-			const auto& item = block.GetItems()[task.itemIndex_];
-			assert(item.Type() == Statement::TYPE_SHELL); // it should only process 'shell cmd' in Worker()
-			int retVal = RunShell(item, task.indent_, task.procArgs_);
-			SetTaskFinished(task.taskId_, retVal);
-		} else {
-			assert(false); // should not reach here!
-			std::this_thread::sleep_for(std::chrono::milliseconds(1)); // TODO: Use signal instead of sleep
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			assert(!taskQueue_.empty());
+			task = taskQueue_.front();
+			taskQueue_.pop_front();
+		}
+		const auto& block = *task.block_;
+		const auto& item = block.GetItems()[task.itemIndex_];
+		assert(item.Type() == Statement::TYPE_SHELL); // it should only process 'shell cmd' in Worker()
+		int retVal = RunShell(item, task.indent_, task.procArgs_);
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			finishedTasks_[task.taskId_] = retVal;
 		}
 	}
 }
@@ -328,7 +330,10 @@ int Launcher::Run(const ProcArgs& procArgs)
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
-	NotifyAll();
+	{
+		std::unique_lock<std::mutex> lock(mutexWorker_);
+		condWorker_.notify_all();
+	}
 	for (auto& thread : threads) {
 		thread.join();
 	}
@@ -399,30 +404,4 @@ bool Launcher::CreateLastSymbolicLink()
 	}
 
 	return true;
-}
-
-bool Launcher::WaitForTask()
-{
-	std::unique_lock<std::mutex> lock(mutexWorker_);
-	while (countWorker_ == 0) {
-		condWorker_.wait(lock);
-		if (countWorker_ == 0) {
-			return false;
-		}
-	}
-	--countWorker_;
-	return true;
-}
-
-void Launcher::Notify()
-{
-	std::unique_lock<std::mutex> lock(mutexWorker_);
-	++countWorker_;
-	condWorker_.notify_one();
-}
-
-void Launcher::NotifyAll()
-{
-	std::unique_lock<std::mutex> lock(mutexWorker_);
-	condWorker_.notify_all();
 }

@@ -66,13 +66,12 @@ private:
 	void EraseFinishedThreads();
 
 	void Worker();
-	bool GetTaskFromQueue(Task& task);
-	void SetTaskFinished(unsigned int taskId, int retVal);
 
 	void PostStatementToThreads(const Statement& block, Task& info, std::list<Task>& newThreads,
 			const std::string& indent, const ProcArgs& procArgs);
 private:
 	int maxJobNumber_ = 0;
+
 	std::mutex mutex_;
 	unsigned int taskIdCounter_ = 0;
 	std::list<Task> taskQueue_;
@@ -80,11 +79,6 @@ private:
 	std::map<unsigned int, int> finishedTasks_; // { task-id => exit-value }
 	std::vector<int> failedRetVal_;
 
-private:
-	bool WaitForTask();
-	void Notify();
-	void NotifyAll();
-private:
 	std::mutex mutexWorker_;
 	std::condition_variable condWorker_;
 	unsigned int countWorker_ = 0;
