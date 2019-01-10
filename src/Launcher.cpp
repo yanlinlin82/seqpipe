@@ -108,7 +108,7 @@ void Launcher::CheckFinishedTasks()
 		auto taskId = it->first;
 		auto retVal = it->second;
 
-		for (auto& info : workflowThreads_) {
+		for (auto& info : runningTasks_) {
 			if (info.waitingFor_.find(taskId) != info.waitingFor_.end()) {
 				const Statement& block = *info.block_;
 				const Statement& item = block.GetItems()[info.itemIndex_];
@@ -126,7 +126,7 @@ void Launcher::CheckFinishedTasks()
 		it = finishedTasks_.erase(it);
 	}
 
-	for (auto& info : workflowThreads_) {
+	for (auto& info : runningTasks_) {
 		if (info.finished_ && info.waitingFor_.empty()) {
 			const Statement& block = *info.block_;
 			if (block.IsParallel()) {
@@ -139,27 +139,27 @@ void Launcher::CheckFinishedTasks()
 	}
 }
 
-void Launcher::PostStatementToThreads(const Statement& block, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
+void Launcher::PostStatementToThreads(const Statement& block, Task& info, std::list<Task>& newThreads,
 		const std::string& indent, const ProcArgs& procArgs)
 {
 	if (block.IsParallel()) {
 		for (size_t i = 0; i < block.GetItems().size(); ++i) {
 			++taskIdCounter_;
-			newThreads.push_back(WorkflowThread(&block, i, indent, procArgs, taskIdCounter_));
+			newThreads.push_back(Task(&block, i, indent, procArgs, taskIdCounter_));
 			info.waitingFor_.insert(taskIdCounter_);
 		}
 	} else {
 		++taskIdCounter_;
-		newThreads.push_back(WorkflowThread(&block, 0, indent, procArgs, taskIdCounter_));
+		newThreads.push_back(Task(&block, 0, indent, procArgs, taskIdCounter_));
 		info.waitingFor_.insert(taskIdCounter_);
 	}
 }
 
 void Launcher::PostNextTasks()
 {
-	std::list<WorkflowThread> newThreads;
+	std::list<Task> newThreads;
 
-	for (auto& info : workflowThreads_) {
+	for (auto& info : runningTasks_) {
 		const auto& block = *info.block_;
 		if (info.waitingFor_.empty() && info.retVal_ == 0 && info.itemIndex_ < block.GetItems().size()) {
 			const auto& item = block.GetItems()[info.itemIndex_];
@@ -181,7 +181,7 @@ void Launcher::PostNextTasks()
 			} else {
 				assert(item.Type() == Statement::TYPE_SHELL);
 				++taskIdCounter_;
-				taskQueue_.push_back(WorkflowTask(info.block_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
+				taskQueue_.push_back(Task(info.block_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
 				info.waitingFor_.insert(taskIdCounter_);
 				Notify();
 			}
@@ -189,30 +189,30 @@ void Launcher::PostNextTasks()
 	}
 
 	if (!newThreads.empty()) {
-		workflowThreads_.insert(workflowThreads_.end(), newThreads.begin(), newThreads.end());
+		runningTasks_.insert(runningTasks_.end(), newThreads.begin(), newThreads.end());
 	}
 }
 
 void Launcher::EraseFinishedThreads()
 {
-	for (auto it = workflowThreads_.begin(); it != workflowThreads_.end(); ) {
+	for (auto it = runningTasks_.begin(); it != runningTasks_.end(); ) {
 		const auto& info = *it;
 		const auto& block = *info.block_;
 
 		if (info.retVal_ != 0) {
 			failedRetVal_.push_back(info.retVal_);
 			finishedTasks_[info.taskId_] = info.retVal_;
-			it = workflowThreads_.erase(it);
+			it = runningTasks_.erase(it);
 		} else if (info.itemIndex_ >= block.GetItems().size()) {
 			finishedTasks_[info.taskId_] = info.retVal_;
-			it = workflowThreads_.erase(it);
+			it = runningTasks_.erase(it);
 		} else {
 			++it;
 		}
 	}
 }
 
-bool Launcher::GetTaskFromQueue(WorkflowTask& task)
+bool Launcher::GetTaskFromQueue(Task& task)
 {
 	std::lock_guard<std::mutex> lock(mutex_);
 	if (taskQueue_.empty()) {
@@ -233,7 +233,7 @@ void Launcher::Worker()
 {
 	--waitingWorker_;
 	while (WaitForTask()) {
-		WorkflowTask task;
+		Task task;
 		if (GetTaskFromQueue(task)) {
 			const auto& block = *task.block_;
 			const auto& item = block.GetItems()[task.itemIndex_];
@@ -298,10 +298,10 @@ int Launcher::Run(const ProcArgs& procArgs)
 
 	if (pipeline_.GetDefaultStatement().IsParallel()) {
 		for (size_t i = 0; i < pipeline_.GetDefaultStatement().GetItems().size(); ++i) {
-			workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultStatement(), i, "", procArgs, ++taskIdCounter_)); // add every command of default block (blockIndex = 0)
+			runningTasks_.push_back(Task(&pipeline_.GetDefaultStatement(), i, "", procArgs, ++taskIdCounter_)); // add every command of default block (blockIndex = 0)
 		}
 	} else {
-		workflowThreads_.push_back(WorkflowThread(&pipeline_.GetDefaultStatement(), 0, "", procArgs, ++taskIdCounter_)); // first command (itemIndex = 0) of default block (blockIndex = 0)
+		runningTasks_.push_back(Task(&pipeline_.GetDefaultStatement(), 0, "", procArgs, ++taskIdCounter_)); // first command (itemIndex = 0) of default block (blockIndex = 0)
 	}
 
 	LauncherTimer timer;
@@ -323,7 +323,7 @@ int Launcher::Run(const ProcArgs& procArgs)
 			PostNextTasks();
 			EraseFinishedThreads();
 
-			if (workflowThreads_.empty()) break;
+			if (runningTasks_.empty()) break;
 		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}

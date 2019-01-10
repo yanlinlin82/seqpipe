@@ -12,11 +12,11 @@
 #include "LogFile.h"
 #include "Pipeline.h"
 
-class WorkflowTask
+class Task
 {
 public:
-	WorkflowTask() { }
-	WorkflowTask(const Statement* block, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
+	Task() { }
+	Task(const Statement* block, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
 		block_(block), itemIndex_(itemIndex), indent_(indent), procArgs_(procArgs), taskId_(taskId)
 	{
 	}
@@ -27,15 +27,6 @@ public:
 	ProcArgs procArgs_;
 
 	unsigned int taskId_ = 0;
-};
-
-class WorkflowThread: public WorkflowTask
-{
-public:
-	WorkflowThread(const Statement* block, size_t itemIndex, std::string indent, ProcArgs procArgs, unsigned int taskId):
-		WorkflowTask(block, itemIndex, indent, procArgs, taskId)
-	{
-	}
 
 	bool finished_ = false;
 	std::set<unsigned int> waitingFor_;
@@ -75,17 +66,17 @@ private:
 	void EraseFinishedThreads();
 
 	void Worker();
-	bool GetTaskFromQueue(WorkflowTask& task);
+	bool GetTaskFromQueue(Task& task);
 	void SetTaskFinished(unsigned int taskId, int retVal);
 
-	void PostStatementToThreads(const Statement& block, WorkflowThread& info, std::list<WorkflowThread>& newThreads,
+	void PostStatementToThreads(const Statement& block, Task& info, std::list<Task>& newThreads,
 			const std::string& indent, const ProcArgs& procArgs);
 private:
 	int maxJobNumber_ = 0;
 	std::mutex mutex_;
-	std::list<WorkflowThread> workflowThreads_;
 	unsigned int taskIdCounter_ = 0;
-	std::list<WorkflowTask> taskQueue_;
+	std::list<Task> taskQueue_;
+	std::list<Task> runningTasks_;
 	std::map<unsigned int, int> finishedTasks_; // { task-id => exit-value }
 	std::vector<int> failedRetVal_;
 
