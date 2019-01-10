@@ -14,7 +14,8 @@
 #include "TimeString.h"
 
 Launcher::Launcher(const Pipeline& pipeline, int maxJobNumber, int verbose):
-	pipeline_(pipeline), verbose_(verbose), maxJobNumber_(maxJobNumber)
+	pipeline_(pipeline), verbose_(verbose),
+	maxJobNumber_(maxJobNumber > 0 ? maxJobNumber : std::thread::hardware_concurrency())
 {
 }
 
@@ -305,9 +306,6 @@ int Launcher::Run(const ProcArgs& procArgs)
 
 	LauncherTimer timer;
 
-	if (maxJobNumber_ == 0) {
-		maxJobNumber_ = std::thread::hardware_concurrency();
-	}
 	waitingWorker_ = maxJobNumber_;
 	std::thread threads[maxJobNumber_];
 	for (int i = 0; i < maxJobNumber_; ++i) {
