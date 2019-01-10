@@ -181,13 +181,12 @@ void Launcher::PostNextTasks()
 			} else {
 				assert(item.Type() == Statement::TYPE_SHELL);
 				++taskIdCounter_;
-				taskQueue_.push_back(Task(info.block_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
-				info.waitingFor_.insert(taskIdCounter_);
 				{
-					std::unique_lock<std::mutex> lock(mutexWorker_);
-					++countWorker_;
-					condWorker_.notify_one();
+					std::lock_guard<std::mutex> lock(shellTaskQueueMutex_);
+					shellTaskQueue_.push_back(Task(info.block_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
+					shellTaskQueueCondVar_.notify_one();
 				}
+				info.waitingFor_.insert(taskIdCounter_);
 			}
 		}
 	}
@@ -220,23 +219,18 @@ void Launcher::Worker()
 {
 	--waitingWorker_;
 	for (;;) {
-		{
-			std::unique_lock<std::mutex> lock(mutexWorker_);
-			while (countWorker_ == 0) {
-				condWorker_.wait(lock);
-				if (countWorker_ == 0) {
-					return;
-				}
-			}
-			--countWorker_;
-		}
-
 		Task task;
 		{
-			std::lock_guard<std::mutex> lock(mutex_);
-			assert(!taskQueue_.empty());
-			task = taskQueue_.front();
-			taskQueue_.pop_front();
+			std::unique_lock<std::mutex> lock(shellTaskQueueMutex_);
+			while (shellTaskQueue_.empty() && !runningTasks_.empty()) {
+				shellTaskQueueCondVar_.wait(lock);
+			}
+			if (!shellTaskQueue_.empty()) {
+				task = shellTaskQueue_.front();
+				shellTaskQueue_.pop_front();
+			} else {
+				break;
+			}
 		}
 		const auto& block = *task.block_;
 		const auto& item = block.GetItems()[task.itemIndex_];
@@ -331,8 +325,8 @@ int Launcher::Run(const ProcArgs& procArgs)
 	}
 
 	{
-		std::unique_lock<std::mutex> lock(mutexWorker_);
-		condWorker_.notify_all();
+		std::unique_lock<std::mutex> lock(shellTaskQueueMutex_);
+		shellTaskQueueCondVar_.notify_all();
 	}
 	for (auto& thread : threads) {
 		thread.join();

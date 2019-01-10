@@ -72,16 +72,15 @@ private:
 private:
 	int maxJobNumber_ = 0;
 
+	std::mutex shellTaskQueueMutex_;
+	std::condition_variable shellTaskQueueCondVar_;
+	std::list<Task> shellTaskQueue_;
+
 	std::mutex mutex_;
 	unsigned int taskIdCounter_ = 0;
-	std::list<Task> taskQueue_;
 	std::list<Task> runningTasks_;
 	std::map<unsigned int, int> finishedTasks_; // { task-id => exit-value }
 	std::vector<int> failedRetVal_;
-
-	std::mutex mutexWorker_;
-	std::condition_variable condWorker_;
-	unsigned int countWorker_ = 0;
 
 	std::atomic_int waitingWorker_{0};
 };
