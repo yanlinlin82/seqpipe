@@ -133,14 +133,19 @@ void Launcher::Worker()
 				break;
 			}
 		}
-		const auto& block = *task.block_;
-		const auto& item = block.GetItems()[task.itemIndex_];
-		assert(item.Type() == Statement::TYPE_SHELL); // it should only process 'shell cmd' in Worker()
-		int retVal = RunShell(item, task.indent_, task.procArgs_);
-		{
-			std::lock_guard<std::mutex> lock(mutex_);
-			finishedTasks_[task.taskId_] = retVal;
-		}
+		RunTask(task);
+	}
+}
+
+void Launcher::RunTask(const Task& task)
+{
+	const auto& block = *task.block_;
+	const auto& item = block.GetItems()[task.itemIndex_];
+	assert(item.Type() == Statement::TYPE_SHELL); // it should only process 'shell cmd' in Worker()
+	int retVal = RunShell(item, task.indent_, task.procArgs_);
+	{
+		std::scoped_lock<std::mutex> lock(mutex_);
+		finishedTasks_[task.taskId_] = retVal;
 	}
 }
 
@@ -210,7 +215,7 @@ int Launcher::Run(const ProcArgs& procArgs)
 
 	for (;;) {
 		{
-			std::lock_guard<std::mutex> lock(mutex_);
+			std::scoped_lock<std::mutex> lock(mutex_);
 
 			for (auto it = finishedTasks_.begin(); it != finishedTasks_.end(); ) {
 				auto taskId = it->first;
@@ -269,7 +274,7 @@ int Launcher::Run(const ProcArgs& procArgs)
 						assert(item.Type() == Statement::TYPE_SHELL);
 						++taskIdCounter_;
 						{
-							std::lock_guard<std::mutex> lock(shellTaskQueueMutex_);
+							std::scoped_lock<std::mutex> lock(shellTaskQueueMutex_);
 							shellTaskQueue_.push_back(Task(info.block_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
 							shellTaskQueueCondVar_.notify_one();
 						}
@@ -326,7 +331,7 @@ int Launcher::Run(const ProcArgs& procArgs)
 bool Launcher::PrepareToRun()
 {
 	Semaphore sem("/seqpipe." + System::GetUserName());
-	std::lock_guard<Semaphore> lock(sem);
+	std::scoped_lock<Semaphore> lock(sem);
 
 	if (!System::EnsureDirectory(LOG_ROOT)) {
 		std::cerr << "Error: Can not prepare directory '" << LOG_ROOT << "'!" << std::endl;

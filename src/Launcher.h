@@ -63,6 +63,7 @@ private:
 private:
 	void Worker();
 	void PostTask(const Statement& block, Task& info, const std::string& indent, const ProcArgs& procArgs);
+	void RunTask(const Task& task);
 private:
 	int maxJobNumber_ = 0;
 
