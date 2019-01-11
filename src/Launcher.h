@@ -12,6 +12,24 @@
 #include "LogFile.h"
 #include "Pipeline.h"
 
+class ShellTask
+{
+public:
+	ShellTask() { }
+	ShellTask(unsigned int id, const std::string& name, const std::string& cmdLine, const std::string& indent, unsigned int taskId):
+		id_(id), name_(name), cmdLine_(cmdLine), indent_(indent), taskId_(taskId)
+	{ }
+
+	int Run(LogFile& logFile, const std::string& logDir, int verbose_);
+	unsigned int GetTaskId() const { return taskId_; }
+private:
+	unsigned int id_ = 0;
+	std::string name_;
+	std::string cmdLine_;
+	std::string indent_;
+	unsigned int taskId_ = 0;
+};
+
 class Task
 {
 public:
@@ -45,7 +63,7 @@ public:
 
 	int Run(const ProcArgs& procArgs);
 private:
-	int RunShell(const Statement& item, std::string indent, const ProcArgs& procArgs);
+	int RunShell(unsigned int id, const Statement& item, std::string indent, const ProcArgs& procArgs);
 
 	bool WriteToHistoryLog();
 	bool CreateLastSymbolicLink();
@@ -63,26 +81,18 @@ private:
 	int verbose_;
 
 private:
-	void ShellWorker();
-	void PostTask(const Statement& block, Task& info, const std::string& indent, const ProcArgs& procArgs);
-	void RunShellTask(const Task& shellTask);
-
 	void Worker();
-	void RunTask(Task& task);
+	void PostTask(const Statement& block, Task& info, const std::string& indent, const ProcArgs& procArgs);
 private:
 	int maxJobNumber_ = 0;
 
 	std::mutex shellTaskQueueMutex_;
 	std::condition_variable shellTaskQueueCondVar_;
-	std::list<Task> shellTaskQueue_;
+	std::list<ShellTask> shellTaskQueue_;
 
 	std::mutex mutex_;
 	unsigned int taskIdCounter_ = 0;
 	std::list<Task> runningTasks_;
 	std::map<unsigned int, int> finishedTasks_; // { task-id => exit-value }
 	std::vector<int> failedRetVal_;
-
-	std::mutex mutex2_;
-	std::condition_variable cv2_;
-	Task rootTask_;
 };
