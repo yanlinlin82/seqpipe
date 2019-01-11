@@ -217,7 +217,6 @@ void Launcher::EraseFinishedThreads()
 
 void Launcher::Worker()
 {
-	--waitingWorker_;
 	for (;;) {
 		Task task;
 		{
@@ -302,13 +301,9 @@ int Launcher::Run(const ProcArgs& procArgs)
 
 	LauncherTimer timer;
 
-	waitingWorker_ = maxJobNumber_;
 	std::thread threads[maxJobNumber_];
 	for (int i = 0; i < maxJobNumber_; ++i) {
 		threads[i] = std::thread(&Launcher::Worker, std::ref(*this));
-	}
-	while (waitingWorker_ > 0) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
 	for (;;) {

@@ -81,6 +81,4 @@ private:
 	std::list<Task> runningTasks_;
 	std::map<unsigned int, int> finishedTasks_; // { task-id => exit-value }
 	std::vector<int> failedRetVal_;
-
-	std::atomic_int waitingWorker_{0};
 };
