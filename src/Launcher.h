@@ -61,14 +61,8 @@ private:
 	int verbose_;
 
 private:
-	void CheckFinishedTasks();
-	void PostNextTasks();
-	void EraseFinishedThreads();
-
 	void Worker();
-
-	void PostStatementToThreads(const Statement& block, Task& info, std::list<Task>& newThreads,
-			const std::string& indent, const ProcArgs& procArgs);
+	void PostTask(const Statement& block, Task& info, const std::string& indent, const ProcArgs& procArgs);
 private:
 	int maxJobNumber_ = 0;
 
