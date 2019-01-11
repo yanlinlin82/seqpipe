@@ -21,6 +21,8 @@ public:
 	{
 	}
 
+	void SetEnd(LogFile& logFile, unsigned int taskId, int retVal);
+
 	const Statement* block_ = nullptr;
 	size_t itemIndex_ = 0;
 	std::string indent_ = "";
@@ -61,9 +63,12 @@ private:
 	int verbose_;
 
 private:
-	void Worker();
+	void ShellWorker();
 	void PostTask(const Statement& block, Task& info, const std::string& indent, const ProcArgs& procArgs);
-	void RunTask(const Task& task);
+	void RunShellTask(const Task& shellTask);
+
+	void Worker();
+	void RunTask(Task& task);
 private:
 	int maxJobNumber_ = 0;
 
@@ -76,4 +81,8 @@ private:
 	std::list<Task> runningTasks_;
 	std::map<unsigned int, int> finishedTasks_; // { task-id => exit-value }
 	std::vector<int> failedRetVal_;
+
+	std::mutex mutex2_;
+	std::condition_variable cv2_;
+	Task rootTask_;
 };

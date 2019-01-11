@@ -102,50 +102,69 @@ std::string Launcher::GetUniqueId()
 	return (text + System::GetHostname());
 }
 
-void Launcher::PostTask(const Statement& block, Task& info, const std::string& indent, const ProcArgs& procArgs)
+void Launcher::PostTask(const Statement& block, Task& task, const std::string& indent, const ProcArgs& procArgs)
 {
 	if (block.IsParallel()) {
 		for (size_t i = 0; i < block.GetItems().size(); ++i) {
 			++taskIdCounter_;
 			runningTasks_.push_back(Task(&block, i, indent, procArgs, taskIdCounter_));
-			info.waitingFor_.insert(taskIdCounter_);
+			task.waitingFor_.insert(taskIdCounter_);
 		}
 	} else {
 		++taskIdCounter_;
 		runningTasks_.push_back(Task(&block, 0, indent, procArgs, taskIdCounter_));
-		info.waitingFor_.insert(taskIdCounter_);
+		task.waitingFor_.insert(taskIdCounter_);
 	}
 }
 
-void Launcher::Worker()
+void Task::SetEnd(LogFile& logFile, unsigned int taskId, int retVal)
+{
+	if (waitingFor_.find(taskId) != waitingFor_.end()) {
+		if (block_) {
+			const Statement& block = *block_;
+			const Statement& item = block.GetItems()[itemIndex_];
+			if (item.Type() == Statement::TYPE_PROC) {
+				timer_.Stop();
+				logFile.WriteLine(Msg() << indent_ << "(" << id_ << ") ends at " << timer_.EndTime() << " (elapsed: " << timer_.Elapse() << ")");
+			}
+		}
+		retVal_ = retVal; // TODO: save multiple retVal
+		waitingFor_.erase(taskId);
+		if (waitingFor_.empty()) {
+			finished_ = true;
+		}
+	}
+}
+
+void Launcher::ShellWorker()
 {
 	for (;;) {
-		Task task;
+		Task shellTask;
 		{
 			std::unique_lock<std::mutex> lock(shellTaskQueueMutex_);
 			while (shellTaskQueue_.empty() && !runningTasks_.empty()) {
 				shellTaskQueueCondVar_.wait(lock);
 			}
 			if (!shellTaskQueue_.empty()) {
-				task = shellTaskQueue_.front();
+				shellTask = shellTaskQueue_.front();
 				shellTaskQueue_.pop_front();
 			} else {
 				break;
 			}
 		}
-		RunTask(task);
+		RunShellTask(shellTask);
 	}
 }
 
-void Launcher::RunTask(const Task& task)
+void Launcher::RunShellTask(const Task& shellTask)
 {
-	const auto& block = *task.block_;
-	const auto& item = block.GetItems()[task.itemIndex_];
-	assert(item.Type() == Statement::TYPE_SHELL); // it should only process 'shell cmd' in Worker()
-	int retVal = RunShell(item, task.indent_, task.procArgs_);
+	const auto& block = *shellTask.block_;
+	const auto& item = block.GetItems()[shellTask.itemIndex_];
+	assert(item.Type() == Statement::TYPE_SHELL); // it should only process 'shell cmd' in ShellWorker()
+	int retVal = RunShell(item, shellTask.indent_, shellTask.procArgs_);
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
-		finishedTasks_[task.taskId_] = retVal;
+		finishedTasks_[shellTask.taskId_] = retVal;
 	}
 }
 
@@ -177,6 +196,103 @@ bool Launcher::RecordSysInfo(const std::string& filename)
 	return true;
 }
 
+void Launcher::RunTask(Task& task)
+{
+	const Statement& block = *task.block_;
+
+	if (task.finished_ && task.waitingFor_.empty()) {
+		if (block.IsParallel()) {
+			task.itemIndex_ = block.GetItems().size();
+		} else {
+			++task.itemIndex_;
+			task.finished_ = false;
+		}
+	}
+
+	if (task.waitingFor_.empty() && task.retVal_ == 0 && task.itemIndex_ < block.GetItems().size()) {
+		const auto& item = block.GetItems()[task.itemIndex_];
+		if (item.Type() == Statement::TYPE_BLOCK) {
+			PostTask(item, task, task.indent_, task.procArgs_);
+		} else if (item.Type() == Statement::TYPE_PROC) {
+			unsigned int id = counter_.FetchId();
+			const auto name = std::to_string(id) + "." + item.ProcName();
+
+			task.timer_.Start();
+			task.id_ = id;
+			logFile_.WriteLine(Msg() << task.indent_ << "(" << id << ") [pipeline] " << item.ProcName() << item.GetProcArgs().ToString());
+			logFile_.WriteLine(Msg() << task.indent_ << "(" << id << ") starts at " << task.timer_.StartTime());
+
+			WriteStringToFile(logDir_ + "/" + name + ".call", item.ProcName());
+
+			++taskIdCounter_;
+			PostTask(pipeline_.GetStatement(item.ProcName()), task, task.indent_ + "  ", item.GetProcArgs());
+		} else {
+			assert(item.Type() == Statement::TYPE_SHELL);
+			++taskIdCounter_;
+			{
+				std::scoped_lock<std::mutex> lock(shellTaskQueueMutex_);
+				shellTaskQueue_.push_back(Task(task.block_, task.itemIndex_, task.indent_, task.procArgs_, taskIdCounter_));
+				shellTaskQueueCondVar_.notify_one();
+			}
+			task.waitingFor_.insert(taskIdCounter_);
+		}
+	}
+}
+
+void Launcher::Worker()
+{
+	for (;;) {
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
+
+			for (auto& task : runningTasks_) {
+				RunTask(task);
+			}
+
+			for (auto it = runningTasks_.begin(); it != runningTasks_.end(); ) {
+				const auto& task = *it;
+				const auto& block = *task.block_;
+
+				if (task.retVal_ != 0) {
+					failedRetVal_.push_back(task.retVal_);
+					finishedTasks_[task.taskId_] = task.retVal_;
+					it = runningTasks_.erase(it);
+				} else if (task.itemIndex_ >= block.GetItems().size()) {
+					finishedTasks_[task.taskId_] = task.retVal_;
+					it = runningTasks_.erase(it);
+				} else {
+					++it;
+				}
+			}
+
+			for (auto it = finishedTasks_.begin(); it != finishedTasks_.end(); ) {
+				auto taskId = it->first;
+				auto retVal = it->second;
+
+				{
+					std::scoped_lock<std::mutex> lock(mutex2_);
+					rootTask_.SetEnd(logFile_, taskId, retVal);
+					if (rootTask_.waitingFor_.empty()) {
+						cv2_.notify_one();
+					}
+				}
+				for (auto& task : runningTasks_) {
+					task.SetEnd(logFile_, taskId, retVal);
+				}
+				it = finishedTasks_.erase(it);
+			}
+
+			if (runningTasks_.empty()) break;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+
+	{
+		std::unique_lock<std::mutex> lock(shellTaskQueueMutex_);
+		shellTaskQueueCondVar_.notify_all();
+	}
+}
+
 int Launcher::Run(const ProcArgs& procArgs)
 {
 	SetSigAction();
@@ -198,115 +314,24 @@ int Launcher::Run(const ProcArgs& procArgs)
 	logFile_.Initialize(logDir_ + "/log");
 	logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] " << System::GetFullCommandLine());
 
-	if (pipeline_.GetDefaultStatement().IsParallel()) {
-		for (size_t i = 0; i < pipeline_.GetDefaultStatement().GetItems().size(); ++i) {
-			runningTasks_.push_back(Task(&pipeline_.GetDefaultStatement(), i, "", procArgs, ++taskIdCounter_)); // add every command of default block (blockIndex = 0)
-		}
-	} else {
-		runningTasks_.push_back(Task(&pipeline_.GetDefaultStatement(), 0, "", procArgs, ++taskIdCounter_)); // first command (itemIndex = 0) of default block (blockIndex = 0)
-	}
+	PostTask(pipeline_.GetDefaultStatement(), rootTask_, "", procArgs);
 
 	LauncherTimer timer;
 
 	std::thread workers[maxJobNumber_];
+	std::thread workers2[maxJobNumber_];
 	for (int i = 0; i < maxJobNumber_; ++i) {
-		workers[i] = std::thread(&Launcher::Worker, std::ref(*this));
+		workers[i] = std::thread(&Launcher::ShellWorker, std::ref(*this));
+		workers2[i] = std::thread(&Launcher::Worker, std::ref(*this));
 	}
-
-	for (;;) {
-		{
-			std::scoped_lock<std::mutex> lock(mutex_);
-
-			for (auto it = finishedTasks_.begin(); it != finishedTasks_.end(); ) {
-				auto taskId = it->first;
-				auto retVal = it->second;
-
-				for (auto& info : runningTasks_) {
-					if (info.waitingFor_.find(taskId) != info.waitingFor_.end()) {
-						const Statement& block = *info.block_;
-						const Statement& item = block.GetItems()[info.itemIndex_];
-						if (item.Type() == Statement::TYPE_PROC) {
-							info.timer_.Stop();
-							logFile_.WriteLine(Msg() << info.indent_ << "(" << info.id_ << ") ends at " << info.timer_.EndTime() << " (elapsed: " << info.timer_.Elapse() << ")");
-						}
-						info.retVal_ = retVal; // TODO: save multiple retVal
-						info.waitingFor_.erase(taskId);
-						if (info.waitingFor_.empty()) {
-							info.finished_ = true;
-						}
-					}
-				}
-				it = finishedTasks_.erase(it);
-			}
-
-			for (auto& info : runningTasks_) {
-				if (info.finished_ && info.waitingFor_.empty()) {
-					const Statement& block = *info.block_;
-					if (block.IsParallel()) {
-						info.itemIndex_ = block.GetItems().size();
-					} else {
-						++info.itemIndex_;
-						info.finished_ = false;
-					}
-				}
-			}
-
-			for (auto& info : runningTasks_) {
-				const auto& block = *info.block_;
-				if (info.waitingFor_.empty() && info.retVal_ == 0 && info.itemIndex_ < block.GetItems().size()) {
-					const auto& item = block.GetItems()[info.itemIndex_];
-					if (item.Type() == Statement::TYPE_BLOCK) {
-						PostTask(item, info, info.indent_, info.procArgs_);
-					} else if (item.Type() == Statement::TYPE_PROC) {
-						unsigned int id = counter_.FetchId();
-						const auto name = std::to_string(id) + "." + item.ProcName();
-
-						info.timer_.Start();
-						info.id_ = id;
-						logFile_.WriteLine(Msg() << info.indent_ << "(" << id << ") [pipeline] " << item.ProcName() << item.GetProcArgs().ToString());
-						logFile_.WriteLine(Msg() << info.indent_ << "(" << id << ") starts at " << info.timer_.StartTime());
-
-						WriteStringToFile(logDir_ + "/" + name + ".call", item.ProcName());
-
-						++taskIdCounter_;
-						PostTask(pipeline_.GetStatement(item.ProcName()), info, info.indent_ + "  ", item.GetProcArgs());
-					} else {
-						assert(item.Type() == Statement::TYPE_SHELL);
-						++taskIdCounter_;
-						{
-							std::scoped_lock<std::mutex> lock(shellTaskQueueMutex_);
-							shellTaskQueue_.push_back(Task(info.block_, info.itemIndex_, info.indent_, info.procArgs_, taskIdCounter_));
-							shellTaskQueueCondVar_.notify_one();
-						}
-						info.waitingFor_.insert(taskIdCounter_);
-					}
-				}
-			}
-
-			for (auto it = runningTasks_.begin(); it != runningTasks_.end(); ) {
-				const auto& info = *it;
-				const auto& block = *info.block_;
-
-				if (info.retVal_ != 0) {
-					failedRetVal_.push_back(info.retVal_);
-					finishedTasks_[info.taskId_] = info.retVal_;
-					it = runningTasks_.erase(it);
-				} else if (info.itemIndex_ >= block.GetItems().size()) {
-					finishedTasks_[info.taskId_] = info.retVal_;
-					it = runningTasks_.erase(it);
-				} else {
-					++it;
-				}
-			}
-
-			if (runningTasks_.empty()) break;
-		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
-
 	{
-		std::unique_lock<std::mutex> lock(shellTaskQueueMutex_);
-		shellTaskQueueCondVar_.notify_all();
+		std::unique_lock<std::mutex> lock(mutex2_);
+		while (!rootTask_.waitingFor_.empty()) {
+			cv2_.wait(lock);
+		}
+	}
+	for (auto& worker : workers2) {
+		worker.join();
 	}
 	for (auto& worker : workers) {
 		worker.join();
