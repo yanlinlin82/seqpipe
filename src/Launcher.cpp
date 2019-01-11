@@ -57,9 +57,9 @@ static std::string ExpandArgs(const std::string& s, const ProcArgs& procArgs)
 
 int ShellTask::Run(LogFile& logFile, const std::string& logDir, int verbose_)
 {
-	logFile.WriteLine(Msg() << indent_ << "(" << id_ << ") [shell] " << cmdLine_);
+	logFile.WriteLine(Msg() << indent_ << "(" << shellId_ << ") [shell] " << cmdLine_);
 	LauncherTimer timer;
-	logFile.WriteLine(Msg() << indent_ << "(" << id_ << ") starts at " << timer.StartTime());
+	logFile.WriteLine(Msg() << indent_ << "(" << shellId_ << ") starts at " << timer.StartTime());
 
 	WriteStringToFile(logDir + "/" + name_ + ".cmd", cmdLine_);
 
@@ -74,16 +74,16 @@ int ShellTask::Run(LogFile& logFile, const std::string& logDir, int verbose_)
 	int retVal = System::Execute(fullCmdLine.c_str());
 
 	timer.Stop();
-	logFile.WriteLine(Msg() << indent_ << "(" << id_ << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
+	logFile.WriteLine(Msg() << indent_ << "(" << shellId_ << ") ends at " << timer.EndTime() << " (elapsed: " << timer.Elapse() << ")");
 
 	if (retVal != 0) {
-		logFile.WriteLine(Msg() << indent_ << "(" << id_ << ") returns " << retVal);
+		logFile.WriteLine(Msg() << indent_ << "(" << shellId_ << ") returns " << retVal);
 		return retVal;
 	}
 	return 0;
 }
 
-std::string Launcher::GetUniqueId()
+std::string Launcher::GenerateSessionId()
 {
 	char text[64] = "";
 	time_t now = time(NULL);
@@ -118,7 +118,7 @@ void Task::SetEnd(LogFile& logFile, unsigned int taskId, int retVal)
 			const Statement& item = block.GetItems()[itemIndex_];
 			if (item.Type() == Statement::TYPE_PROC) {
 				timer_.Stop();
-				logFile.WriteLine(Msg() << indent_ << "(" << id_ << ") ends at " << timer_.EndTime() << " (elapsed: " << timer_.Elapse() << ")");
+				logFile.WriteLine(Msg() << indent_ << "(" << shellId_ << ") ends at " << timer_.EndTime() << " (elapsed: " << timer_.Elapse() << ")");
 			}
 		}
 		retVal_ = retVal; // TODO: save multiple retVal
@@ -185,8 +185,8 @@ int Launcher::Run(const ProcArgs& procArgs)
 {
 	SetSigAction();
 
-	uniqueId_ = GetUniqueId();
-	logDir_ = LOG_ROOT + "/" + uniqueId_;
+	sessionId_ = GenerateSessionId();
+	logDir_ = LOG_ROOT + "/" + sessionId_;
 
 	if (!PrepareToRun()) {
 		return 1;
@@ -200,7 +200,7 @@ int Launcher::Run(const ProcArgs& procArgs)
 	}
 
 	logFile_.Initialize(logDir_ + "/log");
-	logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] " << System::GetFullCommandLine());
+	logFile_.WriteLine(Msg() << "[" << sessionId_ << "] " << System::GetFullCommandLine());
 
 	Task rootTask;
 	PostTask(pipeline_.GetDefaultStatement(), rootTask, "", procArgs);
@@ -233,13 +233,13 @@ int Launcher::Run(const ProcArgs& procArgs)
 					if (item.Type() == Statement::TYPE_BLOCK) {
 						PostTask(item, task, task.indent_, task.procArgs_);
 					} else if (item.Type() == Statement::TYPE_PROC) {
-						unsigned int id = counter_.FetchId();
-						const auto name = std::to_string(id) + "." + item.ProcName();
+						unsigned int shellId = ++shellIdCounter_;
+						const auto name = std::to_string(shellId) + "." + item.ProcName();
 
 						task.timer_.Start();
-						task.id_ = id;
-						logFile_.WriteLine(Msg() << task.indent_ << "(" << id << ") [pipeline] " << item.ProcName() << item.GetProcArgs().ToString());
-						logFile_.WriteLine(Msg() << task.indent_ << "(" << id << ") starts at " << task.timer_.StartTime());
+						task.shellId_ = shellId;
+						logFile_.WriteLine(Msg() << task.indent_ << "(" << shellId << ") [pipeline] " << item.ProcName() << item.GetProcArgs().ToString());
+						logFile_.WriteLine(Msg() << task.indent_ << "(" << shellId << ") starts at " << task.timer_.StartTime());
 
 						WriteStringToFile(logDir_ + "/" + name + ".call", item.ProcName());
 
@@ -250,11 +250,11 @@ int Launcher::Run(const ProcArgs& procArgs)
 						++taskIdCounter_;
 						{
 							std::scoped_lock<std::mutex> lock(shellTaskQueueMutex_);
-							unsigned int id = counter_.FetchId();
-							const std::string name = std::to_string(id) + "." + item.Name();
+							unsigned int shellId = ++shellIdCounter_;
+							const std::string name = std::to_string(shellId) + "." + item.Name();
 							std::string cmdLine = item.ShellCmd();
 							cmdLine = ExpandArgs(cmdLine, task.procArgs_);
-							shellTaskQueue_.push_back(ShellTask(id, name, cmdLine, task.indent_, taskIdCounter_));
+							shellTaskQueue_.push_back(ShellTask(shellId, name, cmdLine, task.indent_, taskIdCounter_));
 							shellTaskQueueCondVar_.notify_one();
 						}
 						task.waitingFor_.insert(taskIdCounter_);
@@ -306,9 +306,9 @@ int Launcher::Run(const ProcArgs& procArgs)
 
 	timer.Stop();
 	if (retVal != 0) {
-		logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");
+		logFile_.WriteLine(Msg() << "[" << sessionId_ << "] Pipeline finished abnormally with exit value: " << retVal << "! (elapsed: " << timer.Elapse() << ")");
 	} else {
-		logFile_.WriteLine(Msg() << "[" << uniqueId_ << "] Pipeline finished successfully! (elapsed: " << timer.Elapse() << ")");
+		logFile_.WriteLine(Msg() << "[" << sessionId_ << "] Pipeline finished successfully! (elapsed: " << timer.Elapse() << ")");
 	}
 	return retVal;
 }
@@ -347,7 +347,7 @@ bool Launcher::WriteToHistoryLog()
 		return false;
 	}
 
-	file << uniqueId_ << '\t' << System::GetFullCommandLine() << std::endl;
+	file << sessionId_ << '\t' << System::GetFullCommandLine() << std::endl;
 	file.close();
 	return true;
 }
@@ -357,9 +357,9 @@ bool Launcher::CreateLastSymbolicLink()
 	if (System::CheckFileExists(LOG_LAST)) {
 		unlink(LOG_LAST.c_str());
 	}
-	int retVal = symlink(uniqueId_.c_str(), LOG_LAST.c_str());
+	int retVal = symlink(sessionId_.c_str(), LOG_LAST.c_str());
 	if (retVal != 0) {
-		std::cerr << "Warning: Can not create symbolic link '.seqpipe/last' to '" << uniqueId_ << "'! err: " << retVal << std::endl;
+		std::cerr << "Warning: Can not create symbolic link '.seqpipe/last' to '" << sessionId_ << "'! err: " << retVal << std::endl;
 	}
 
 	return true;
