@@ -70,5 +70,5 @@ sinclude ${MODULES:%=tmp/%.d}
 sinclude ${UNIT_MODULES:%=tmp/%.d}
 tmp/%.d: %.cpp
 	@mkdir -p ${@D}
-	@${CXX} -std=c++11 -MM $< -MT ${@:%.d=%.o} | sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' > $@
+	@${CXX} -std=c++17 -MM $< -MT ${@:%.d=%.o} | sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' > $@
 endif
