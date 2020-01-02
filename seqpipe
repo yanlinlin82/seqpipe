@@ -71,7 +71,6 @@ my $test_mode = 0;
 my $show_mode = 0;
 my $verbose = 0;
 
-my $auto_load = 1;
 my $force_run = 0;
 my $keep_temp = 0;
 my $shell = '/bin/bash';
@@ -1476,18 +1475,75 @@ sub run_checker
 	return $yes;
 }
 
+sub get_version_string
+{
+	my $git_hash = '$Id$';
+	my $version_suffix = "";
+	if ($git_hash =~ /Id: (.*) /) {
+		$version_suffix = ' (' . substr($1, 0, 7) . ')';
+	}
+	return "0.6.0-beta$version_suffix";
+}
+
+sub r { my $s = shift // ""; chomp $s; return $s; }
+
+sub get_cpu_info
+{
+	my $s = "<unknown>";
+	if (open my $fh, "<", "/proc/cpuinfo") {
+		my %model = ();
+		while (my $line = <$fh>) {
+			chomp $line;
+			if ($line =~ /^model name\s*:\s*(.*)\s*$/) {
+				++$model{$1};
+			}
+		}
+		$s = join(" + ", map { $model{$_} . " core(s) (" . $_ . ")" } sort keys %model);
+		close $fh;
+	}
+	return $s;
+}
+
+sub get_memory_info
+{
+	my $s = "<unknown>";
+	if (open my $fh, "<", "/proc/meminfo") {
+		while (my $line = <$fh>) {
+			next if $line !~ /^MemTotal:\s*([0-9]*)/;
+			last if $1 < 0;
+			return "0" if $1 == 0;
+			return $1 . " KB" if $1 < 1024 * 10;
+			return sprintf("%.1f", $1 / 1024) . " MB" if $1 < 1024 * 1024 * 10;
+			return sprintf("%.1f", $1 / 1024 / 1024) . " GB";
+		}
+	}
+	return $s;
+}
+
 sub run_sysinfo
 {
-	# TODO: should 'sysinfo' procedures use 'SP_xxx' primitives?
-	my ($proc_name) = @_;
-	my @cmds = ();
-	foreach my $cmd_ref (@{$procs_ref->{$proc_name}->{commands}}) {
-		push @cmds, check_text($cmd_ref->{command}, (), (),
-			$global_vars_list_ref->{$cmd_ref->{file}}, {});
-	}
-	if (open my $fh, '|-', $shell) {
+	if (open my $fh, '>>', "$LOG_DIR/sysinfo") {
 		flock $fh, LOCK_EX;
-		print $fh join("\n", "(", @cmds, ") 2>&1 >>$LOG_DIR/sysinfo");
+		print $fh "# seqpipe sysinfo log (version=1.0)
+
+system:
+  uname   : " . r(`uname -s -r -m`) . "
+  date    : " . r(`date '+%Y-%m-%d %H:%M:%S'`) . "
+  pwd     : " . r(`pwd`) . "
+  cpu     : " . get_cpu_info() . "
+  memory  : " . get_memory_info() . "
+  user    : " . ($ENV{USER} // "") . "
+  uid     : " . r(`id -u`) . "
+  gid     : " . r(`id -g`) . "
+  login   : " . r(`logname 2>/dev/null`) . "
+  hostname: " . r(`hostname`) . "
+  shell   : " . ($ENV{SHELL} // "") . "
+
+seqpipe:
+  version : " . get_version_string() . "
+  path    : " . abs_path($0) . "
+
+";
 		flock $fh, LOCK_UN;
 		close $fh;
 	}
@@ -2049,24 +2105,15 @@ sub list_proc
 		print "   $name\n" if $name =~ /$proc_name/;
 	}
 	print "\n";
-	print "Use '-L' to show all system-defined procedures\n\n" if $list_mode == 1 and $auto_load;
 }
 
 sub print_usage
 {
-	my $git_hash = '$Id$';
-	my $version_suffix = "";
-	if ($git_hash =~ /Id: (.*) /) {
-		$version_suffix = ' (' . substr($1, 0, 7) . ')';
-	}
-
 	print "
-SeqPipe: a SEQuencing data analysis PIPEline framework
-Version: 0.4.17$version_suffix
-Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)
-Copyright: 2012-2017, Centre for Bioinformatics, Peking University, China
-Websites: http://github.com/yanlinlin82/seqpipe
-          http://www.cbi.pku.edu.cn
+SeqPipe  : a sequencing data analysis pipeline framework
+Version  : " . get_version_string() . "
+Copyright: 2012-2019 Linlin Yan <yanlinlin82\@gmail.com>
+Websites : http://github.com/yanlinlin82/seqpipe
 
 Usage:
    seqpipe [options] <procedure> [NAME=VALUE ...]
@@ -2088,8 +2135,6 @@ Options:
    -R                   Show the raw procedure declaration.
    -T                   Test mode, show commands rather than execute them.
 
-Visit 'https://github.com/yanlinlin82/seqpipe/tree/cpp-v0.5' for new unpublished version.
-
 ";
 }
 
@@ -2097,7 +2142,7 @@ Visit 'https://github.com/yanlinlin82/seqpipe/tree/cpp-v0.5' for new unpublished
 # Main program start from here.
 
 # Parse command line
-my $command_line = bash_line_encode(abs_path($0), @ARGV);
+my $command_line = bash_line_encode($0, @ARGV);
 my @module_files = ();
 my @exec_cmds = ();
 my $exec_parallel = 0;
@@ -2112,7 +2157,6 @@ my $actions = {
 	'-L' => sub { $list_mode = 2 if $list_mode < 2; },
 	'-T' => sub { $test_mode = 1; },
 	'-R' => sub { $show_mode = 1; },
-	'-D' => sub { $auto_load = 0; },
 	'-f' => sub { $force_run = 1; },
 	'-k' => sub { $keep_temp = 1; },
 	'-v' => sub {
@@ -2189,9 +2233,6 @@ die "Can not use both '-e' and '<proc_name>'!" if $proc_name and @exec_cmds;
 
 # Load modules
 $list_mode = 2 if $list_mode and (scalar @module_files == 0);
-if ($auto_load) {
-	load_module $_, 0 foreach sort glob "$APP_ROOT/*.pipe";
-}
 load_module $_, 1 foreach get_all_pipe @module_files;
 
 # List procedures
@@ -2274,13 +2315,7 @@ if (not $test_mode) {
 	log_print "[$UNIQ_ID] $command_line\n";
 
 	# Write sysinfo log
-	foreach my $name (keys %{$procs_ref}) {
-		if ($name =~ /_sysinfo$/) {
-			if ($name eq '_sysinfo' or ($proc_name and $procs_ref->{$name}{file} eq $procs_ref->{$proc_name}{file})) {
-				run_sysinfo $name;
-			}
-		}
-	}
+	run_sysinfo;
 }
 
 # Run the pipeline
