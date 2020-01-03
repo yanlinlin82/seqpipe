@@ -2204,11 +2204,6 @@ my $actions = {
 		$shell = shift @ARGV;
 		die "Empty shell command is not allowed!" if $shell =~ /^\s*$/;
 	},
-	'--logo' => sub {
-		print join("\n", (' ___             _', '/ _ \ __ ___ ___(_)___  __', '\ \_  _ \   |   \ |   \ _ \ ',
-				'  _ \ __/ | | | | | | | __/', '\___/___ \_ | _  _| _ \___', '          |_|_|   |_|')), "\n";
-		exit 0;
-	},
 	'_DEFAULT_' => sub { die "Unknown option '$_[0]'!"; }
 };
 $actions->{'--help'} = $actions->{'-h'}; # allow option '--help'
