@@ -2211,6 +2211,7 @@ my $actions = {
 	},
 	'_DEFAULT_' => sub { die "Unknown option '$_[0]'!"; }
 };
+$actions->{'--help'} = $actions->{'-h'}; # allow option '--help'
 
 $help_mode = 1 if $#ARGV < 0;
 while (my $arg = shift @ARGV) {
