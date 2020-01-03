@@ -63,6 +63,11 @@ my %FILE_ATTRS = (
 	'output.temp' => 'temp', 'output.save' => 'final', 'output.final' => 'final' );
 
 ############################################################
+# Helper Functions
+
+sub r { my $s = shift // ""; chomp $s; return $s; }
+
+############################################################
 # Command line parsing results.
 
 my $help_mode = 0;
@@ -75,7 +80,7 @@ my $force_run = 0;
 my $keep_temp = 0;
 my $shell = '/bin/bash';
 
-my $max_thread_number = 1;
+my $max_thread_number = r(`cat /proc/cpuinfo| grep "processor"| wc -l`);
 my $thread_number :shared = 0;
 
 my $procs_ref = {};  # All procedures are loaded at startup.
@@ -1484,8 +1489,6 @@ sub get_version_string
 	}
 	return "0.6.0-beta$version_suffix";
 }
-
-sub r { my $s = shift // ""; chomp $s; return $s; }
 
 sub get_cpu_info
 {
