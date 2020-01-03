@@ -127,49 +127,6 @@ sub time_elapse_string
 ############################################################
 # Log out functions
 
-sub set_die_verbose
-{
-	my $stub = q{
-		sub {
-			my $msg = $_[0];
-			$msg =~ s/( at .+ line \d+\.\n)$/\n__REPLACE__/m;
-			die "ERROR: ", $msg;
-		}
-	};
-	if ($_[0]) {
-		$stub =~ s/__REPLACE__/   Failed\$1/m;
-	} else {
-		$stub =~ s/__REPLACE__//m;
-	}
-	$SIG{__DIE__} = eval $stub;
-}
-
-sub set_warn_verbose
-{
-	my $warned = {};  # show only one message for each warning type
-	my $stub = q{
-		sub {
-			my $msg = $_[0];
-			$msg =~ s/^(.*)( in .+\(\d+\).*)(\n.*|)( at .+ line \d+\.\n)$/$1$2$3\n__REPLACE__/m;
-			warn "WARNING: ", $msg unless exists $warned->{$1};
-			$warned->{$1} = 1;
-		}
-	};
-	if ($_[0]) {
-		$stub =~ s/__REPLACE__/   Occurred\$4/m;
-	} else {
-		$stub =~ s/__REPLACE__//m;
-	}
-	$SIG{__WARN__} = eval $stub;
-}
-
-sub set_verbose
-{
-	set_die_verbose @_;
-	set_warn_verbose @_;
-}
-set_verbose 0;
-
 my $log_print_ref  = \&print;
 my $log_printf_ref = \&printf;
 
@@ -2180,7 +2137,7 @@ my $actions = {
 	'-f' => sub { $force_run = 1; },
 	'-k' => sub { $keep_temp = 1; },
 	'-v' => sub {
-		set_verbose ++$verbose;
+		++$verbose;
 		$| = 1;  # flush output immediately
 	},
 	'-t' => sub {
