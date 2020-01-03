@@ -70,7 +70,6 @@ my %FILE_ATTRS = (
 my $help_mode = 0;
 my $list_mode = 0;
 my $test_mode = 0;
-my $show_mode = 0;
 my $verbose = 0;
 
 my $force_run = 0;
@@ -2072,6 +2071,9 @@ Try 'seqpipe <cmd> -h' to see help message for specific command.
 sub print_run_usage_and_exit
 {
 	print "
+Usage:
+   seqpipe [run] [options] <workflow.pipe> [procedure] [KEY=VALUE ...]
+   seqpipe [run] [options] <cmd> [args ...]
 
 Options:
    -h / -H              Show help messages.
@@ -2081,7 +2083,6 @@ Options:
    -s <shell>           Send commands to another shell, default: $shell
    -f                   Force to re-run when output files are already latest.
    -k                   Keep temporary files.
-   -R                   Show the raw procedure declaration.
    -T                   Test mode, show commands rather than execute them.
 
 ";
@@ -2130,7 +2131,6 @@ my $actions = {
 	'-l' => sub { $list_mode = 1 if $list_mode < 1; },
 	'-L' => sub { $list_mode = 2 if $list_mode < 2; },
 	'-T' => sub { $test_mode = 1; },
-	'-R' => sub { $show_mode = 1; },
 	'-f' => sub { $force_run = 1; },
 	'-k' => sub { $keep_temp = 1; },
 	'-v' => sub {
@@ -2207,12 +2207,6 @@ if ($shell_cmd) {
 		unless exists $procs_ref->{$proc_name};
 }
 my $proc_ref = $procs_ref->{$proc_name};
-
-# Show pipeline scripts
-if ($show_mode) {
-	show_proc $proc_ref, $args_ref;
-	exit 1;
-}
 
 # Check variables and dependencies
 my $info_ref = check_proc($proc_ref, $args_ref);
