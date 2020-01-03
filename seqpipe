@@ -6,7 +6,7 @@ use Cwd 'abs_path';
 use Fcntl qw(:flock);
 
 ############################################################
-# Check perl multi-thread supporting
+# check perl multi-thread supporting
 
 sub has_module
 {
@@ -23,14 +23,18 @@ if (not has_module('threads.pm') and not has_module('forks.pm')) {
 }
 
 ############################################################
-# Constants
+# global helper functions
+
+sub r { my $s = shift // ""; chomp $s; return $s; }
+
+############################################################
+# constants
 
 # Unique ID consists of date, time and pid
-my $HOSTNAME = `hostname`;
-chomp $HOSTNAME;
+my $HOSTNAME = r(`hostname`);
 my $UNIQ_ID = sprintf '%02d%02d%02d.%02d%02d.%d.%s',
 	(localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], (localtime)[2], (localtime)[1], $$, $HOSTNAME;
-my $LOG_ROOT = "./.seqpipe";  # All log files are saved in this directory.
+my $LOG_ROOT = ".seqpipe";  # All log files are saved in this directory.
 my $LOG_DIR = "$LOG_ROOT/$UNIQ_ID";
 
 my $EMPTY_LINE      = '^\s*$';
@@ -61,12 +65,7 @@ my %FILE_ATTRS = (
 	'output.temp' => 'temp', 'output.save' => 'final', 'output.final' => 'final' );
 
 ############################################################
-# Helper Functions
-
-sub r { my $s = shift // ""; chomp $s; return $s; }
-
-############################################################
-# Command line parsing results.
+# command line parsing results.
 
 my $help_mode = 0;
 my $list_mode = 0;
@@ -89,7 +88,7 @@ my $run_counter :shared = 0;  # Count how many shell commands have run so far.
 my $exiting :shared = 0;  # Set when met any failure or abort signal rose.
 
 ############################################################
-# Time display helper functions
+# time display helper functions
 
 sub time_string
 {
@@ -123,7 +122,7 @@ sub time_elapse_string
 }
 
 ############################################################
-# Log out functions
+# log out functions
 
 my $log_print_ref  = \&print;
 my $log_printf_ref = \&printf;
@@ -150,7 +149,7 @@ sub log_enable_lock {
 }
 
 ############################################################
-# Handling signal of Ctrl+C.
+# handling signal of ctrl+c.
 
 sub set_signal_handler
 {
@@ -158,7 +157,7 @@ sub set_signal_handler
 }
 
 ############################################################
-# Run ID allocation
+# run id allocation
 
 sub get_new_run_id
 {
@@ -167,7 +166,7 @@ sub get_new_run_id
 }
 
 ############################################################
-# Directory walking
+# directory walking
 
 sub expand_tilde
 {
@@ -221,7 +220,7 @@ sub get_all_pipe
 }
 
 ############################################################
-# Text processing
+# text processing
 
 sub expand_text
 {
@@ -323,7 +322,7 @@ sub check_text
 }
 
 ############################################################
-# Bash line parsing
+# bash line parsing
 
 sub bash_line_encode
 {
@@ -390,7 +389,7 @@ sub bash_line_decode
 }
 
 ############################################################
-# Variable dependency checking
+# variable dependency checking
 
 sub add_dep
 {
@@ -459,7 +458,7 @@ sub check_vars_info
 }
 
 ############################################################
-# Text evaluation
+# text evaluation
 
 sub get_vars
 {
@@ -557,7 +556,7 @@ sub eval_text
 }
 
 ############################################################
-# File reading
+# file reading
 
 sub open_file
 {
@@ -613,7 +612,7 @@ sub read_nonblank_line
 }
 
 ############################################################
-# Scripts loading
+# scripts loading
 
 sub load_cmd_attr
 {
@@ -908,7 +907,7 @@ sub load_module
 }
 
 ############################################################
-# Checking
+# checking
 
 sub merge_info
 {
@@ -1191,7 +1190,7 @@ sub check_proc
 }
 
 ############################################################
-# Show pipeline code
+# show pipeline code
 
 sub show_primitive
 {
@@ -1286,7 +1285,7 @@ sub show_proc
 }
 
 ############################################################
-# Run pipeline
+# run pipeline
 
 sub check_files  # return: -1. failed; 0. to run; 1. not to run (output is OK)
 {
@@ -1954,7 +1953,7 @@ sub run_proc
 }
 
 ############################################################
-# Help messages
+# help messages
 
 sub show_info
 {
@@ -2090,7 +2089,7 @@ Options:
 }
 
 ############################################################
-# Main program start from here.
+# main program start from here.
 
 # Parse command line
 my $command_line = bash_line_encode($0, @ARGV);
