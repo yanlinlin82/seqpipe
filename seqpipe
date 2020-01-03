@@ -32,7 +32,6 @@ my $UNIQ_ID = sprintf '%02d%02d%02d.%02d%02d.%d.%s',
 	(localtime)[5] % 100, (localtime)[4] + 1, (localtime)[3], (localtime)[2], (localtime)[1], $$, $HOSTNAME;
 my $LOG_ROOT = "./.seqpipe";  # All log files are saved in this directory.
 my $LOG_DIR = "$LOG_ROOT/$UNIQ_ID";
-my $APP_ROOT = dirname abs_path $0;
 
 my $EMPTY_LINE      = '^\s*$';
 my $COMMENT_LINE    = '^\s*#';
@@ -55,7 +54,6 @@ my $SP_ELSE         = '^\s*SP_else\s*$';
 my $SP_FOR          = '^\s*(SP_for(_parallel|))\s+(\w+)=(.*)$';
 my $SP_WHILE        = '^\s*SP_while\s+(|!)\s*\((.*)\)\s*$';
 
-my %VAR_TYPES = ( 'req_vars' => 1, 'opt_vars' => 2, 'dyn_vars' => 3 );
 my @DEP_NAMES = ( 'require', 'input', 'output', 'temp', 'final' );
 my %FILE_ATTRS = (
 	'R' => 'require', 'I' => 'input', 'O' => 'output', 'OT' => 'temp', 'OS' => 'final', 'OF' => 'final',
@@ -839,7 +837,7 @@ sub init_envs
 {
 	my ($file) = @_;
 	if (not exists $global_vars_list_ref->{''}) {
-		$global_vars_list_ref->{''} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => $APP_ROOT };
+		$global_vars_list_ref->{''} = { };
 	}
 	%{$global_vars_list_ref->{$file}} = %{$global_vars_list_ref->{''}};
 }
