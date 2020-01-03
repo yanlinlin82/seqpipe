@@ -1685,12 +1685,12 @@ sub run_sp_if
 			}
 		}
 		if ($yes) {
-			$ret = run_block($cond_ref->{block}, $indent, $args_ref, $proc_vars_ref);
+			$ret = run_block($cond_ref->{block}, $indent . '  ', $args_ref, $proc_vars_ref);
 			last;
 		}
 	}
 	if (not $yes and exists $cmd_ref->{else_block}) {
-		$ret = run_block($cmd_ref->{else_block}, $indent, $args_ref, $proc_vars_ref);
+		$ret = run_block($cmd_ref->{else_block}, $indent . '  ', $args_ref, $proc_vars_ref);
 	}
 	return $ret;
 }
@@ -1705,7 +1705,7 @@ sub run_sp_for
 	if ($cmd_ref->{primitive} eq 'SP_for' or $max_thread_number == 1 or $test_mode) {
 		foreach my $each_value (split(/\s+/, $value)) {
 			$proc_vars_ref->{$name} = $each_value;
-			$ret = run_block($cmd_ref->{block}, $indent, $args_ref, $proc_vars_ref);
+			$ret = run_block($cmd_ref->{block}, $indent . '  ', $args_ref, $proc_vars_ref);
 			return undef if not defined $ret;
 			last if $ret != 0 or $exiting;
 		}
@@ -1716,7 +1716,7 @@ sub run_sp_for
 			last if $exiting;
 			my %thd_vars = %{$proc_vars_ref};
 			$thd_vars{$name} = $each_value;
-			push @threads, threads->create(\&run_block, $cmd_ref->{block}, $indent, $args_ref, \%thd_vars);
+			push @threads, threads->create(\&run_block, $cmd_ref->{block}, $indent . '  ', $args_ref, \%thd_vars);
 		}
 		foreach my $thd (@threads) {
 			my $thd_ret = $thd->join();
@@ -1742,7 +1742,7 @@ sub run_sp_while
 		my $yes = run_checker($cmd, $cmd_result, $run_id, $cmd_ref->{negative}, $indent);
 		return undef if not defined $ret;
 		last if (not $yes);
-		$ret = run_block($cmd_ref->{block}, $indent, $args_ref, $proc_vars_ref);
+		$ret = run_block($cmd_ref->{block}, $indent . '  ', $args_ref, $proc_vars_ref);
 		return undef if not defined $ret;
 		last if $ret != 0;
 	}
@@ -1801,7 +1801,7 @@ sub run_cmd
 		my $file = "$LOG_DIR/$run_id.block";
 		append_file $file, "parallel=" . ($cmd_ref->{block}->{parallel} ? "yes" : "no") . "\n";
 
-		$ret = run_block($cmd_ref->{block}, $indent, $args_ref, \%proc_vars);
+		$ret = run_block($cmd_ref->{block}, $indent . '  ', $args_ref, \%proc_vars);
 		log_print "$indent($run_id) [block] ends (" . ($cmd_ref->{block}->{parallel} ? "parallel" : "sequential") . ")\n" if not $test_mode;
 		return undef if not defined $ret;
 	} else {
@@ -1886,7 +1886,7 @@ sub run_block
 	if ($test_mode) {
 		foreach my $cmd_ref (@cmds) {
 			last if $exiting;
-			my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent . '  ', $args_ref, $proc_vars_ref, $global_vars_ref);
+			my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent, $args_ref, $proc_vars_ref, $global_vars_ref);
 			if (not defined $cmd_ret) {
 				undef $ret;
 				last;
@@ -1902,7 +1902,7 @@ sub run_block
 			last if $exiting;
 			if ($can_use_threads and $max_thread_number != 1) {
 				my $thd = threads->create({'context' => 'list'}, \&run_cmd,
-					$block_ref->{proc_name}, $cmd_ref, $indent . '  ', $args_ref, $proc_vars_ref, $global_vars_ref);
+					$block_ref->{proc_name}, $cmd_ref, $indent, $args_ref, $proc_vars_ref, $global_vars_ref);
 
 				if ($block_ref->{parallel}) {
 					push @thread_list, $thd;
@@ -1918,7 +1918,7 @@ sub run_block
 					}
 				}
 			} else {
-				my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent . '  ',
+				my $cmd_ret = run_cmd($block_ref->{proc_name}, $cmd_ref, $indent,
 					$args_ref, $proc_vars_ref, $global_vars_ref);
 				if (not defined $cmd_ret) {
 					undef $ret;
@@ -1958,6 +1958,10 @@ sub run_proc
 	my $global_vars_ref = $global_vars_list_ref->{$proc_ref->{file}};
 	my %proc_vars = ();
 
+	if ($proc_name eq "") {
+		return run_block($proc_ref, $indent, $args_ref, \%proc_vars);
+	}
+
 	my $cmd = $proc_name;
 	foreach my $name (@{$args_order_ref}) {
 		$cmd .= " $name=" . bash_line_encode($args_ref->{$name});
@@ -1988,10 +1992,10 @@ sub run_proc
 	log_print "$indent($run_id) starts at " . time_string($start_time) . "\n" if not $test_mode;
 
 	if ($test_mode) {
-		run_block($proc_ref, $indent, $args_ref, \%proc_vars);
+		run_block($proc_ref, $indent . '  ', $args_ref, \%proc_vars);
 		return 0;
 	} else {
-		$ret = run_block($proc_ref, $indent, $args_ref, \%proc_vars);
+		$ret = run_block($proc_ref, $indent . '  ', $args_ref, \%proc_vars);
 		
 		if (defined $ret and $ret == 0 and not $keep_temp) {
 			# When successeed, remove temporary files
