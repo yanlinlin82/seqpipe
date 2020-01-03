@@ -2113,9 +2113,10 @@ sub list_proc
 sub print_usage
 {
 	print "
-SeqPipe  : a sequencing data analysis pipeline framework
+SeqPipe  : An easy-use workflow for reproducible data analysis.
 Version  : " . get_version_string() . "
-Copyright: 2012-2019 Linlin Yan <yanlinlin82\@gmail.com>
+License  : MIT, 2012-2020
+Author   : Linlin Yan <yanlinlin82\@gmail.com>
 Websites : http://github.com/yanlinlin82/seqpipe
 
 Usage:
