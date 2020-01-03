@@ -2299,14 +2299,17 @@ if (not $test_mode) {
 }
 
 # Run the pipeline
+my $start_time = time;
 my $ret = run_proc($proc_name, $args_ref, $args_order_ref, '');
+my $end_time = time;
 if (not $test_mode) {
+	my $elapse = time_elapse_string($start_time, $end_time);
 	if (not defined $ret) {
-		log_print "[$UNIQ_ID] Pipeline aborted!\n";
+		log_print "[$UNIQ_ID] Pipeline aborted! (elapsed: $elapse)\n";
 	} elsif ($ret != 0) {
-		log_print "[$UNIQ_ID] Pipeline finished abnormally with exit value: $ret!\n";
+		log_print "[$UNIQ_ID] Pipeline finished abnormally with exit value: $ret! (elapsed: $elapse)\n";
 	} else {
-		log_print "[$UNIQ_ID] Pipeline finished successfully!\n";
+		log_print "[$UNIQ_ID] Pipeline finished successfully! (elapsed: $elapse)\n";
 	}
 	close LOG_FILE;
 	# TODO: compress log files by default
