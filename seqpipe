@@ -913,22 +913,6 @@ sub load_global_var
 	check_vars_dep {}, {}, $global_vars_list_ref->{$module};
 }
 
-sub load_module_conf
-{
-	my ($conf_file, $module, $allow_overwrite) = @_;
-	print "Load config: $conf_file\n" if $verbose;
-	my $fp = open_file $conf_file;
-	while (read_nonblank_line($fp)) {
-		if ($fp->{line} =~ /$VAR_LINE/s) {
-			load_global_var($fp, $module, $allow_overwrite);
-		} elsif ($fp->{line} !~ /$EMPTY_LINE/s and $fp->{line} !~ /$COMMENT_LINE/s) {
-			die "Invalid syntax of configure file in " . file_pos($fp)
-				. "\n  Only global variable definition could be included in configure file!";
-		}
-	}
-	close_file $fp;
-}
-
 sub load_module
 {
 	my ($file, $type) = @_;
@@ -951,7 +935,6 @@ sub load_module
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$INC_LINE/) {
 			warn "SP_include should be defined before procedures in " . file_pos($fp) if $met_proc;
-			load_module_conf(dirname($file) . '/' . $2, $file, 0);
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$VAR_LINE/) {
 			warn "Global variables should be defined before procedures in " . file_pos($fp) if $met_proc;
@@ -961,14 +944,12 @@ sub load_module
 			$met_proc = 1;
 			load_proc($fp, $2 || $4, $5, $type);
 		} else {
-			warn "Ignore bash commands outside all functions in " . file_pos($fp);
+			$procs_ref->{''} = { proc_name => '', file => $file, parallel => 0 } if not exists $procs_ref->{''};
+			push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => $file, line_no => $fp->{handle}->input_line_number, command => $fp->{line} } if $fp->{line} ne "";
 			read_nonblank_line($fp);
 		}
 	}
 	close_file $fp;
-
-	# Load configure file to overwrite the default values of global variables
-	load_module_conf("$file.conf", $file, 1) if -e expand_tilde("$file.conf");
 }
 
 ############################################################
@@ -2090,7 +2071,7 @@ sub list_proc
 	print "\n";
 }
 
-sub print_usage
+sub print_usage_and_exit
 {
 	print "
 SeqPipe  : An easy-use workflow for reproducible data analysis.
@@ -2100,17 +2081,13 @@ Author   : Linlin Yan <yanlinlin82\@gmail.com>
 Websites : http://github.com/yanlinlin82/seqpipe
 
 Usage:
-   seqpipe [options] <procedure> [NAME=VALUE ...]
-   seqpipe [options] -e <cmd> [-e <cmd> ...] [NAME=VALUE ...]
-   seqpipe [options] -E <cmd> [-E <cmd> ...] [NAME=VALUE ...]
+   seqpipe [run] [options] <workflow.pipe> [procedure] [KEY=VALUE ...]
+   seqpipe [run] [options] <cmd> [args ...]
 
 Options:
    -h / -H              Show help messages.
    -v                   Show verbose messages.
-   -e                   Run shell command directly, without writing .pipe file.
-   -E                   Same as '-e', except running in parallel.
    -l / -L [<pattern>]  List current available procedures.
-   -m <file>            Load procedure module file, this option can be used many times.
    -D                   Disable to load default pipelines.
    -t <int>             Max thread number in parallel. default: $max_thread_number
    -s <shell>           Send commands to another shell, default: $shell
@@ -2120,6 +2097,7 @@ Options:
    -T                   Test mode, show commands rather than execute them.
 
 ";
+	exit 1;
 }
 
 ############################################################
@@ -2127,12 +2105,36 @@ Options:
 
 # Parse command line
 my $command_line = bash_line_encode($0, @ARGV);
-my @module_files = ();
-my @exec_cmds = ();
-my $exec_parallel = 0;
 my $proc_name = '';
 my $args_ref = {};
 my $args_order_ref = [];
+
+#-----------------------------------------------------------
+
+sub parse_proc_name_and_vars
+{
+	while (my $arg = shift @ARGV) {
+		if ($arg =~ /^(\w+)=(.*)$/) {
+			die "duplicated option '$1'!" if exists $args_ref->{$1};
+			my $name = $1;
+			$args_ref->{$name} = $2;
+			push @{$args_order_ref}, $name;
+			die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
+
+			if ($2 =~ /\$\{(\w+)\}/) {
+				warn "Unrecommended usage of shell environment '\${$1}' in value of '$name'!\n"
+				. "   NOTE: Please use '\$$1' instead"
+			}
+		} else {
+			die "Invalid format of option: $arg" if $proc_name;
+			$proc_name = $arg;
+			die "Unknown procedure '$proc_name'! Use '-l' to list available procedures."
+			unless exists $procs_ref->{$proc_name};
+		}
+	}
+}
+
+#-----------------------------------------------------------
 
 my $actions = {
 	'-h' => sub { $help_mode = 1 if $help_mode < 1; },
@@ -2147,13 +2149,6 @@ my $actions = {
 		set_verbose ++$verbose;
 		$| = 1;  # flush output immediately
 	},
-	'-m' => sub {
-		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
-		my $file = shift @ARGV;
-		$file = search_module_file $file;
-		die "Can not find pipeline file '$file'!" unless -e $file;
-		push @module_files, abs_path $file;
-	},
 	'-t' => sub {
 		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
 		$max_thread_number = shift @ARGV;
@@ -2161,23 +2156,6 @@ my $actions = {
 		if ($max_thread_number > 1 and not $can_use_threads) {
 			warn "Parallel mode is disabled since your Perl does not support threads!";
 		}
-	},
-	'-e' => sub {
-		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
-		die "Option '-e' and '-E' are not allowed to use at the same time" if @exec_cmds and $exec_parallel;
-		my $cmd = shift @ARGV;
-		die "Empty inline command is not allowed!" if $cmd =~ /^\s*$/;
-		die "Multi-line inline command is not allowed!" if $cmd =~ /\n/;
-		push @exec_cmds, $cmd;
-	},
-	'-E' => sub {
-		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
-		die "Option '-e' and '-E' are not allowed to use at the same time" if @exec_cmds and not $exec_parallel;
-		$exec_parallel = 1;
-		my $cmd = shift @ARGV;
-		die "Empty inline command is not allowed!" if $cmd =~ /^\s*$/;
-		die "Multi-line inline command is not allowed!" if $cmd =~ /\n/;
-		push @exec_cmds, $cmd;
 	},
 	'-s' => sub {
 		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
@@ -2188,32 +2166,32 @@ my $actions = {
 };
 $actions->{'--help'} = $actions->{'-h'}; # allow option '--help'
 
-$help_mode = 1 if $#ARGV < 0;
+my $funcs = {
+	'version' => sub { print get_version_string(), "\n"; return 0; }
+};
+
+print_usage_and_exit if $#ARGV < 0;
+
+my $sub_cmd = '';
+my $shell_cmd = '';
 while (my $arg = shift @ARGV) {
 	if ($arg =~ /^-/) {
 		my $action = $actions->{$arg} || $actions->{_DEFAULT_};
 		$action->($arg);
-	} elsif ($arg =~ /^(\w+)=(.*)$/) {
-		die "duplicated option '$1'!" if exists $args_ref->{$1};
-		my $name = $1;
-		$args_ref->{$name} = $2;
-		push @{$args_order_ref}, $name;
-		die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
-
-		if ($2 =~ /\$\{(\w+)\}/) {
-			warn "Unrecommended usage of shell environment '\${$1}' in value of '$name'!\n"
-				. "   NOTE: Please use '\$$1' instead"
-		}
+	} elsif ($arg eq 'run' and $sub_cmd eq '') {
+		$sub_cmd = $arg; # skip the optional 'run' sub command
+	} elsif (-e $arg and not -x $arg) { # non-executable file
+		load_module $arg;
+		parse_proc_name_and_vars(@ARGV);
 	} else {
-		die "Invalid format of option: $arg" if $proc_name or @exec_cmds;
-		$proc_name = $arg;
+		if ($sub_cmd eq '') {
+			# check for supported sub command
+			exit $funcs->{$arg}->(@ARGV) if exists $funcs->{$arg};
+		}
+		$shell_cmd = join(' ', $arg, @ARGV);
+		last;
 	}
 }
-die "Can not use both '-e' and '<proc_name>'!" if $proc_name and @exec_cmds;
-
-# Load modules
-$list_mode = 2 if $list_mode and (scalar @module_files == 0);
-load_module $_, 1 foreach get_all_pipe @module_files;
 
 # List procedures
 if ($list_mode) {
@@ -2222,23 +2200,13 @@ if ($list_mode) {
 }
 
 # Prepare for inline mode
-if (@exec_cmds) {
-	$global_vars_list_ref->{''} = { _SEQPIPE => 'seqpipe', _SEQPIPE_ROOT => $APP_ROOT };
-	$procs_ref->{''} = { proc_name => '', file => '', parallel => $exec_parallel };
-	my $line_no = 0;
-	foreach my $cmd (@exec_cmds) {
-		++$line_no;
-		push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => $line_no, command => $cmd };
-	}
-	warn "Parallel running (-E) will be ignored because max thread number (-t) is not specified!"
-			if $exec_parallel and $max_thread_number == 1;
+if ($shell_cmd) {
+	$global_vars_list_ref->{''} = { };
+	$procs_ref->{''} = { proc_name => '', file => '', parallel => 0 };
+	push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => 1, command => $shell_cmd };
 } elsif ($proc_name) {
 	die "Unknown procedure '$proc_name'! Use '-l' to list available procedures."
 		unless exists $procs_ref->{$proc_name};
-} else {
-	print "ERROR: No procedure name provided!\n" unless $help_mode;
-	print_usage;
-	exit 1;
 }
 my $proc_ref = $procs_ref->{$proc_name};
 
@@ -2312,6 +2280,5 @@ if (not $test_mode) {
 		log_print "[$UNIQ_ID] Pipeline finished successfully! (elapsed: $elapse)\n";
 	}
 	close LOG_FILE;
-	# TODO: compress log files by default
 }
 exit (defined $ret ? $ret : 1);
