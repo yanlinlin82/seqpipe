@@ -2088,7 +2088,6 @@ Options:
    -h / -H              Show help messages.
    -v                   Show verbose messages.
    -l / -L [<pattern>]  List current available procedures.
-   -D                   Disable to load default pipelines.
    -t <int>             Max thread number in parallel. default: $max_thread_number
    -s <shell>           Send commands to another shell, default: $shell
    -f                   Force to re-run when output files are already latest.
