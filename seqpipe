@@ -2081,8 +2081,43 @@ Author   : Linlin Yan <yanlinlin82\@gmail.com>
 Websites : http://github.com/yanlinlin82/seqpipe
 
 Usage:
-   seqpipe [run] [options] <workflow.pipe> [procedure] [KEY=VALUE ...]
-   seqpipe [run] [options] <cmd> [args ...]
+   seqpipe [run]    [options] <workflow.pipe> [procedure] [KEY=VALUE ...]
+   seqpipe [run]    [options] <cmd> [args ...]
+   seqpipe parallel [options] <commands.txt> [KEY=VALUE ...]
+   seqpipe log      [options]
+
+Options:
+   -h   Show help messages.
+   -v   Show verbose messages.
+
+Try 'seqpipe help' to list all available subcommands.
+
+";
+	exit 1;
+}
+
+sub print_help_detail_and_exit()
+{
+	print "
+Usage: seqpipe [cmd] [options ...]
+
+Commands:
+   run             Run workflow/commands
+   parallel        Run commands in parallel
+   try / test      Try workflow/commands
+   log / history   Show history log
+   version         Show version
+   help            Show this help message
+
+Try 'seqpipe <cmd> -h' to see help message for specific command.
+
+";
+	exit 1;
+}
+
+sub print_run_usage_and_exit
+{
+	print "
 
 Options:
    -h / -H              Show help messages.
@@ -2166,8 +2201,14 @@ my $actions = {
 $actions->{'--help'} = $actions->{'-h'}; # allow option '--help'
 
 my $funcs = {
-	'version' => sub { print get_version_string(), "\n"; return 0; }
+	'parallel' => sub { die "not implemented"; },
+	'try' => sub { die "not implemented"; },
+	'log' => sub { die "not implemented"; },
+	'version' => sub { print get_version_string(), "\n"; return 0; },
+	'help' => sub { print_help_detail_and_exit; },
 };
+$funcs->{test} = $funcs->{try};
+$funcs->{history} = $funcs->{log};
 
 print_usage_and_exit if $#ARGV < 0;
 
@@ -2185,11 +2226,15 @@ while (my $arg = shift @ARGV) {
 	} else {
 		if ($sub_cmd eq '') {
 			# check for supported sub command
-			exit $funcs->{$arg}->(@ARGV) if exists $funcs->{$arg};
+			exit $funcs->{$arg}->($arg, @ARGV) if exists $funcs->{$arg};
 		}
 		$shell_cmd = join(' ', $arg, @ARGV);
 		last;
 	}
+}
+
+if ($sub_cmd eq '' and $shell_cmd eq '' and $help_mode > 0) {
+	print_help_detail_and_exit();
 }
 
 # List procedures
