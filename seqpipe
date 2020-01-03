@@ -1881,23 +1881,7 @@ sub run_block
 
 	my $global_vars_ref = $global_vars_list_ref->{$block_ref->{file}};
 
-	my @cmds = ();
-	if ($block_ref->{proc_name} !~ /_sysinfo$/) {
-		@cmds = @{$block_ref->{commands}};
-	} else {
-		my $ok = 0;
-		foreach my $cmd_ref (@{$block_ref->{commands}}) {
-			if (%{$cmd_ref->{require}} or %{$cmd_ref->{input}} or %{$cmd_ref->{output}}) {
-				push @cmds, $cmd_ref;
-				$ok = 0;
-			} elsif (not $ok) {
-				push @cmds, $cmd_ref;
-				$ok = 1;
-			} else {
-				$cmds[-1]->{command} .= "\n" . $cmd_ref->{command};
-			}
-		}
-	}
+	my @cmds = @{$block_ref->{commands}};
 
 	if ($test_mode) {
 		foreach my $cmd_ref (@cmds) {
@@ -1974,14 +1958,6 @@ sub run_proc
 	my $global_vars_ref = $global_vars_list_ref->{$proc_ref->{file}};
 	my %proc_vars = ();
 
-	# If it is sysinfo, run without other checking
-	if ($proc_name =~ /_sysinfo$/) {
-		log_print "Log sysinfo: $proc_name\n";
-		run_block($proc_ref, '', $args_ref, {});
-		return 0;
-	}
-
-	# Otherwise (not a sysinfo)
 	my $cmd = $proc_name;
 	foreach my $name (@{$args_order_ref}) {
 		$cmd .= " $name=" . bash_line_encode($args_ref->{$name});
