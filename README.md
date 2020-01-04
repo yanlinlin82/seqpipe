@@ -1,53 +1,72 @@
 # SeqPipe
 
-A framework for SEQuencing data analysis PIPElines.
-
-NOTE: [Click here to see v0.5](https://github.com/yanlinlin82/seqpipe/tree/cpp-v0.5), the new unpublished C++ reimplemented version.
-
 ## Introduction
 
-SeqPipe is a command line-based pipeline framework for bioinformatics research. It has predefined many common useful pipelines for high throughput sequencing data analysis and is very easy for both bioinformaticians and biology researchers to launch different tools.
-
-More importantly, SeqPipe could record as many related information as possible to ensure the analysis procedure is reproducible, which is essential in scientific research.
-
-## Features
-
-There are some features of SeqPipe, for which you may like to use it as your handy framework in your daily data analysis.
-
-- **GNU bash-like syntax** - Defining a pipeline in SeqPipe is almost the same as writing a function in GNU bash. Most your pre-existed bash scripts may be very easy to migrate to SeqPipe framework, from which you will benefit a lot, such as logs and re-use, while keep the scripts as clear as possible.
-- **Logging automatically** - When running pipeline with SeqPipe, it will automatically record command lines, parameters, program versions, running time and other log files. All of those are useful and also important for you to track every step of your analysis, which could help you to make research results be reproducible.
-- **Run in parallel easily** - It is very easy to define which steps in a pipeline should be run in parallel, without adding any complexity to the scripts.
-- **File dependency checking** - SeqPipe could check input/output file dependency for each step, therefore those already finished steps could be skipped automatically, especially when you restart a pipeline after it was somehow aborted.
-- **Predefined pipelines** - SeqPipe predefined many common pipelines for high throughput sequencing data analysis, including read mapping and variant calling. They are easy-to-use for experienced bioinformaticians and also useful for newbie to start learning the workflows.
+SeqPipe is a command-line based, lightweight and easy-to-use workflow for reproducible data analysis. Since it is a single Perl script with barely no any third-party dependency, SeqPipe could be run on almost all Linux or Unix-like system after download/copy it. SeqPipe tries to keep all your old shell habits, meanwhile, improves the procedure by recording all running logs automatically, supporting parallel machinism, checking file generation dependency and allowing to predefine pipelines.
 
 ## Quick Start
 
-1. Install by git (recommended, easy to update new version):
+1. Clone repo (this 'dev-6' branch):
 
-        git clone http://github.com/yanlinlin82/seqpipe /path/to/install/seqpipe/
-        export PATH=$PATH:/path/to/install/seqpipe/
+    ```
+    git clone https://github.com/yanlinlin82/seqpipe --depth 1 -b dev-6
+    ```
+
+    Or, download the single script, put it into any directory you want:
+
+    ```
+    wget https://raw.githubusercontent.com/yanlinlin82/seqpipe/dev-6/seqpipe
+    chmod +x seqpipe
+    ```
     
-    or install by wget (or other downloader):
+    I suggest to add the directory to PATH environment variable:
     
-        wget -N http://github.com/yanlinlin82/seqpipe/archive/master.zip
-        unzip master.zip
-        mv seqpipe-master /path/to/install/seqpipe/
-        export PATH=$PATH:/path/to/install/seqpipe/
+    ```
+    export PATH=$PATH:/path/of/seqpipe
+    ```
 
-2. Write a simple pipeline:
+2. Run shell command with prefix 'seqpipe':
 
-        cat <<EOF> foo.pipe
-        foo() {
-            echo "Hello, world!"
-            date
-        }
-        EOF
-
-3. Run the pipeline:
-
-        seqpipe -m foo.pipe foo
-
-4. Check the log files:
-
-        ls -l -R .seqpipe/
+    ```
+    $ seqpipe echo hello, world
+    [200104.2130.149769.yanll-laptop] seqpipe echo hello, world
+    (1) [shell] echo hello, world
+    (1) starts at 2020-01-04 21:30:09
+    (1) ends at 2020-01-04 21:30:09 (elapsed: 0s)
+    [200104.2130.149769.yanll-laptop] Pipeline finished successfully! (elapsed: 0s)
+    ```
     
+    List the log files:
+    
+    ```
+    $ ls -1 .seqpipe/last/
+    1.shell.cmd
+    1.shell.err
+    1.shell.log
+    log
+    sysinfo
+    ```
+    
+    Show log file:
+    
+    ```
+    $ cat .seqpipe/last/sysinfo 
+    # seqpipe sysinfo log (version=1.0)
+    
+    system:
+      uname   : Linux 4.19.86-gentoo x86_64
+      date    : 2020-01-04 21:30:09
+      pwd     : /home/yanll/foo
+      cpu     : 8 core(s) (Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz)
+      memory  : 15.3 GB
+      user    : yanll
+      uid     : 1027
+      gid     : 1027
+      login   : 
+      hostname: yanll-laptop
+      shell   : /bin/bash
+    
+    seqpipe:
+      version : 0.6.0-beta (5b33ea6)
+      path    : /home/yanll/foo/seqpipe/seqpipe
+    ```
