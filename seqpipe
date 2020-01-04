@@ -2085,6 +2085,47 @@ Options:
 	exit 1;
 }
 
+############################################################
+# sub command
+
+sub do_parallel
+{
+	my $cmd = shift;
+	die "Error: '$cmd' has not been implemented";
+}
+
+sub do_try
+{
+	my $cmd = shift;
+	die "Error: '$cmd' has not been implemented";
+}
+
+sub do_list
+{
+	shift;
+	list_proc(@ARGV);
+	exit 0;
+}
+
+sub do_log
+{
+	my $cmd = shift;
+	die "Error: '$cmd' has not been implemented";
+}
+
+sub do_version
+{
+	print get_version_string(), "\n";
+	exit 0;
+}
+
+sub do_help
+{
+	print_help_detail_and_exit;
+}
+
+############################################################
+
 sub run_seqpipe
 {
 	my ($shell_cmd, $proc_name, $args_ref, $args_order_ref, $command_line) = @_;
@@ -2231,12 +2272,12 @@ my $actions = {
 $actions->{'--help'} = $actions->{'-h'}; # allow option '--help'
 
 my $funcs = {
-	'parallel' => sub { die "not implemented"; },
-	'try'      => sub { die "not implemented"; },
-	'list'     => sub { shift; list_proc(@ARGV); exit 0; },
-	'log'      => sub { die "not implemented"; },
-	'version'  => sub { print get_version_string(), "\n"; exit 0; },
-	'help'     => sub { print_help_detail_and_exit; },
+	'parallel' => \&do_parallel,
+	'try'      => \&do_try,
+	'list'     => \&do_list,
+	'log'      => \&do_log,
+	'version'  => \&do_version,
+	'help'     => \&do_help,
 };
 $funcs->{test} = $funcs->{try};
 $funcs->{history} = $funcs->{log};
