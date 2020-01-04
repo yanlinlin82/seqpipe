@@ -2041,6 +2041,7 @@ Commands:
    run             Run workflow/commands
    parallel        Run commands in parallel
    try / test      Try workflow/commands
+   list            List current available procedures
    log / history   Show history log
    version         Show version
    help            Show this help message
@@ -2111,8 +2112,7 @@ sub parse_proc_name_and_vars
 my $actions = {
 	'-h' => sub { $help_mode = 1 if $help_mode < 1; },
 	'-H' => sub { $help_mode = 2 if $help_mode < 2; },
-	'-l' => sub { $list_mode = 1 if $list_mode < 1; },
-	'-L' => sub { $list_mode = 2 if $list_mode < 2; },
+	'-l' => sub { $list_mode = 1 },
 	'-T' => sub { $test_mode = 1; },
 	'-f' => sub { $force_run = 1; },
 	'-k' => sub { $keep_temp = 1; },
@@ -2139,10 +2139,11 @@ $actions->{'--help'} = $actions->{'-h'}; # allow option '--help'
 
 my $funcs = {
 	'parallel' => sub { die "not implemented"; },
-	'try' => sub { die "not implemented"; },
-	'log' => sub { die "not implemented"; },
-	'version' => sub { print get_version_string(), "\n"; return 0; },
-	'help' => sub { print_help_detail_and_exit; },
+	'try'      => sub { die "not implemented"; },
+	'list'     => sub { $list_mode = 1; },
+	'log'      => sub { die "not implemented"; },
+	'version'  => sub { print get_version_string(), "\n"; return 0; },
+	'help'     => sub { print_help_detail_and_exit; },
 };
 $funcs->{test} = $funcs->{try};
 $funcs->{history} = $funcs->{log};
