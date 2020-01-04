@@ -1963,63 +1963,6 @@ sub show_info
 	exit 1;
 }
 
-sub list_proc
-{
-	my $workflow_file = '';
-	my @patterns = ();
-	while (my $arg = shift @_) {
-		if ($arg =~ /^-/) {
-			if ($arg eq '-h' or $arg eq '--help') {
-				print "
-Usage: seqpipe list [workflow.pipe] [pattern ...]
-
-";
-				exit 1;
-			}
-		} else {
-			if ($workflow_file eq '' and not @patterns and -e $arg and not -x $arg) {
-				$workflow_file = $arg;
-				load_module $workflow_file;
-			} else {
-				push @patterns, $arg;
-			}
-		}
-	}
-
-	my @proc_names = ();
-	foreach my $name (sort keys %{$procs_ref}) {
-		next if $name eq '';
-		if (not @patterns) {
-			push @proc_names, $name
-		} else {
-			my $match = 0;
-			for my $pattern (@patterns) {
-				if ($name =~ /$pattern/) {
-					$match = 1;
-					last;
-				}
-			}
-			push @proc_names, $name if $match;
-		}
-	}
-
-	if (-t STDOUT) {
-		if (not @proc_names) {
-			print STDERR "\nNo any available procedure";
-			print STDERR " match patterns (\"" . join("\", \"", @patterns), "\")" if @patterns;
-			print STDERR ".\n";
-		} else {
-			print STDERR "\nCurrent available procedure(s)";
-			print STDERR " match patterns (\"" . join("\", \"", @patterns), "\")" if @patterns;
-			print STDERR ":\n";
-			print STDERR "  $_\n" foreach @proc_names;
-		}
-		print STDERR "\n";
-	} else {
-		print "$_\n" foreach @proc_names;
-	}
-}
-
 sub print_usage_and_exit
 {
 	print "
@@ -2086,6 +2029,30 @@ Options:
 }
 
 ############################################################
+
+sub list_proc
+{
+	my @patterns = @_;
+	my @proc_names = ();
+	foreach my $name (sort keys %{$procs_ref}) {
+		next if $name eq '';
+		if (not @patterns) {
+			push @proc_names, $name
+		} else {
+			my $match = 0;
+			for my $pattern (@patterns) {
+				if ($name =~ /$pattern/) {
+					$match = 1;
+					last;
+				}
+			}
+			push @proc_names, $name if $match;
+		}
+	}
+	return @proc_names;
+}
+
+############################################################
 # sub command
 
 sub do_parallel
@@ -2102,8 +2069,45 @@ sub do_try
 
 sub do_list
 {
-	shift;
-	list_proc(@ARGV);
+	my $cmd = shift;
+	my $workflow_file = '';
+	my @patterns = ();
+	while (my $arg = shift @_) {
+		if ($arg =~ /^-/) {
+			if ($arg eq '-h' or $arg eq '--help') {
+				print "
+Usage: seqpipe list [workflow.pipe] [pattern ...]
+
+";
+				exit 1;
+			}
+		} else {
+			if ($workflow_file eq '' and not @patterns and -e $arg and not -x $arg) {
+				$workflow_file = $arg;
+				load_module $workflow_file;
+			} else {
+				push @patterns, $arg;
+			}
+		}
+	}
+
+	my @proc_names = list_proc(@patterns);
+
+	if (-t STDOUT) {
+		if (not @proc_names) {
+			print STDERR "\nNo any available procedure";
+			print STDERR " match patterns (\"" . join("\", \"", @patterns), "\")" if @patterns;
+			print STDERR ".\n";
+		} else {
+			print STDERR "\nCurrent available procedure(s)";
+			print STDERR " match patterns (\"" . join("\", \"", @patterns), "\")" if @patterns;
+			print STDERR ":\n";
+			print STDERR "  $_\n" foreach @proc_names;
+		}
+		print STDERR "\n";
+	} else {
+		print "$_\n" foreach @proc_names;
+	}
 	exit 0;
 }
 
