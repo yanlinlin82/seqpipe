@@ -1,8 +1,1 @@
-bioseq.pipe ident
-default.pipe ident
-doc/faq.txt ident
-doc/readme.markdown ident
-examples/demo.pipe ident
-examples/demo_more.pipe ident
 seqpipe ident
-seqpipe.history ident
