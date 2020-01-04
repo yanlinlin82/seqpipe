@@ -1,4 +1,5 @@
 #!/usr/bin/perl -w
+############################################################
 use strict;
 use warnings;
 use File::Basename;
@@ -80,7 +81,6 @@ $max_thread_number = r(`cat /proc/cpuinfo| grep "processor"| wc -l`) if $can_use
 my $thread_number :shared = 0;
 
 my $procs_ref = {};  # All procedures are loaded at startup.
-my $global_vars_list_ref = {};  # Global variables (defined outside procedures in .pipe files).
 my %shell_env_vars :shared = ();
 
 my $run_counter :shared = 0;  # Count how many shell commands have run so far.
@@ -830,39 +830,12 @@ sub load_proc
 	$procs_ref->{$proc_name} = $proc_ref;
 }
 
-sub init_envs
-{
-	my ($file) = @_;
-	if (not exists $global_vars_list_ref->{''}) {
-		$global_vars_list_ref->{''} = { };
-	}
-	%{$global_vars_list_ref->{$file}} = %{$global_vars_list_ref->{''}};
-}
-
-sub load_global_var
-{
-	my ($fp, $module, $allow_overwrite) = @_;
-	die "Parse global variable definition failed in " . file_pos($fp) unless $fp->{line} =~ /$VAR_LINE/;
-	my $name = $1;
-	my ($value, $comment) = split_bash_and_comment($2);
-	die "Bad declaration format of global variable '$name' in " . file_pos($fp) unless defined $value;
-	$value =~ s/^\s+//g;  # Remove leading white-spaces.
-	$value =~ s/\s+$//g;  # Remove tailing white-spaces.
-	$value =~ s/^"(.*?)"$/$1/;  # Remove quot marks.
-	die "Redeclaration of global variable '$name' in " . file_pos($fp)
-		if not $allow_overwrite and exists $global_vars_list_ref->{$module}{$name};
-	$global_vars_list_ref->{$module}{$name} = $value;
-	check_vars_dep {}, {}, $global_vars_list_ref->{$module};
-}
-
 sub load_module
 {
 	my $file = shift;
 	
 	printf "Load module: $file\n" if $verbose;
-	init_envs $file;
 
-	my $met_proc = 0;
 	my $fp = open_file $file;
 	read_nonblank_line($fp);
 	while (defined $fp->{line}) {
@@ -871,14 +844,10 @@ sub load_module
 				if $fp->{line} =~ /$ATTR_LINE/ and $fp->{line} !~ /$VERSION_LINE/;
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$INC_LINE/) {
-			warn "SP_include should be defined before procedures in " . file_pos($fp) if $met_proc;
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$VAR_LINE/) {
-			warn "Global variables should be defined before procedures in " . file_pos($fp) if $met_proc;
-			load_global_var($fp, $file, 0);
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$FUNC_LINE/) {
-			$met_proc = 1;
 			load_proc($fp, $2 || $4, $5);
 		} else {
 			$procs_ref->{''} = { proc_name => '', file => $file, parallel => 0 } if not exists $procs_ref->{''};
@@ -1135,7 +1104,7 @@ sub dump_info  # This is for debugging
 sub check_proc
 {
 	my ($proc_ref, $args_ref) = @_;
-	my $info_ref = check_block $proc_ref, $args_ref, {}, $global_vars_list_ref->{$proc_ref->{file}};
+	my $info_ref = check_block $proc_ref, $args_ref, {}, {};
 	dump_info $info_ref if $verbose >= 2;
 	my %intermediates = ();
 	foreach my $key ('require', 'input') {
@@ -1797,7 +1766,7 @@ sub run_block
 	my ($block_ref, $indent, $args_ref, $proc_vars_ref) = @_;
 	my $ret = 0;
 
-	my $global_vars_ref = $global_vars_list_ref->{$block_ref->{file}};
+	my $global_vars_ref = {};
 
 	my @cmds = @{$block_ref->{commands}};
 
@@ -1873,7 +1842,7 @@ sub run_proc
 	my ($proc_name, $args_ref, $args_order_ref, $indent) = @_;
 
 	my $proc_ref = $procs_ref->{$proc_name};
-	my $global_vars_ref = $global_vars_list_ref->{$proc_ref->{file}};
+	my $global_vars_ref = {};
 	my %proc_vars = ();
 
 	if ($proc_name eq "") {
@@ -2122,13 +2091,13 @@ sub run_seqpipe
 
 	# Prepare for inline mode
 	if ($shell_cmd) {
-		$global_vars_list_ref->{''} = { };
 		$procs_ref->{''} = { proc_name => '', file => '', parallel => 0 };
 		push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => 1, command => $shell_cmd };
 	} elsif ($proc_name) {
 		die "Unknown procedure '$proc_name'! Use 'seqpipe list' to list available procedures."
 		unless exists $procs_ref->{$proc_name};
 	}
+
 	my $proc_ref = $procs_ref->{$proc_name};
 
 	# Check variables and dependencies
@@ -2202,7 +2171,6 @@ sub run_seqpipe
 ############################################################
 # main program start from here.
 
-# Parse command line
 my $command_line = bash_line_encode($0, @ARGV);
 my $proc_name = '';
 my $args_ref = {};
@@ -2287,9 +2255,8 @@ while (my $arg = shift @ARGV) {
 		load_module $arg;
 		parse_proc_name_and_vars(@ARGV);
 	} else {
-		if ($sub_cmd eq '') {
-			# check for supported sub command
-			$funcs->{$arg}->($arg, @ARGV) if exists $funcs->{$arg};
+		if ($sub_cmd eq '' and exists $funcs->{$arg}) {
+			$funcs->{$arg}->($arg, @ARGV);
 		} else {
 			$shell_cmd = join(' ', $arg, @ARGV);
 		}
@@ -2301,4 +2268,5 @@ if ($sub_cmd eq '' and $shell_cmd eq '' and $help_mode > 0) {
 	print_help_detail_and_exit();
 }
 
-exit run_seqpipe($shell_cmd, $proc_name, $args_ref, $args_order_ref, $command_line);
+my $res = run_seqpipe($shell_cmd, $proc_name, $args_ref, $args_order_ref, $command_line);
+exit $res;
