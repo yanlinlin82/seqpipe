@@ -2116,6 +2116,89 @@ Options:
 	exit 1;
 }
 
+sub run_seqpipe
+{
+	my ($shell_cmd, $proc_name, $args_ref, $args_order_ref, $command_line) = @_;
+
+	# Prepare for inline mode
+	if ($shell_cmd) {
+		$global_vars_list_ref->{''} = { };
+		$procs_ref->{''} = { proc_name => '', file => '', parallel => 0 };
+		push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => 1, command => $shell_cmd };
+	} elsif ($proc_name) {
+		die "Unknown procedure '$proc_name'! Use 'seqpipe list' to list available procedures."
+		unless exists $procs_ref->{$proc_name};
+	}
+	my $proc_ref = $procs_ref->{$proc_name};
+
+	# Check variables and dependencies
+	my $info_ref = check_proc($proc_ref, $args_ref);
+	if ($help_mode) {
+		show_info($proc_name, $info_ref);
+		return 1;
+	}
+
+	# Write log files
+	if (not $test_mode) {
+
+		die "Can not run internal procedures '$proc_name' directly!" if $proc_name =~ /^_/;
+		if (%{$info_ref->{req_vars}}) {
+			die "Variable(s) required for " . ($proc_name ? "procedure '$proc_name'" : "current inline command")
+			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "";
+		}
+
+		if (not $force_run) {
+			log_to_die();
+			my $ret = check_files($info_ref, 1, "");
+			if ($ret > 0) {
+				print "Procedure '$proc_name' skipped.\n";
+				return 0;
+			}
+		}
+
+		set_signal_handler();
+		log_enable_lock();
+
+		# Prepare log directory
+		mkdir $LOG_ROOT or die "Can't create directory '$LOG_ROOT'!" unless -d $LOG_ROOT;
+		mkdir $LOG_DIR or die "Can't create directory '$LOG_DIR'!";
+		my $cmd = "ln -s -f -n $UNIQ_ID $LOG_ROOT/last";
+		if (`which flock`) {
+			$cmd = "flock $LOG_ROOT -c '$cmd'";
+		}
+		system $cmd;
+
+		# Write whole command line to log
+		open LOG_FILE, ">>$LOG_ROOT/history.$HOSTNAME.log";
+		log_print "$UNIQ_ID\t$command_line\n";
+		close LOG_FILE;
+
+		# Prepare log file
+		open LOG_FILE, '|-', "tee -ai $LOG_DIR/log";
+		log_print "[$UNIQ_ID] $command_line\n";
+
+		# Write sysinfo log
+		run_sysinfo;
+	}
+
+	# Run the pipeline
+	my $start_time = time;
+	my $ret = run_proc($proc_name, $args_ref, $args_order_ref, '');
+	my $end_time = time;
+	if (not $test_mode) {
+		my $elapse = time_elapse_string($start_time, $end_time);
+		if (not defined $ret) {
+			log_print "[$UNIQ_ID] Pipeline aborted! (elapsed: $elapse)\n";
+		} elsif ($ret != 0) {
+			log_print "[$UNIQ_ID] Pipeline finished abnormally with exit value: $ret! (elapsed: $elapse)\n";
+		} else {
+			log_print "[$UNIQ_ID] Pipeline finished successfully! (elapsed: $elapse)\n";
+		}
+		close LOG_FILE;
+	}
+	return (defined $ret ? $ret : 1);
+}
+
 ############################################################
 # main program start from here.
 
@@ -2184,7 +2267,7 @@ my $funcs = {
 	'try'      => sub { die "not implemented"; },
 	'list'     => sub { shift; list_proc(@ARGV); exit 0; },
 	'log'      => sub { die "not implemented"; },
-	'version'  => sub { print get_version_string(), "\n"; return 0; },
+	'version'  => sub { print get_version_string(), "\n"; exit 0; },
 	'help'     => sub { print_help_detail_and_exit; },
 };
 $funcs->{test} = $funcs->{try};
@@ -2218,80 +2301,4 @@ if ($sub_cmd eq '' and $shell_cmd eq '' and $help_mode > 0) {
 	print_help_detail_and_exit();
 }
 
-# Prepare for inline mode
-if ($shell_cmd) {
-	$global_vars_list_ref->{''} = { };
-	$procs_ref->{''} = { proc_name => '', file => '', parallel => 0 };
-	push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => 1, command => $shell_cmd };
-} elsif ($proc_name) {
-	die "Unknown procedure '$proc_name'! Use 'seqpipe list' to list available procedures."
-		unless exists $procs_ref->{$proc_name};
-}
-my $proc_ref = $procs_ref->{$proc_name};
-
-# Check variables and dependencies
-my $info_ref = check_proc($proc_ref, $args_ref);
-if ($help_mode) {
-	show_info($proc_name, $info_ref);
-	exit 1;
-}
-
-# Write log files
-if (not $test_mode) {
-
-	die "Can not run internal procedures '$proc_name' directly!" if $proc_name =~ /^_/;
-	if (%{$info_ref->{req_vars}}) {
-		die "Variable(s) required for " . ($proc_name ? "procedure '$proc_name'" : "current inline command")
-			. ":\n   " . join(', ', sort keys %{$info_ref->{req_vars}}) . "";
-	}
-
-	if (not $force_run) {
-		log_to_die();
-		my $ret = check_files($info_ref, 1, "");
-		if ($ret > 0) {
-			print "Procedure '$proc_name' skipped.\n";
-			exit 0;
-		}
-	}
-
-	set_signal_handler();
-	log_enable_lock();
-
-	# Prepare log directory
-	mkdir $LOG_ROOT or die "Can't create directory '$LOG_ROOT'!" unless -d $LOG_ROOT;
-	mkdir $LOG_DIR or die "Can't create directory '$LOG_DIR'!";
-	my $cmd = "ln -s -f -n $UNIQ_ID $LOG_ROOT/last";
-	if (`which flock`) {
-		$cmd = "flock $LOG_ROOT -c '$cmd'";
-	}
-	system $cmd;
-
-	# Write whole command line to log
-	open LOG_FILE, ">>$LOG_ROOT/history.$HOSTNAME.log";
-	log_print "$UNIQ_ID\t$command_line\n";
-	close LOG_FILE;
-
-	# Prepare log file
-	open LOG_FILE, '|-', "tee -ai $LOG_DIR/log";
-	log_print "[$UNIQ_ID] $command_line\n";
-
-	# Write sysinfo log
-	run_sysinfo;
-}
-
-# Run the pipeline
-my $start_time = time;
-my $ret = run_proc($proc_name, $args_ref, $args_order_ref, '');
-my $end_time = time;
-if (not $test_mode) {
-	my $elapse = time_elapse_string($start_time, $end_time);
-	if (not defined $ret) {
-		log_print "[$UNIQ_ID] Pipeline aborted! (elapsed: $elapse)\n";
-	} elsif ($ret != 0) {
-		log_print "[$UNIQ_ID] Pipeline finished abnormally with exit value: $ret! (elapsed: $elapse)\n";
-	} else {
-		log_print "[$UNIQ_ID] Pipeline finished successfully! (elapsed: $elapse)\n";
-	}
-	close LOG_FILE;
-}
-exit (defined $ret ? $ret : 1);
+exit run_seqpipe($shell_cmd, $proc_name, $args_ref, $args_order_ref, $command_line);
