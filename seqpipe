@@ -1374,7 +1374,7 @@ sub get_version_string
 	if ($git_hash =~ /Id: (.*) /) {
 		$version_suffix = ' (' . substr($1, 0, 7) . ')';
 	}
-	return "0.6.0-beta$version_suffix";
+	return "0.6.0-dev$version_suffix";
 }
 
 sub get_cpu_info
