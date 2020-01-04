@@ -1905,7 +1905,6 @@ sub run_proc
 }
 
 ############################################################
-# help messages
 
 sub show_info
 {
@@ -1963,7 +1962,10 @@ sub show_info
 	exit 1;
 }
 
-sub print_usage_and_exit
+############################################################
+# help messages
+
+sub print_usage
 {
 	print "
 SeqPipe  : An easy-use workflow for reproducible data analysis.
@@ -1985,10 +1987,9 @@ Options:
 Try 'seqpipe help' to list all available subcommands.
 
 ";
-	exit 1;
 }
 
-sub print_help_detail_and_exit()
+sub print_detail_help()
 {
 	print "
 Usage: seqpipe [cmd] [options ...]
@@ -2005,10 +2006,9 @@ Commands:
 Try 'seqpipe <cmd> -h' to see help message for specific command.
 
 ";
-	exit 1;
 }
 
-sub print_run_usage_and_exit
+sub print_run_usage
 {
 	print "
 Usage:
@@ -2025,7 +2025,14 @@ Options:
    -T                   Test mode, show commands rather than execute them.
 
 ";
-	exit 1;
+}
+
+sub print_list_usage
+{
+	print "
+Usage: seqpipe list [workflow.pipe] [pattern ...]
+
+";
 }
 
 ############################################################
@@ -2075,10 +2082,7 @@ sub do_list
 	while (my $arg = shift @_) {
 		if ($arg =~ /^-/) {
 			if ($arg eq '-h' or $arg eq '--help') {
-				print "
-Usage: seqpipe list [workflow.pipe] [pattern ...]
-
-";
+				print_list_usage();
 				exit 1;
 			}
 		} else {
@@ -2125,7 +2129,8 @@ sub do_version
 
 sub do_help
 {
-	print_help_detail_and_exit;
+	print_detail_help;
+	exit 1;
 }
 
 ############################################################
@@ -2286,7 +2291,10 @@ my $funcs = {
 $funcs->{test} = $funcs->{try};
 $funcs->{history} = $funcs->{log};
 
-print_usage_and_exit if $#ARGV < 0;
+if ($#ARGV < 0) {
+	print_usage;
+	exit 1;
+}
 
 my $sub_cmd = '';
 my $shell_cmd = '';
@@ -2310,7 +2318,8 @@ while (my $arg = shift @ARGV) {
 }
 
 if ($sub_cmd eq '' and $shell_cmd eq '' and $help_mode > 0) {
-	print_help_detail_and_exit();
+	print_detail_help;
+	exit 1;
 }
 
 my $res = run_seqpipe($shell_cmd, $proc_name, $args_ref, $args_order_ref, $command_line);
