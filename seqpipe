@@ -812,7 +812,7 @@ sub load_block
 
 sub load_proc
 {
-	my ($fp, $proc_name, $bracket, $type) = @_;
+	my ($fp, $proc_name, $bracket) = @_;
 	if (exists $procs_ref->{$proc_name}) {
 		die "Duplicated procedure '$proc_name' in " . file_pos($fp) . "\n"
 			. "   Previous definition of '$proc_name' was in " . file_pos($procs_ref->{$proc_name});
@@ -825,7 +825,6 @@ sub load_proc
 
 	my $proc_ref = load_block($proc_name, $fp, $bracket);
 	$proc_ref->{name} = $proc_name;
-	$proc_ref->{type} = $type;
 	$proc_ref->{file} = $fp->{file};
 	$proc_ref->{line_no} = $fp->{line_no};  # Update 'line_no' to the line of 'function xxx' rather than its block.
 	$procs_ref->{$proc_name} = $proc_ref;
@@ -838,16 +837,6 @@ sub init_envs
 		$global_vars_list_ref->{''} = { };
 	}
 	%{$global_vars_list_ref->{$file}} = %{$global_vars_list_ref->{''}};
-}
-
-sub update_proc_types
-{
-	my ($file, $type) = @_;
-	foreach my $name (keys %{$procs_ref}) {
-		if ($procs_ref->{$name}{file} eq $file) {
-			$procs_ref->{$name}{type} = $type;
-		}
-	}
 }
 
 sub load_global_var
@@ -868,13 +857,8 @@ sub load_global_var
 
 sub load_module
 {
-	my ($file, $type) = @_;
+	my $file = shift;
 	
-	if (exists $global_vars_list_ref->{$file}) {
-		update_proc_types $file, $type;
-		return;
-	}
-
 	printf "Load module: $file\n" if $verbose;
 	init_envs $file;
 
@@ -895,7 +879,7 @@ sub load_module
 			read_nonblank_line($fp);
 		} elsif ($fp->{line} =~ /$FUNC_LINE/) {
 			$met_proc = 1;
-			load_proc($fp, $2 || $4, $5, $type);
+			load_proc($fp, $2 || $4, $5);
 		} else {
 			$procs_ref->{''} = { proc_name => '', file => $file, parallel => 0 } if not exists $procs_ref->{''};
 			push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => $file, line_no => $fp->{handle}->input_line_number, command => $fp->{line} } if $fp->{line} ne "";
@@ -1488,7 +1472,7 @@ seqpipe:
 
 sub run_shell
 {
-	my ($command, $procedure_type, $cmd_name, $run_id, $indent) = @_;
+	my ($command, $cmd_name, $run_id, $indent) = @_;
 
 	if ($test_mode) {
 		print "$command\n";
@@ -1787,7 +1771,7 @@ sub run_cmd
 				}
 			}
 
-			$ret = run_shell($cmd_result, '', $cmd_ref->{name}, $run_id, $indent);
+			$ret = run_shell($cmd_result, $cmd_ref->{name}, $run_id, $indent);
 			if ($max_thread_number > 1) {
 				lock($thread_number);
 				$thread_number--;
@@ -2013,12 +1997,11 @@ sub show_info
 sub list_proc
 {
 	my ($proc_name) = @_;
-	print "\nCurrent available ", ($list_mode == 1 ? "user-defined " : "") , "procedures";
+	print "\nCurrent available procedures";
 	print " (search for '$proc_name')" if $proc_name;
 	print ":\n";
 	foreach my $name (sort keys %{$procs_ref}) {
 		next if $name =~ /^_/;
-		next if $list_mode == 1 and $procs_ref->{$name}{type} == 0;
 		print "   $name\n" if $name =~ /$proc_name/;
 	}
 	print "\n";
