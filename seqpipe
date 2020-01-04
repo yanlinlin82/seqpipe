@@ -75,7 +75,8 @@ my $force_run = 0;
 my $keep_temp = 0;
 my $shell = '/bin/bash';
 
-my $max_thread_number = r(`cat /proc/cpuinfo| grep "processor"| wc -l`);
+my $max_thread_number = 1;
+$max_thread_number = r(`cat /proc/cpuinfo| grep "processor"| wc -l`) if $can_use_threads;
 my $thread_number :shared = 0;
 
 my $procs_ref = {};  # All procedures are loaded at startup.
