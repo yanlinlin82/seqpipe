@@ -17,9 +17,9 @@ sub has_module
 	return 1;
 }
 
-BEGIN { eval 'use threads; use threads::shared; 1' or eval 'use forks; use forks::shared; 1' };
+BEGIN { eval 'use forks; use forks::shared; 1' or eval 'use threads; use threads::shared; 1' };
 my $can_use_threads = 1;
-if (not has_module('threads.pm') and not has_module('forks.pm')) {
+if (not has_module('forks.pm') and not has_module('threads.pm')) {
 	$can_use_threads = 0;
 }
 
@@ -2186,6 +2186,17 @@ sub do_log
 	die "Error: '$cmd' has not been implemented";
 }
 
+sub do_check
+{
+	print "
+Capability checking results:
+   threads supporing : " . ($can_use_threads ? "yes" : "no") . "
+   max thread number : $max_thread_number
+
+";
+	exit 0;
+}
+
 sub do_version
 {
 	print get_version_string(), "\n";
@@ -2358,6 +2369,7 @@ my $funcs = {
 	'list'     => \&do_list,
 	'log'      => \&do_log,
 	'history'  => \&do_log,
+	'check'    => \&do_check,
 	'version'  => \&do_version,
 	'help'     => \&do_help,
 };
