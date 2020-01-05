@@ -2119,16 +2119,21 @@ sub do_parallel
 	open my $fh, '<', $cmd_file or die "Error: Can not open file '$cmd_file'";
 	while (my $line = <$fh>) {
 		chomp $line;
+		next if $line =~ /^\s*(#.*|)$/;
 		push @cmds, $line;
 	}
 	close $fh;
 
-	$procs_ref->{''} = { proc_name => '', file => '', parallel => 1 };
-	for my $shell_cmd (@cmds) {
-		push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => 1, command => $shell_cmd };
-	}
+	my $ret = 0;
+	if (@cmds) {
+		$procs_ref->{''} = { proc_name => '', file => '', parallel => 1 };
+		for my $shell_cmd (@cmds) {
+			push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => 1, command => $shell_cmd };
+		}
 
-	exit do_run_seqpipe('', {}, []);
+		$ret = do_run_seqpipe('', {}, []);
+	}
+	exit $ret;
 }
 
 sub do_try
