@@ -1,5 +1,4 @@
 #!/usr/bin/perl -w
-############################################################
 use strict;
 use warnings;
 use File::Basename;
@@ -1238,6 +1237,28 @@ sub show_proc
 	print join("\n", show_block $proc_ref, $args_ref), "\n";
 }
 
+sub list_proc
+{
+	my @patterns = @_;
+	my @proc_names = ();
+	foreach my $name (sort keys %{$procs_ref}) {
+		next if $name eq '';
+		if (not @patterns) {
+			push @proc_names, $name
+		} else {
+			my $match = 0;
+			for my $pattern (@patterns) {
+				if ($name =~ /$pattern/) {
+					$match = 1;
+					last;
+				}
+			}
+			push @proc_names, $name if $match;
+		}
+	}
+	return @proc_names;
+}
+
 ############################################################
 # run pipeline
 
@@ -1906,8 +1927,6 @@ sub run_proc
 	}
 }
 
-############################################################
-
 sub show_info
 {
 	my ($proc_name, $info_ref) = @_;
@@ -2059,31 +2078,82 @@ Notes:
 }
 
 ############################################################
+# sub command
 
-sub list_proc
+sub do_run
 {
-	my @patterns = @_;
-	my @proc_names = ();
-	foreach my $name (sort keys %{$procs_ref}) {
-		next if $name eq '';
-		if (not @patterns) {
-			push @proc_names, $name
-		} else {
-			my $match = 0;
-			for my $pattern (@patterns) {
-				if ($name =~ /$pattern/) {
-					$match = 1;
-					last;
+	my $proc_name = '';
+	my $args_ref = {};
+	my $args_order_ref = [];
+
+	my $actions = {
+		'-h' => sub { $help_mode = 1 if $help_mode < 1; },
+		'-H' => sub { $help_mode = 2 if $help_mode < 2; },
+		'-T' => sub { $test_mode = 1; },
+		'-f' => sub { $force_run = 1; },
+		'-k' => sub { $keep_temp = 1; },
+		'-v' => sub {
+			++$verbose;
+			$| = 1;  # flush output immediately
+		},
+		'-t' => sub {
+			die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
+			$max_thread_number = shift @ARGV;
+			die "Invalid max thread number: $max_thread_number!" if $max_thread_number <= 0;
+			if ($max_thread_number > 1 and not $can_use_threads) {
+				warn "Parallel mode is disabled since your Perl does not support threads!";
+			}
+		},
+		'-s' => sub {
+			die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
+			$shell = shift @ARGV;
+			die "Empty shell command is not allowed!" if $shell =~ /^\s*$/;
+		},
+		'_DEFAULT_' => sub { die "Unknown option '$_[0]'!"; }
+	};
+	$actions->{'--help'} = $actions->{'-h'}; # allow option '--help'
+
+	my $shell_cmd = '';
+	while (my $arg = shift @ARGV) {
+		if ($arg =~ /^-/) {
+			my $action = $actions->{$arg} || $actions->{_DEFAULT_};
+			$action->($arg);
+		} elsif (-e $arg and not -x $arg) { # non-executable file
+			load_module $arg;
+			while (my $arg = shift @ARGV) {
+				if ($arg =~ /^(\w+)=(.*)$/) {
+					die "duplicated option '$1'!" if exists $args_ref->{$1};
+					my $name = $1;
+					$args_ref->{$name} = $2;
+					push @{$args_order_ref}, $name;
+					die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
+
+					if ($2 =~ /\$\{(\w+)\}/) {
+						warn "Unrecommended usage of shell environment '\${$1}' in value of '$name'!\n"
+						. "   NOTE: Please use '\$$1' instead"
+					}
+				} else {
+					die "Invalid format of option: $arg" if $proc_name;
+					$proc_name = $arg;
+					die "Unknown procedure '$proc_name'! Use 'seqpipe list' to list available procedures."
+					unless exists $procs_ref->{$proc_name};
 				}
 			}
-			push @proc_names, $name if $match;
+			last;
+		} else {
+			$shell_cmd = join(' ', $arg, @ARGV);
+			last;
 		}
 	}
-	return @proc_names;
-}
 
-############################################################
-# sub command
+	if ($shell_cmd eq '' and $help_mode > 0) {
+		print_detail_help;
+		exit 1;
+	}
+
+	my $res = run_seqpipe($shell_cmd, $proc_name, $args_ref, $args_order_ref);
+	exit $res;
+}
 
 sub do_parallel
 {
@@ -2214,7 +2284,7 @@ sub do_help
 	exit 1;
 }
 
-############################################################
+#----------------------------------------------------------#
 
 sub do_run_seqpipe
 {
@@ -2307,67 +2377,10 @@ sub run_seqpipe
 }
 
 ############################################################
-# main program start from here.
-
-my $proc_name = '';
-my $args_ref = {};
-my $args_order_ref = [];
-
-#-----------------------------------------------------------
-
-sub parse_proc_name_and_vars
-{
-	while (my $arg = shift @ARGV) {
-		if ($arg =~ /^(\w+)=(.*)$/) {
-			die "duplicated option '$1'!" if exists $args_ref->{$1};
-			my $name = $1;
-			$args_ref->{$name} = $2;
-			push @{$args_order_ref}, $name;
-			die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
-
-			if ($2 =~ /\$\{(\w+)\}/) {
-				warn "Unrecommended usage of shell environment '\${$1}' in value of '$name'!\n"
-				. "   NOTE: Please use '\$$1' instead"
-			}
-		} else {
-			die "Invalid format of option: $arg" if $proc_name;
-			$proc_name = $arg;
-			die "Unknown procedure '$proc_name'! Use 'seqpipe list' to list available procedures."
-			unless exists $procs_ref->{$proc_name};
-		}
-	}
-}
-
-#-----------------------------------------------------------
-
-my $actions = {
-	'-h' => sub { $help_mode = 1 if $help_mode < 1; },
-	'-H' => sub { $help_mode = 2 if $help_mode < 2; },
-	'-T' => sub { $test_mode = 1; },
-	'-f' => sub { $force_run = 1; },
-	'-k' => sub { $keep_temp = 1; },
-	'-v' => sub {
-		++$verbose;
-		$| = 1;  # flush output immediately
-	},
-	'-t' => sub {
-		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
-		$max_thread_number = shift @ARGV;
-		die "Invalid max thread number: $max_thread_number!" if $max_thread_number <= 0;
-		if ($max_thread_number > 1 and not $can_use_threads) {
-			warn "Parallel mode is disabled since your Perl does not support threads!";
-		}
-	},
-	'-s' => sub {
-		die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
-		$shell = shift @ARGV;
-		die "Empty shell command is not allowed!" if $shell =~ /^\s*$/;
-	},
-	'_DEFAULT_' => sub { die "Unknown option '$_[0]'!"; }
-};
-$actions->{'--help'} = $actions->{'-h'}; # allow option '--help'
+# main program starts from here
 
 my $funcs = {
+	'run'      => \&do_run,
 	'parallel' => \&do_parallel,
 	'try'      => \&do_try,
 	'test'     => \&do_try,
@@ -2379,36 +2392,24 @@ my $funcs = {
 	'help'     => \&do_help,
 };
 
+my $cmd = '';
 if ($#ARGV < 0) {
-	print_usage;
-	exit 1;
-}
-
-my $sub_cmd = '';
-my $shell_cmd = '';
-while (my $arg = shift @ARGV) {
-	if ($arg =~ /^-/) {
-		my $action = $actions->{$arg} || $actions->{_DEFAULT_};
-		$action->($arg);
-	} elsif ($arg eq 'run' and $sub_cmd eq '') {
-		$sub_cmd = $arg; # skip the optional 'run' sub command
-	} elsif (-e $arg and not -x $arg) { # non-executable file
-		load_module $arg;
-		parse_proc_name_and_vars(@ARGV);
+	if (-t STDIN) {
+		print_usage;
+		exit 1;
 	} else {
-		if ($sub_cmd eq '' and exists $funcs->{$arg}) {
-			$funcs->{$arg}->($arg, @ARGV);
-		} else {
-			$shell_cmd = join(' ', $arg, @ARGV);
-		}
-		last;
+		$cmd = 'run';
+	}
+} else {
+	my $first_arg = $ARGV[0];
+	if ($first_arg =~ /^-/) {
+		# if first argument is an option (starts with '-'),
+		# treat it as the missing 'run' command
+		$cmd = 'run';
+	} else {
+		$cmd = shift @ARGV;
+		die "Error: Unknown command '$cmd'" if not exists $funcs->{$cmd};
 	}
 }
 
-if ($sub_cmd eq '' and $shell_cmd eq '' and $help_mode > 0) {
-	print_detail_help;
-	exit 1;
-}
-
-my $res = run_seqpipe($shell_cmd, $proc_name, $args_ref, $args_order_ref);
-exit $res;
+exit $funcs->{$cmd}->($cmd, @ARGV);
