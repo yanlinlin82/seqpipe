@@ -1392,10 +1392,10 @@ sub run_checker
 
 sub get_version_string
 {
-	my $git_hash = '$Id$';
-	my $version_suffix = "";
-	if ($git_hash =~ /Id: (.*) /) {
-		$version_suffix = ' (' . substr($1, 0, 7) . ')';
+	my $hashcode = r(`md5sum $0`);
+	my $version_suffix = '';
+	if ($hashcode ne '') {
+		$version_suffix = " (" . substr($hashcode, 0, 7) . ")";
 	}
 	return "0.6.0-dev$version_suffix";
 }
