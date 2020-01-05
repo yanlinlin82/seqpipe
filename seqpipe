@@ -2406,9 +2406,10 @@ if ($#ARGV < 0) {
 		# if first argument is an option (starts with '-'),
 		# treat it as the missing 'run' command
 		$cmd = 'run';
-	} else {
+	} elsif (exists $funcs->{$first_arg}) {
 		$cmd = shift @ARGV;
-		die "Error: Unknown command '$cmd'" if not exists $funcs->{$cmd};
+	} else {
+		$cmd = 'run';
 	}
 }
 
