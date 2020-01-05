@@ -2082,73 +2082,81 @@ Notes:
 
 sub do_run
 {
-	my $proc_name = '';
-	my $args_ref = {};
-	my $args_order_ref = [];
+	my ($cmd, @args) = @_;
 
-	my $actions = {
-		'-h' => sub { $help_mode = 1 if $help_mode < 1; },
-		'-H' => sub { $help_mode = 2 if $help_mode < 2; },
-		'-T' => sub { $test_mode = 1; },
-		'-f' => sub { $force_run = 1; },
-		'-k' => sub { $keep_temp = 1; },
-		'-v' => sub {
-			++$verbose;
-			$| = 1;  # flush output immediately
-		},
-		'-t' => sub {
-			die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
-			$max_thread_number = shift @ARGV;
-			die "Invalid max thread number: $max_thread_number!" if $max_thread_number <= 0;
-			if ($max_thread_number > 1 and not $can_use_threads) {
-				warn "Parallel mode is disabled since your Perl does not support threads!";
+	my $help_mode = 0;
+	my $force_run = 0;
+	my $keep_temp = 0;
+
+	while (@args) {
+		my $first_arg = $args[0];
+		if ($first_arg =~ /^-/) {
+			my $arg = shift @args;
+			if ($arg eq '-h' or $arg eq '--help') {
+				++$help_mode;
+			} elsif ($arg eq '-v') {
+				++$verbose;
+				$| = 1;  # flush output immediately
+			} elsif ($arg eq '-t') {
+				die "Error: Missing argument for '$arg' option!" if $#args < 0;
+				$max_thread_number = shift @args;
+				die "Error: Invalid max thread number: '$max_thread_number'!" if $max_thread_number !~ /^[0-9]+$/;
+			} elsif ($arg eq '-f') {
+				$force_run = 1;
+			} elsif ($arg eq '-k') {
+				$keep_temp = 1;
+			} elsif ($arg eq '-s') {
+				die "Missing argument for '$arg' option!" if $#args < 0;
+				$shell = shift @args;
+				die "Empty shell command is not allowed!" if $shell =~ /^\s*$/;
+			} else {
+				die "Error: Unknown option '$arg' for 'seqpipe $cmd'";
 			}
-		},
-		'-s' => sub {
-			die "Missing argument for '$_[0]' option!" if $#ARGV < 0;
-			$shell = shift @ARGV;
-			die "Empty shell command is not allowed!" if $shell =~ /^\s*$/;
-		},
-		'_DEFAULT_' => sub { die "Unknown option '$_[0]'!"; }
-	};
-	$actions->{'--help'} = $actions->{'-h'}; # allow option '--help'
-
-	my $shell_cmd = '';
-	while (my $arg = shift @ARGV) {
-		if ($arg =~ /^-/) {
-			my $action = $actions->{$arg} || $actions->{_DEFAULT_};
-			$action->($arg);
-		} elsif (-e $arg and not -x $arg) { # non-executable file
-			load_module $arg;
-			while (my $arg = shift @ARGV) {
-				if ($arg =~ /^(\w+)=(.*)$/) {
-					die "duplicated option '$1'!" if exists $args_ref->{$1};
-					my $name = $1;
-					$args_ref->{$name} = $2;
-					push @{$args_order_ref}, $name;
-					die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
-
-					if ($2 =~ /\$\{(\w+)\}/) {
-						warn "Unrecommended usage of shell environment '\${$1}' in value of '$name'!\n"
-						. "   NOTE: Please use '\$$1' instead"
-					}
-				} else {
-					die "Invalid format of option: $arg" if $proc_name;
-					$proc_name = $arg;
-					die "Unknown procedure '$proc_name'! Use 'seqpipe list' to list available procedures."
-					unless exists $procs_ref->{$proc_name};
-				}
-			}
-			last;
 		} else {
-			$shell_cmd = join(' ', $arg, @ARGV);
 			last;
 		}
 	}
 
-	if ($shell_cmd eq '' and $help_mode > 0) {
-		print_detail_help;
+	my $pipe_file = '';
+	if (not -t STDIN) {
+		$pipe_file = '/dev/stdin'
+	} elsif (@args) {
+		$pipe_file = shift @args;
+	} else {
+		print_run_usage();
 		exit 1;
+	}
+
+	my $shell_cmd = '';
+	my $proc_name = '';
+	my $args_ref = {};
+	my $args_order_ref = [];
+	if ($pipe_file eq '/dev/stdin' or
+			(-e $pipe_file and not -x $pipe_file)) { # non-executable file
+		load_module $pipe_file;
+		if (@args and $args[0] =~ /^(\w+)$/) {
+			$proc_name = shift @args;
+			die "Unknown procedure '$proc_name'! Use 'seqpipe list' to list available procedures."
+			unless exists $procs_ref->{$proc_name};
+		}
+		while (my $arg = shift @args) {
+			if ($arg =~ /^(\w+)=(.*)$/) {
+				die "duplicated option '$1'!" if exists $args_ref->{$1};
+				my $name = $1;
+				$args_ref->{$name} = $2;
+				push @{$args_order_ref}, $name;
+				die "Invalid option '$name'! Option name starts with '_' is reserved." if $name =~ /^_/;
+
+				if ($2 =~ /\$\{(\w+)\}/) {
+					warn "Unrecommended usage of shell environment '\${$1}' in value of '$name'!\n"
+					. "   NOTE: Please use '\$$1' instead"
+				}
+			} else {
+				die "Invalid format of option: $arg";
+			}
+		}
+	} else {
+		$shell_cmd = join(' ', $pipe_file, @args);
 	}
 
 	my $res = run_seqpipe($shell_cmd, $proc_name, $args_ref, $args_order_ref);
