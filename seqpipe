@@ -2010,7 +2010,7 @@ Try 'seqpipe help' to list all available subcommands.
 ";
 }
 
-sub print_detail_help()
+sub print_user_detail
 {
 	print "
 Usage: seqpipe [cmd] [options ...]
@@ -2029,7 +2029,7 @@ Try 'seqpipe <cmd> -h' to see help message for specific command.
 ";
 }
 
-sub print_run_usage
+sub print_usage_run
 {
 	print "
 Usage:
@@ -2048,7 +2048,7 @@ Options:
 ";
 }
 
-sub print_list_usage
+sub print_usage_list
 {
 	print "
 Usage: seqpipe list [workflow.pipe] [pattern ...]
@@ -2056,7 +2056,7 @@ Usage: seqpipe list [workflow.pipe] [pattern ...]
 ";
 }
 
-sub print_parallel_usage
+sub print_usage_parallel
 {
 	print "
 Usage:
@@ -2123,7 +2123,7 @@ sub do_run
 	} elsif (@args) {
 		$pipe_file = shift @args;
 	} else {
-		print_run_usage();
+		print_usage_run();
 		exit 1;
 	}
 
@@ -2170,7 +2170,7 @@ sub do_parallel
 	while (my $arg = shift @_) {
 		if ($arg =~ /^-/) {
 			if ($arg eq '-h' or $arg eq '--help') {
-				print_parallel_usage();
+				print_usage_parallel();
 				exit 1;
 			} elsif ($arg eq '-t') {
 				$max_thread_number = shift @_;
@@ -2186,7 +2186,7 @@ sub do_parallel
 
 	if ($cmd_file eq '') {
 		if (-t STDIN) {
-			print_parallel_usage();
+			print_usage_parallel();
 			exit 1;
 		} else {
 			$cmd_file = "/dev/stdin";
@@ -2228,7 +2228,7 @@ sub do_list
 	while (my $arg = shift @_) {
 		if ($arg =~ /^-/) {
 			if ($arg eq '-h' or $arg eq '--help') {
-				print_list_usage();
+				print_usage_list();
 				exit 1;
 			} else {
 				die "Error: Unknown option '$arg' for 'seqpipe $cmd'";
@@ -2288,7 +2288,7 @@ sub do_version
 
 sub do_help
 {
-	print_detail_help;
+	print_user_detail;
 	exit 1;
 }
 
