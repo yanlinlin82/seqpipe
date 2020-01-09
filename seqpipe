@@ -101,20 +101,16 @@ my $funcs = {
 	'run'      => \&do_run,
 	'parallel' => \&do_parallel,
 	'try'      => \&do_try,
-	'test'     => \&do_try,
 	'list'     => \&do_list,
 	'log'      => \&do_log,
-	'history'  => \&do_log,
 	'check'    => \&do_check,
 	'version'  => \&do_version,
-	'help'     => \&do_help,
 };
 
 my $cmd = '';
 if ($#ARGV < 0) {
 	if (-t STDIN) {
 		print_usage();
-		exit 1;
 	} else {
 		$cmd = 'run';
 	}
@@ -124,6 +120,8 @@ if ($#ARGV < 0) {
 		# if first argument is an option (starts with '-'),
 		# treat it as the missing 'run' command
 		$cmd = 'run';
+	} elsif ($first_arg eq 'help') {
+		print_usage_detail();
 	} elsif (exists $funcs->{$first_arg}) {
 		$cmd = shift @ARGV;
 	} else {
@@ -2058,9 +2056,10 @@ Options:
 Try 'seqpipe help' to list all available subcommands.
 
 ";
+	exit 1;
 }
 
-sub print_user_detail
+sub print_usage_detail
 {
 	print "
 Usage: seqpipe [cmd] [options ...]
@@ -2077,6 +2076,7 @@ Commands:
 Try 'seqpipe <cmd> -h' to see help message for specific command.
 
 ";
+	exit 1;
 }
 
 sub print_usage_run
@@ -2096,6 +2096,7 @@ Options:
    -T                   Test mode, show commands rather than execute them.
 
 ";
+	exit 1;
 }
 
 sub print_usage_list
@@ -2104,6 +2105,7 @@ sub print_usage_list
 Usage: seqpipe list [workflow.pipe] [pattern ...]
 
 ";
+	exit 1;
 }
 
 sub print_usage_parallel
@@ -2125,6 +2127,7 @@ Notes:
    The commands in lines will be run in parallel.
 
 ";
+	exit 1;
 }
 
 ############################################################
@@ -2174,7 +2177,6 @@ sub do_run
 		$pipe_file = shift @args;
 	} else {
 		print_usage_run();
-		exit 1;
 	}
 
 	my $shell_cmd = '';
@@ -2221,7 +2223,6 @@ sub do_parallel
 		if ($arg =~ /^-/) {
 			if ($arg eq '-h' or $arg eq '--help') {
 				print_usage_parallel();
-				exit 1;
 			} elsif ($arg eq '-t') {
 				$max_thread_number = shift @_;
 			} else {
@@ -2237,7 +2238,6 @@ sub do_parallel
 	if ($cmd_file eq '') {
 		if (-t STDIN) {
 			print_usage_parallel();
-			exit 1;
 		} else {
 			$cmd_file = "/dev/stdin";
 		}
@@ -2279,7 +2279,6 @@ sub do_list
 		if ($arg =~ /^-/) {
 			if ($arg eq '-h' or $arg eq '--help') {
 				print_usage_list();
-				exit 1;
 			} else {
 				die "Error: Unknown option '$arg' for 'seqpipe $cmd'";
 			}
@@ -2334,12 +2333,6 @@ sub do_version
 {
 	print get_version_string(), "\n";
 	exit 0;
-}
-
-sub do_help
-{
-	print_user_detail;
-	exit 1;
 }
 
 #----------------------------------------------------------#
