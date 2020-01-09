@@ -1,7 +1,6 @@
 #!/usr/bin/perl -w
 use strict;
 use warnings;
-use File::Basename;
 use Cwd 'abs_path';
 use Fcntl qw(:flock);
 
@@ -26,6 +25,8 @@ if (not has_module('forks.pm') and not has_module('threads.pm')) {
 # global helper functions
 
 sub r { my $s = shift // ""; chomp $s; return $s; }
+
+sub basename { my $s = shift // ""; $s =~ s/^.*[\/\\]//g; return $s; }
 
 ############################################################
 # constants
@@ -901,7 +902,7 @@ sub load_module
 			load_proc($fp, $2 || $4, $5);
 		} else {
 			$procs_ref->{''} = { proc_name => '', file => $file, parallel => 0 } if not exists $procs_ref->{''};
-			push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => $file, line_no => $fp->{handle}->input_line_number, command => $fp->{line} } if $fp->{line} ne "";
+			push @{$procs_ref->{''}->{commands}}, { name => '', file => $file, line_no => $fp->{handle}->input_line_number, command => $fp->{line} } if $fp->{line} ne "";
 			read_nonblank_line($fp);
 		}
 	}
@@ -1386,7 +1387,7 @@ sub try_guess_name
 	my @argv = bash_line_decode($cmd);
 	my $name = '';
 	while (@argv) {
-		$name = basename shift @argv;
+		$name = basename(shift @argv);
 		$name =~ s/\W//g;
 		last if $name;
 	}
@@ -2255,7 +2256,7 @@ sub do_parallel
 	if (@cmds) {
 		$procs_ref->{''} = { proc_name => '', file => '', parallel => 1 };
 		for my $shell_cmd (@cmds) {
-			push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => 1, command => $shell_cmd };
+			push @{$procs_ref->{''}->{commands}}, { name => '', file => '', line_no => 1, command => $shell_cmd };
 		}
 
 		$ret = do_run_seqpipe('', {}, []);
@@ -2424,7 +2425,7 @@ sub run_seqpipe
 	# Prepare for inline mode
 	if ($shell_cmd) {
 		$procs_ref->{''} = { proc_name => '', file => '', parallel => 0 };
-		push @{$procs_ref->{''}->{commands}}, { name => 'shell', file => '', line_no => 1, command => $shell_cmd };
+		push @{$procs_ref->{''}->{commands}}, { name => '', file => '', line_no => 1, command => $shell_cmd };
 	} elsif ($proc_name) {
 		die "Unknown procedure '$proc_name'! Use 'seqpipe list' to list available procedures."
 		unless exists $procs_ref->{$proc_name};
