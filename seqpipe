@@ -2171,10 +2171,10 @@ sub do_run
 	}
 
 	my $pipe_file = '';
-	if (not -t STDIN) {
-		$pipe_file = '/dev/stdin'
-	} elsif (@args) {
+	if (@args) {
 		$pipe_file = shift @args;
+	} elsif (not -t STDIN) {
+		$pipe_file = '/dev/stdin'
 	} else {
 		print_usage_run();
 	}
