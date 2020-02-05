@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use Cwd 'abs_path';
 use Fcntl qw(:flock);
+BEGIN { eval 'use Data::Dumper' };
 
 ############################################################
 # check perl multi-thread supporting
@@ -28,10 +29,24 @@ sub r { my $s = shift // ""; chomp $s; return $s; }
 
 sub basename { my $s = shift // ""; $s =~ s/^.*[\/\\]//g; return $s; }
 
+sub shell_quote
+{
+	return map {
+		my $s = $_;
+		if ($s =~ /"/) {
+			$s =~ s/'/'\\''/g if $s =~ /'/;
+			$s = "'" . $s . "'";
+		} elsif ($s =~ /[' \t]/) {
+			$s = '"' . $s . '"';
+		}
+		$s
+	} @_;
+}
+
 ############################################################
 # constants
 
-my $full_command_line = bash_line_encode($0, @ARGV);
+my $full_command_line = join(' ', shell_quote($0, @ARGV));
 
 # Unique ID consists of date, time and pid
 my $HOSTNAME = r(`hostname`);
@@ -568,6 +583,17 @@ sub sort_vars
 	return @vars;
 }
 
+sub remove_quote_mark
+{
+	my $s = shift;
+	if ($s =~ /^"/) {
+		$s =~ s/^"(.*)"$/$1/;
+	} elsif ($s =~ /^'/) {
+		$s =~ s/^'(.*)'$/$1/;
+	}
+	return $s;
+}
+
 sub eval_text
 {
 	my ($text, $args_ref, $proc_vars_ref, $global_vars_ref) = @_;
@@ -576,9 +602,8 @@ sub eval_text
 	return '' if not defined $bash;
 	$text = $bash;
 
-	$text =~ s/^\s+//g;  # Remove leading white-spaces.
-	$text =~ s/\s+$//g;  # Remove tailing white-spaces.
-	$text =~ s/^"(.*?)"$/$1/;  # Remove quot marks.
+	$text =~ s/(^\s+|\s+$)//g;  # Remove leading and tailing white-spaces.
+	$text = remove_quote_mark($text);
 
 	my %opt_vars = ();
 	my %req_vars = ();
@@ -2208,7 +2233,7 @@ sub do_run
 			}
 		}
 	} else {
-		$shell_cmd = join(' ', $pipe_file, @args);
+		$shell_cmd = join(' ', shell_quote($pipe_file, @args));
 	}
 
 	my $res = run_seqpipe($shell_cmd, $proc_name, $args_ref, $args_order_ref);
