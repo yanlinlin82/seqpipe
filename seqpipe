@@ -229,57 +229,13 @@ sub get_new_run_id
 }
 
 ############################################################
-# directory walking
+# directory processing
 
 sub expand_tilde
 {
 	my $file = shift;
 	$file =~ s,^~/,$ENV{HOME}/,;
 	return $file;
-}
-
-sub search_module_file
-{
-	my $file = shift;
-	if ($file =~ /^~/) {
-		$file = expand_tilde $file;
-	} elsif (! -e $file and defined $ENV{SEQPIPE_LIB}) {
-		foreach my $path (split(':', $ENV{SEQPIPE_LIB})) {
-			if (-e "$path/$file") {
-				return "$path/$file";
-			}
-		}
-	}
-	return $file;
-}
-
-sub dir_walk
-{
-	my ($path, $file_proc, $dir_proc) = @_;
-	if (-d expand_tilde($path)) {
-		opendir my $dh, $path or die "Can not open directory '$path': $!";
-		my @res;
-		while (my $item = readdir $dh) {
-			next if $item eq '.' or $item eq '..';
-			push @res, dir_walk("$path/$item", $file_proc, $dir_proc);
-		}
-		return $dir_proc ? $dir_proc->($path, @res) : ();
-	} else {
-		return $file_proc ? $file_proc->($path) : ();
-	}
-}
-
-sub get_all_pipe
-{
-	map {
-		if (-d expand_tilde($_)) {
-			# Get all .pipe files in directories, including their sub directories.
-			dir_walk $_, sub { grep /\.pipe$/, $_[0] }, sub { shift; sort @_ }
-		} else {
-			# Force to load specified files, which may not be named as '*.pipe'
-			expand_tilde($_);
-		}
-	} @_;
 }
 
 ############################################################
